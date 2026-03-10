@@ -6,9 +6,7 @@ title: 'I AM DOING IT.1'
 pubDate: 2026-02-24
 description: 'My first ever blog post.'
 author: 'Sasha'
-image:
-    url: 'https://docs.astro.build/assets/rose.webp'
-    alt: 'The Astro logo on a dark background with a pink glow.'
+
 tags: ["starting", "learning in public"]
 ---
 **x**
