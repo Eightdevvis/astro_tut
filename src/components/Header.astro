@@ -7,17 +7,28 @@ import ThemeIcon from './ThemeIcon.astro';
 
 <header>
     <nav>
-            <div>
-      <ThemeIcon />
-    </div>
         <Menu />
+        <ThemeIcon />
         <Navigation />
+        
     </nav>
 </header>
 
 <style>
-  div {
-    display: flex;
-    justify-content: space-between;
+  header {
+    background: linear-gradient(90deg, var(--color-nav-start), var(--color-nav-end));
+    font-family: 'Courier New', Courier, monospace;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    padding: 1rem;
   }
+
+  
+  nav {
+    display: flex;
+    gap: 1rem;
+  }
+
 </style>

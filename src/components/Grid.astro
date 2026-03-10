@@ -1,0 +1,188 @@
+---
+const { items } = Astro.props;
+---
+
+<div class="masonry-container">
+  <div class="masonry-grid">
+    {items && items.map((item: any) => (
+      <div 
+        class={`grid-item ${item.size || 'medium'}`} 
+        style={item.color ? `background: ${item.color};` : ''}
+      >
+        <div class="grid-content">
+          {item.content}
+        </div>
+      </div>
+    ))}
+    {!items && <slot />}
+  </div>
+</div>
+
+<style>
+  .masonry-container {
+    width: 100%;
+    padding: 2rem 0;
+  }
+
+  .masonry-grid {
+    column-count: 3;
+    column-gap: 1.5rem;
+  }
+
+  .grid-item {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    break-inside: avoid;
+    display: inline-block;
+    width: 100%;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .grid-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Stark variierende Höhen für chaotisches Masonry */
+  .grid-item.tiny {
+    min-height: 120px;
+  }
+
+  .grid-item.small {
+    min-height: 180px;
+  }
+
+  .grid-item.medium {
+    min-height: 280px;
+  }
+
+  .grid-item.large {
+    min-height: 380px;
+  }
+
+  .grid-item.tall {
+    min-height: 480px;
+  }
+
+  .grid-item.huge {
+    min-height: 600px;
+  }
+
+  /* Verschiedene Proportionen für mehr Variation */
+  .grid-item.square {
+    aspect-ratio: 1 / 1;
+    min-height: auto;
+  }
+
+  .grid-item.landscape {
+    aspect-ratio: 4 / 3;
+    min-height: auto;
+  }
+
+  .grid-item.portrait {
+    aspect-ratio: 3 / 4;
+    min-height: auto;
+  }
+
+  .grid-item.wide {
+    aspect-ratio: 16 / 9;
+    min-height: auto;
+  }
+
+  .grid-item.vertical {
+    aspect-ratio: 2 / 3;
+    min-height: auto;
+  }
+
+  /* Zufällige zusätzliche Höhenvariationen */
+  .grid-item:nth-child(3n + 1):not(.square):not(.landscape):not(.portrait):not(.wide):not(.vertical) {
+    min-height: calc(var(--base-height, 280px) + 40px);
+  }
+
+  .grid-item:nth-child(5n + 2):not(.square):not(.landscape):not(.portrait):not(.wide):not(.vertical) {
+    min-height: calc(var(--base-height, 280px) - 30px);
+  }
+
+  .grid-item:nth-child(7n + 3):not(.square):not(.landscape):not(.portrait):not(.wide):not(.vertical) {
+    min-height: calc(var(--base-height, 280px) + 80px);
+  }
+
+  .grid-item:nth-child(4n + 4):not(.square):not(.landscape):not(.portrait):not(.wide):not(.vertical) {
+    min-height: calc(var(--base-height, 280px) + 20px);
+  }
+
+  .grid-item:nth-child(6n + 5):not(.square):not(.landscape):not(.portrait):not(.wide):not(.vertical) {
+    min-height: calc(var(--base-height, 280px) - 50px);
+  }
+
+  .grid-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Responsive - mehrere Spalten schon bei schmaleren Seiten */
+  @media screen and (max-width: 480px) {
+    .masonry-grid {
+      column-count: 2;
+      column-gap: 0.75rem;
+    }
+
+    .grid-item {
+      margin-bottom: 0.75rem;
+    }
+  }
+
+  @media screen and (min-width: 481px) and (max-width: 768px) {
+    .masonry-grid {
+      column-count: 3;
+      column-gap: 1rem;
+    }
+
+    .grid-item {
+      margin-bottom: 1rem;
+    }
+  }
+
+  @media screen and (min-width: 769px) and (max-width: 1024px) {
+    .masonry-grid {
+      column-count: 4;
+    }
+  }
+
+  @media screen and (min-width: 1025px) and (max-width: 1399px) {
+    .masonry-grid {
+      column-count: 5;
+    }
+  }
+
+  @media screen and (min-width: 1400px) {
+    .masonry-grid {
+      column-count: 6;
+      column-gap: 2rem;
+    }
+
+    .grid-item {
+      margin-bottom: 2rem;
+    }
+  }
+</style>
+
+<script>
+  // Optionale JavaScript-Verbesserung für noch mehr Chaos
+  document.addEventListener('DOMContentLoaded', () => {
+    const items = document.querySelectorAll('.grid-item');
+    items.forEach((item: any) => {
+      // Zufällige kleine Höhenvariation
+      const randomHeight = Math.floor(Math.random() * 60) - 30;
+      const currentHeight = parseInt(getComputedStyle(item).minHeight);
+      item.style.minHeight = `${currentHeight + randomHeight}px`;
+    });
+  });
+</script>

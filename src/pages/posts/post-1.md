@@ -1,27 +1,19 @@
 ---
 layout: ../../layouts/MarkdownPostLayout.astro
 
-title: 'My First Blog Post'
+title: 'I AM DOING IT.1'
 
-pubDate: 2022-07-08
-description: 'This is the first post of my new Astro blog.'
-author: 'Astro Learner'
+pubDate: 2026-02-24
+description: 'My first ever blog post.'
+author: 'Sasha'
 image:
     url: 'https://docs.astro.build/assets/rose.webp'
     alt: 'The Astro logo on a dark background with a pink glow.'
-tags: ["astro", "blogging", "learning in public"]
+tags: ["starting", "learning in public"]
 ---
+**x**
+## x 
+_x_
 
-Welcome to my _new blog_ about learning Astro! Here, I will share my learning journey as I build a new website.
+This is officially my first ever blog post. On my own scrawny but homely website. It is a strange feeling, knowing this is gonna be the first Post of hopefully many, conveying my private or just not said out loud thoughts in a verbal manner. Living life makes me very happy right now, and I feel like I can share things that might be worth reading or at least showcasing. 
 
-## What I've accomplished
-
-1. **Installing Astro**: First, I created a new Astro project and set up my online accounts.
-
-2. **Making Pages**: I then learned how to make pages by creating new `.astro` files and placing them in the `src/pages/` folder.
-
-3. **Making Blog Posts**: This is my first blog post! I now have Astro pages and Markdown posts!
-
-## What's next
-
-I will finish the Astro tutorial, and then keep adding more posts. Watch this space for more to come.

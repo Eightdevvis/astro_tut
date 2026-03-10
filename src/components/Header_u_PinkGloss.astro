@@ -1,0 +1,70 @@
+---
+import Menu from './Menu.astro';
+import Navigation from "./Navigation.astro";
+import ThemeIcon from './ThemeIcon.astro';
+
+---
+
+<header>
+    <nav>
+        <Menu />
+        <Navigation />
+        <ThemeIcon />
+    </nav>
+</header>
+
+<style>
+  header {
+    background: linear-gradient(90deg, #ff69b4, #ff1493);
+    font-family: 'Courier New', Courier, monospace;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    padding: 1rem;
+    padding-bottom: 3rem;
+    margin: 0;
+    z-index: 1000;
+    clip-path: polygon(
+      0 0, 
+      0 100%, 
+      1% 89%, 2% 84%, 3% 79%, 4% 75%, 5% 71%, 6% 69%, 7% 67%, 8% 66%, 9% 65%, 10% 64%, 11% 63%, 
+      89% 63%, 
+      90% 64%, 91% 65%, 92% 66%, 93% 67%, 94% 69%, 95% 71%, 96% 75%, 97% 79%, 98% 84%, 99% 89%, 
+      100% 100%, 
+      100% 0
+    );
+  }
+
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    max-width: 80ch;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  nav::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100%;
+    background: white;
+    clip-path: polygon(
+      0 calc(0% - 20px), 
+      0 calc(100% - 20px), 
+      1% calc(89% - 20px), 2% calc(84% - 20px), 3% calc(79% - 20px), 4% calc(75% - 20px), 5% calc(71% - 20px), 6% calc(69% - 20px), 7% calc(67% - 20px), 8% calc(66% - 20px), 9% calc(65% - 20px), 10% calc(64% - 20px), 11% calc(63% - 20px), 
+      89% calc(63% - 20px), 
+      90% calc(64% - 20px), 91% calc(65% - 20px), 92% calc(66% - 20px), 93% calc(67% - 20px), 94% calc(69% - 20px), 95% calc(71% - 20px), 96% calc(75% - 20px), 97% calc(79% - 20px), 98% calc(84% - 20px), 99% calc(89% - 20px), 
+      100% calc(100% - 20px), 
+      100% calc(0% - 20px)
+    );
+    z-index: 999;
+    pointer-events: none;
+  }
+</style>
