@@ -1,45 +1,43 @@
 ---
 const { items } = Astro.props;
-
 ---
 
 <div class="grid">
-  {items ? items.map((item: any) => (
-    <div class="grid-item" style={item.color ? `background: ${item.color};` : ''}>
-      <div class="grid-content">{item.content}</div>
-    </div>
-  )) : <slot />}
+  {items ? (
+    items.map((item: any) => (
+      <div class="grid-item" style={item.color ? `background: ${item.color};` : ''}>
+        {item.content}
+      </div>
+    ))
+  ) : (
+    <slot />
+  )}
 </div>
 
 <style>
+
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(0, max-content));
+    justify-content: start;
     gap: 1rem;
-    width: 100%;
-    padding: 1.5rem 0;
+    width: auto;
+    padding: 1rem 0;
   }
 
   .grid-item {
-    background: rgba(255,255,255,0.06);
-    border-radius: 10px;
-    padding: 1rem;
-    min-height: 140px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform .18s ease, box-shadow .18s ease;
-    border: 1px solid rgba(255,255,255,0.07);
+    width: max-content;
+    max-width: 100%;
+    padding: 0.75rem;
+    box-sizing: border-box;
   }
-
-  .grid-item:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-  }
-
-  .grid-content { width: 100%; }
 
   @media (max-width: 480px) {
-    .grid { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; padding: 1rem 0; }
+    .grid {
+      grid-template-columns: repeat(auto-fit, minmax(0, max-content));
+      gap: 0.5rem;
+      padding: 0.5rem 0;
+    }
   }
 </style>

@@ -4,16 +4,16 @@
 
 /* Default Theme */
 :root {
-  --color-bg: #c7a565;
-  --color-nav-start: #ffffff;
-  --color-nav-end: #ffffff;
+  --color-bg: #c5ac7e;
+  --color-nav-start: #4d3020;
+  --color-nav-end: #512727;
   --color-text: #000000;
-  --color-accent: #d11ce2;
-  --color-menu-bg: #d11ce2;
+  --color-accent: #087b21;
+  --color-menu-bg: #850a0a;
   --color-menu-text: #ffd5d5;
-  --color-link: #0d0950;
+  --color-link: #3d3b6f;
   --color-link-hover: #ff9776;
-  --font-family: monospace, 'Courier New', Courier, monospace;
+  --font-family: CrazyCurlz;
   --font-weight: 200;
   --font-weight-bold: 500;
 }

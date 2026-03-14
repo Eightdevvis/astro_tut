@@ -1,6 +1,21 @@
 /* Import theme definitions */
 @import './themes.css';
 
+/* Font import: Black Spiral */
+@font-face {
+  font-family: 'Black Spiral';
+  src: url('/fonts/black spiral.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'CrazyCurlz';
+  src: url('/fonts/CrazyCurlz.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 html {
   background-color: var(--color-bg);
   font-family: var(--font-family);

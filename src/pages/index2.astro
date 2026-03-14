@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Greeting from '../components/Greeting';
+import Grid from '../components/Grid.astro';
+import Veranda from '../components/Veranda.astro';
+const pageTitle = "???";
+
+import lastPostRaw from '../scripts/last';
+import Nav2 from '../components/Nav2.astro';
+const lastPost = lastPostRaw as any;
+//<Greeting client:load messages={["Hej", "Hallo", "Hola", "Habari"]} />
+---
+<Nav2 />
+
+<style>
+    body {
+        background-color: rgb(0, 0, 0);    }
+</style>

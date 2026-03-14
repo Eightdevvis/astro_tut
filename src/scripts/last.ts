@@ -11,4 +11,4 @@ function writePostOrder(postArr: Array<any>): void{
 
 writePostOrder(allPosts);
 
-export default lastPost;
+export default lastPost; //is an object?
