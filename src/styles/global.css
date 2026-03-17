@@ -16,6 +16,20 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'North Point';
+  src: url('/fonts/North point.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Protest Demo';
+  src: url('/fonts/Protest Demo.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 html {
   background-color: var(--color-bg);
   font-family: var(--font-family);

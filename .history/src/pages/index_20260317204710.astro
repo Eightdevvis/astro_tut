@@ -1,0 +1,25 @@
+<link rel="stylesheet" href="/src/styles/global.css" />
+<link rel="stylesheet" href="/src/styles/themes.css" />
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Greeting from '../components/Greeting';
+import LoginWidget from '../components/LoginWidget.jsx';
+import Grid from '../components/Grid.astro';
+import Veranda from '../components/Veranda.astro';
+const pageTitle = "???";
+
+import lastPostRaw from '../scripts/last';
+import Nav2 from '../components/Nav2.astro';
+const lastPost = lastPostRaw as any;
+//<Greeting client:load messages={["Hej", "Hallo", "Hola", "Habari"]} />
+---
+<Nav2 />
+
+<!-- LoginWidget oben rechts -->
+<LoginWidget client:load />
+
+<style>
+    body {
+        background-color: var(--color-bg);
+    }
+</style>

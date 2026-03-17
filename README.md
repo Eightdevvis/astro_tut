@@ -1,43 +1,95 @@
-# Astro Starter Kit: Minimal
+# astro_tut — SASH
+
+Persönliches Astro-Projekt mit Login-System, SQLite-Datenbank und eigenem Design.
+
+## Setup
 
 ```sh
-npm create astro@latest -- --template minimal
+npm install
+node scripts/init_db.cjs   # SQLite-Datenbank initialisieren (einmalig)
+npm run dev
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Projektstruktur
 
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
+```
 /
 ├── public/
+│   └── fonts/
+│       ├── black spiral.ttf    # Hauptfont für das SASH-Logo
+│       └── CrazyCurlz.ttf
+├── scripts/
+│   └── init_db.cjs             # Legt users.db und users-Tabelle an
 ├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+│   ├── components/
+│   │   ├── Nav2.astro          # Haupt-Nav: MundIcon | SASH | LoginWidget
+│   │   ├── LoginWidget.jsx     # Preact-Komponente: Login/Register/Logout
+│   │   ├── QuoteDisplay.jsx    # Preact-Komponente: zufälliges Zitat anzeigen
+│   │   └── ...
+│   ├── layouts/
+│   │   └── BaseLayout.astro    # HTML-Gerüst mit global.css
+│   ├── pages/
+│   │   ├── index.astro         # Startseite: schwarzer Hintergrund + Nav2 + Zitat
+│   │   ├── quotes/
+│   │   │   └── new.astro       # Zitat einreichen (braucht quote_poster-Recht)
+│   │   └── api/
+│   │       ├── quotes/
+│   │       │   ├── add.js      # POST  — Zitat speichern (braucht quote_poster)
+│   │       │   └── random.js   # GET   — zufälliges Zitat abrufen (öffentlich)
+│   │       ├── login.js        # POST  — prüft Passwort, setzt JWT-Cookie
+│   │       ├── register.js     # POST  — legt User an, setzt JWT-Cookie
+│   │       ├── logout.js       # POST  — löscht Session-Cookie
+│   │       └── user.js         # GET   — liest JWT-Cookie, gibt User zurück
+│   └── styles/
+│       ├── global.css          # Basis-CSS, importiert themes.css
+│       └── themes.css          # CSS-Variablen für alle Themes
+├── users.db                    # SQLite-Datenbank: users, user_permissions, quotes
+└── astro.config.mjs            # SSR-Modus mit @astrojs/node Adapter
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Rechte-System
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+Jeder User kann Rechte haben. Rechte sind einfache Strings in der Tabelle `user_permissions`.
 
-Any static assets, like images, can be placed in the `public/` directory.
+**Superuser:** `sash` — hat hardcoded immer alle Rechte, unabhängig von der DB.
 
-## 🧞 Commands
+| Recht | Beschreibung |
+| :--- | :--- |
+| `quote_poster` | Darf Zitate auf der Startseite posten — Seite: `/quotes/new` |
 
-All commands are run from the root of the project, from a terminal:
+**Rechte erteilen/entziehen** (nur als `sash`):
+```sh
+# Recht erteilen
+POST /api/admin/grant   { "username": "lea", "permission": "quote_poster" }
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+# Recht entziehen
+POST /api/admin/revoke  { "username": "lea", "permission": "quote_poster" }
+```
 
-## 👀 Want to learn more?
+**Recht prüfen im Code:**
+```js
+import { hasPermission } from '../lib/permissions.js';
+if (await hasPermission(username, 'quote_poster')) { ... }
+```
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+**Neues Recht hinzufügen:**
+1. In `src/lib/permissions.js` → `KNOWN_PERMISSIONS` eintragen
+2. API-Route oder UI bauen die das Recht nutzt
+3. `hasPermission()` aufrufen
+
+## Auth-System
+
+- **Datenbank:** SQLite (`users.db`), Tabelle `users` (id, username, birthday, password)
+- **Passwort-Hashing:** bcryptjs mit salt-rounds=10
+- **Session:** JWT (via `jose`), 7 Tage gültig, gesetzt als `httpOnly`-Cookie
+- **Flow:** Register/Login → JWT generieren → Cookie setzen → `/api/user` verifiziert Cookie bei jedem Laden
+
+## Commands
+
+| Command | Aktion |
+| :--- | :--- |
+| `npm install` | Dependencies installieren |
+| `node scripts/init_db.cjs` | Datenbank initialisieren (einmalig) |
+| `npm run dev` | Dev-Server auf `localhost:4321` |
+| `npm run build` | Produktions-Build nach `./dist/` |
+| `npm run preview` | Build lokal vorschauen |

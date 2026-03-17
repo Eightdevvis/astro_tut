@@ -1,0 +1,153 @@
+---
+/**
+ * Seite: /quotes/new
+ * Formular zum Einreichen eines Zitats.
+ *
+ * Server-seitige Checks (im Frontmatter):
+ * 1. Ist der User eingeloggt? → sonst redirect zu /
+ * 2. Hat der User das Recht "quote_poster"? → sonst Fehlermeldung
+ *
+ * Das Formular submitted per fetch an POST /api/quotes/add.
+ */
+
+import { jwtVerify } from 'jose';
+import { hasPermission } from '../../lib/permissions.js';
+import '../../styles/global.css';
+
+const JWT_SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET);
+
+// Session aus Cookie lesen
+const token = Astro.cookies.get('session')?.value;
+let username = null;
+let allowed = false;
+
+if (token) {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    username = payload.username as string;
+    allowed = await hasPermission(username, 'quote_poster');
+  } catch {
+    // ungültiger Token → username bleibt null
+  }
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>ZITAT EINREICHEN</title>
+    <style>
+      body {
+        background: #000;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        font-family: var(--font-family);
+      }
+      h1 {
+        font-family: 'Black Spiral';
+        font-size: 8vh;
+        margin-bottom: 2rem;
+        letter-spacing: 2px;
+      }
+      .container {
+        width: 100%;
+        max-width: 600px;
+        padding: 2rem;
+      }
+      textarea {
+        width: 100%;
+        min-height: 140px;
+        background: rgba(173, 216, 230, 0.15);
+        border: 1px solid rgba(173, 216, 230, 0.4);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1.1rem;
+        padding: 1rem;
+        resize: vertical;
+        box-sizing: border-box;
+        text-transform: uppercase;
+      }
+      textarea::placeholder { color: rgba(255,255,255,0.4); }
+      button {
+        margin-top: 1rem;
+        width: 100%;
+        padding: 0.8rem;
+        background: rgba(173, 216, 230, 0.25);
+        border: 1px solid rgba(173, 216, 230, 0.5);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1rem;
+        letter-spacing: 2px;
+        cursor: pointer;
+        text-transform: uppercase;
+      }
+      button:hover { background: rgba(173, 216, 230, 0.4); }
+      .msg { margin-top: 1rem; text-align: center; font-size: 0.9rem; letter-spacing: 1px; }
+      .back { display: block; margin-top: 2rem; color: rgba(255,255,255,0.5); text-align: center; text-decoration: none; letter-spacing: 1px; font-size: 0.85rem; }
+      .back:hover { color: #fff; }
+      .no-permission { text-align: center; color: rgba(173,216,230,0.8); letter-spacing: 2px; }
+    </style>
+  </head>
+  <body>
+    {!username ? (
+      <!-- Nicht eingeloggt -->
+      <div class="container no-permission">
+        <h1>HEY</h1>
+        <p>DU MUSST EINGELOGGT SEIN UM ZITATE EINZUREICHEN.</p>
+        <a href="/" class="back">← ZURÜCK</a>
+      </div>
+    ) : !allowed ? (
+      <!-- Eingeloggt aber kein Recht -->
+      <div class="container no-permission">
+        <h1>NOPE</h1>
+        <p>DU HAST KEINE BERECHTIGUNG UM ZITATE EINZUREICHEN.</p>
+        <a href="/" class="back">← ZURÜCK</a>
+      </div>
+    ) : (
+      <!-- Eingeloggt + Berechtigung vorhanden -->
+      <div class="container">
+        <h1>ZITAT</h1>
+        <textarea id="quoteText" placeholder="DEIN ZITAT..."></textarea>
+        <button id="submitBtn">EINREICHEN</button>
+        <div class="msg" id="msg"></div>
+        <a href="/" class="back">← ZURÜCK</a>
+      </div>
+    )}
+
+    <script>
+      const btn = document.getElementById('submitBtn') as HTMLButtonElement | null;
+      const msg = document.getElementById('msg') as HTMLElement | null;
+      const textarea = document.getElementById('quoteText') as HTMLTextAreaElement | null;
+      if (btn && msg && textarea) {
+        btn.addEventListener('click', async () => {
+          const text = textarea.value.trim();
+          if (!text) { msg.textContent = 'ZITAT DARF NICHT LEER SEIN'; return; }
+
+          btn.disabled = true;
+          const res = await fetch('/api/quotes/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          const data = await res.json();
+
+          if (res.ok && data.success) {
+            msg.style.color = 'lightblue';
+            msg.textContent = 'ZITAT GESPEICHERT ✓';
+            textarea.value = '';
+          } else {
+            msg.style.color = 'salmon';
+            msg.textContent = data.error?.toUpperCase() || 'FEHLER';
+          }
+          btn.disabled = false;
+        });
+      }
+    </script>
+  </body>
+</html>

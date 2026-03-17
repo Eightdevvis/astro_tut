@@ -1,0 +1,48 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Greeting from '../components/Greeting';
+import Grid from '../components/Grid.astro';
+import Veranda from '../components/Veranda.astro';
+const pageTitle = "???";
+
+import lastPostRaw from '../scripts/last';
+const lastPost = lastPostRaw as any;
+//<Greeting client:load messages={["Hej", "Hallo", "Hola", "Habari"]} />
+---
+<BaseLayout pageTitle = {pageTitle}>
+  <Veranda/>
+  <Grid>
+    <a href={lastPost.url} class="grid-item grid-item--inset" style="text-decoration: none; color: inherit; display: block;">
+      
+      
+      <h1 class="lastPost">{lastPost.frontmatter.title}</h1>
+      <div style="display: flex; justify-content: center; align-items: center; width: 100%;">
+        eye
+      </div>
+    </a>
+  </Grid>
+
+  <style>
+        :global(.grid-item--inset) {
+          background: #fff;
+          box-shadow:
+            inset 0 0 40px 10px rgba(0,0,0,0.35),
+            inset 0 0 80px 10px rgba(0,0,0,0.25),
+            inset 0 0 8px 2px rgba(0,0,0,0.45);
+          border-radius: 1rem;
+        }
+
+        :global(.grid-item--inset h1) {
+          font-size: 2.5rem;
+          transition: font-size 0.5s cubic-bezier(.4,1.6,.4,1);
+        }
+        :global(.grid-item--inset:hover h1) {
+          font-size: 1.2rem;
+        }
+        .lastPost {
+          font-size: 1rem;
+          padding: 10px;
+        }
+      </style>
+
+</BaseLayout>

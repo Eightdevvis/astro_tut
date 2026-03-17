@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Greeting from '../components/Greeting';
+import LoginWidget from '../components/LoginWidget.jsx';
 import Grid from '../components/Grid.astro';
 import Veranda from '../components/Veranda.astro';
 const pageTitle = "???";
@@ -12,7 +13,11 @@ const lastPost = lastPostRaw as any;
 ---
 <Nav2 />
 
+<!-- LoginWidget oben rechts -->
+<LoginWidget client:load />
+
 <style>
     body {
-        background-color: rgb(0, 0, 0);    }
+        background-color: var(--color-bg);
+    }
 </style>
