@@ -1,0 +1,156 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import '../../styles/global.css';
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Minigames · SASH</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 />
+    <main class="mg-main">
+      <p class="mg-kicker">Mindless Play + High Math</p>
+      <h1 class="mg-title">Minigames</h1>
+      <p class="mg-lead">
+        Kleine Spiele zum Abschalten — mit echter Mathe im Hintergrund. Erste Station: eine Sandbox für Mandelbrot- und
+        Julia-Mengen.
+      </p>
+      <ul class="mg-list">
+        <li>
+          <a class="mg-card" href="/minigames/fraktale-sandbox">
+            <span class="mg-card-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                  d="M24 4C14 8 8 16 8 24c0 10 8 18 16 20 8-2 16-10 16-20 0-8-6-16-16-20z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  fill="none"
+                />
+                <path
+                  d="M24 10c-6 3-10 9-10 14 0 7 5 13 10 15 5-2 10-8 10-15 0-5-4-11-10-14z"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  fill="none"
+                  opacity="0.7"
+                />
+                <circle cx="24" cy="24" r="3" fill="currentColor" opacity="0.9" />
+              </svg>
+            </span>
+            <span class="mg-card-body">
+              <span class="mg-card-title">Fraktale Sandbox</span>
+              <span class="mg-card-desc">Ziehen, zoomen, Farben und Parameter — Julia &amp; Mandelbrot, live Zahlen.</span>
+            </span>
+          </a>
+        </li>
+      </ul>
+      <p class="mg-back">
+        <a href="/">← Zur Startseite</a>
+      </p>
+    </main>
+  </body>
+</html>
+
+<style>
+  body {
+    background-color: #000;
+    margin: 0;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .mg-main {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+  }
+
+  .mg-kicker {
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin: 0 0 0.5rem;
+  }
+
+  .mg-title {
+    font-family: var(--font-hero, 'Protest Demo');
+    font-size: clamp(2rem, 8vw, 3rem);
+    margin: 0 0 1rem;
+    color: #fff;
+  }
+
+  .mg-lead {
+    margin: 0 0 2rem;
+    line-height: 1.55;
+    opacity: 0.85;
+  }
+
+  .mg-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .mg-card {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    padding: 1rem 1.1rem;
+    border-radius: 1rem;
+    text-decoration: none;
+    color: inherit;
+    background: #fff;
+    box-shadow:
+      inset 0 0 40px 10px rgba(0, 0, 0, 0.35),
+      inset 0 0 80px 10px rgba(0, 0, 0, 0.25),
+      inset 0 0 8px 2px rgba(0, 0, 0, 0.45);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  .mg-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 0 30px 8px rgba(0, 0, 0, 0.3),
+      inset 0 0 60px 8px rgba(0, 0, 0, 0.2),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  .mg-card-icon {
+    flex-shrink: 0;
+    color: #1a1a2e;
+    padding-top: 0.15rem;
+  }
+
+  .mg-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .mg-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #111;
+  }
+
+  .mg-card-desc {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: rgba(0, 0, 0, 0.65);
+  }
+
+  .mg-back {
+    margin-top: 2.5rem;
+    opacity: 0.55;
+  }
+
+  .mg-back a {
+    color: inherit;
+  }
+</style>

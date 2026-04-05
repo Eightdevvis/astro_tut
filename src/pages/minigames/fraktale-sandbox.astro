@@ -1,0 +1,90 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import FraktaleSandbox from '../../components/FraktaleSandbox.jsx';
+import '../../styles/global.css';
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Fraktale Sandbox · Minigames</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 />
+    <header class="fs-page-head">
+      <p class="fs-page-kicker"><a href="/minigames">Mindless Play + High Math</a></p>
+      <h1 class="fs-page-title">Fraktale Sandbox</h1>
+      <p class="fs-page-lead">
+        Iterationen z<sub>n+1</sub> = z<sub>n</sub>² + c — Mandelbrot (c aus der Ebene) und Julia (festes c). Ziehen zum Erkunden,
+        Zoomen mit Mausrad oder zwei Fingern, Farben und c per Regler oder (Julia) „Ziehen bewegt c“.
+      </p>
+    </header>
+    <FraktaleSandbox client:load />
+    <p class="fs-page-back">
+      <a href="/minigames">← Alle Minigames</a>
+    </p>
+  </body>
+</html>
+
+<style>
+  body {
+    background-color: #000;
+    margin: 0;
+    padding: 0;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .fs-page-head {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 0.5rem;
+  }
+
+  .fs-page-kicker {
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin: 0 0 0.35rem;
+  }
+
+  .fs-page-kicker a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .fs-page-kicker a:hover {
+    text-decoration: underline;
+  }
+
+  .fs-page-title {
+    font-family: var(--font-hero, 'Protest Demo');
+    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    margin: 0 0 0.75rem;
+    color: #fff;
+  }
+
+  .fs-page-lead {
+    margin: 0;
+    max-width: 52rem;
+    line-height: 1.55;
+    font-size: 0.95rem;
+    opacity: 0.78;
+  }
+
+  .fs-page-back {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 1rem 2rem;
+    opacity: 0.5;
+  }
+
+  .fs-page-back a {
+    color: inherit;
+    font-size: 0.9rem;
+  }
+</style>
