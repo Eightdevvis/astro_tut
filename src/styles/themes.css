@@ -16,6 +16,10 @@
   --font-family: CrazyCurlz;
   --font-weight: 200;
   --font-weight-bold: 500;
+  --font-nav: 'Courier New', Courier, monospace;
+  --font-menu: 'Poppins', sans-serif;
+  --font-hero: 'Protest Demo';
+  --font-quote: 'Black Spiral';
 }
 
 /* Dark Theme */

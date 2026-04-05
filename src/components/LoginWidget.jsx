@@ -84,6 +84,21 @@ function LoginWidget() {
             <div style={{ fontWeight: 'bold', fontSize: 16 }}>{user.username.toUpperCase()}</div>
             <div style={{ fontSize: 13, color: '#555' }}>{user.birthday}</div>
           </div>
+          {user.isSuperuser && (
+            <a
+              href="/super/settings"
+              style={{
+                ...linkStyle,
+                display: 'block',
+                textAlign: 'center',
+                marginBottom: 10,
+                fontSize: 13,
+                textDecoration: 'none',
+              }}
+            >
+              SUPER-EINSTELLUNGEN
+            </a>
+          )}
           <button style={logoutStyle} onClick={handleLogout}>LOGOUT</button>
         </div>
       );

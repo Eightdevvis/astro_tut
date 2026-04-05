@@ -3,6 +3,7 @@ import Nav2 from '../components/Nav2.astro';
 import QuoteDisplay from '../components/QuoteDisplay.jsx';
 import Grid from '../components/Grid.astro';
 import Veranda from '../components/Veranda.astro';
+import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import '../styles/global.css';
 
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
@@ -28,6 +29,7 @@ const lastPost = sorted[0] ?? null;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width" />
     <title>SASH</title>
+    <SiteFontOverrides />
   </head>
   <body>
     <Nav2 />

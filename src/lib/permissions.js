@@ -14,7 +14,7 @@
 
 import { getDb, ensureDbSchema } from './db.js';
 
-const SUPERUSER = 'sash';
+export const SUPERUSER = 'sash';
 
 export const KNOWN_PERMISSIONS = [
   'quote_poster',

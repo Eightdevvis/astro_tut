@@ -41,6 +41,11 @@ const SCHEMA_DDL = `
     text       TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS site_settings (
+    setting_key TEXT PRIMARY KEY,
+    value       TEXT NOT NULL
+  );
 `;
 
 let schemaPromise = null;

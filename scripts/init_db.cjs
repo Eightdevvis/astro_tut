@@ -59,6 +59,14 @@ db.serialize(() => {
   `);
   console.log('✓ quotes-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      setting_key TEXT PRIMARY KEY,
+      value       TEXT NOT NULL
+    )
+  `);
+  console.log('✓ site_settings-Tabelle bereit.');
+
 });
 
 db.close();

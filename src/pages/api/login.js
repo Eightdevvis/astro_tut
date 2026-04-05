@@ -3,6 +3,7 @@ import { SignJWT } from 'jose';
 import { getDb, ensureDbSchema } from '../../lib/db.js';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import { getSessionCookieOptions } from '../../lib/session-cookie.js';
+import { SUPERUSER } from '../../lib/permissions.js';
 
 export async function POST({ request, cookies }) {
   const { username, password } = await request.json();
@@ -35,8 +36,12 @@ export async function POST({ request, cookies }) {
 
   cookies.set('session', token, getSessionCookieOptions());
 
+  const un = user.username;
   return new Response(
-    JSON.stringify({ success: true, user: { username: user.username, birthday: user.birthday } }),
+    JSON.stringify({
+      success: true,
+      user: { username: un, birthday: user.birthday, isSuperuser: un === SUPERUSER },
+    }),
     { status: 200 }
   );
 }

@@ -1,5 +1,6 @@
 import { jwtVerify } from 'jose';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
+import { SUPERUSER } from '../../lib/permissions.js';
 
 /**
  * API-Endpunkt: GET /api/user
@@ -27,8 +28,15 @@ export async function GET({ cookies }) {
     // Wenn beides ok → payload enthält unsere Daten (username, birthday)
     const { payload } = await jwtVerify(token, getJwtSecretBytes());
 
+    const username = payload.username;
     return new Response(
-      JSON.stringify({ user: { username: payload.username, birthday: payload.birthday } }),
+      JSON.stringify({
+        user: {
+          username,
+          birthday: payload.birthday,
+          isSuperuser: username === SUPERUSER,
+        },
+      }),
       { status: 200 }
     );
   } catch {

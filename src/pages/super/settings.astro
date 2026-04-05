@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SuperSettings from '../../components/SuperSettings.jsx';
+import { getUsernameFromCookies } from '../../lib/session.js';
+import { SUPERUSER } from '../../lib/permissions.js';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+if (!username || username !== SUPERUSER) {
+  return Astro.redirect('/');
+}
+---
+
+<BaseLayout pageTitle="Super-Einstellungen">
+  <SuperSettings client:load />
+</BaseLayout>

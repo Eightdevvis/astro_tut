@@ -65,7 +65,7 @@ h2, h3, h4, h5, h6, strong, b {
 /* nav styles */
 
 .menu {
-  font-family:'Poppins', sans-serif;
+  font-family: var(--font-menu, 'Poppins', sans-serif);
   background-color: var(--color-menu-bg);
   border: none;
   color: var(--color-menu-text);

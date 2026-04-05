@@ -1,0 +1,7 @@
+---
+import { getFontOverrideStyleContent } from '../lib/site-font-settings.js';
+
+const inlineCss = await getFontOverrideStyleContent();
+---
+
+{inlineCss ? <style is:inline set:html={inlineCss} /> : null}

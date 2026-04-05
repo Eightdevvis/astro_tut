@@ -13,6 +13,7 @@
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../lib/permissions.js';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import '../../styles/global.css';
 
 // Session aus Cookie lesen
@@ -36,6 +37,7 @@ if (token) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
     <title>ZITAT EINREICHEN</title>
+    <SiteFontOverrides />
     <style>
       body {
         background: #000;
@@ -49,7 +51,7 @@ if (token) {
         font-family: var(--font-family);
       }
       h1 {
-        font-family: 'Black Spiral';
+        font-family: var(--font-quote, 'Black Spiral');
         font-size: 8vh;
         margin-bottom: 2rem;
         letter-spacing: 2px;

@@ -1,20 +1,10 @@
-import { jwtVerify } from 'jose';
-import { grantPermission } from '../../../lib/permissions.js';
-import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
-const SUPERUSER = 'sash';
+import { grantPermission, SUPERUSER } from '../../../lib/permissions.js';
+import { getUsernameFromCookies } from '../../../lib/session.js';
 
 export async function POST({ request, cookies }) {
-  const token = cookies.get('session')?.value;
-  if (!token) {
+  const caller = await getUsernameFromCookies(cookies);
+  if (!caller) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), { status: 401 });
-  }
-
-  let caller;
-  try {
-    const { payload } = await jwtVerify(token, getJwtSecretBytes());
-    caller = payload.username;
-  } catch {
-    return new Response(JSON.stringify({ error: 'Session ungültig' }), { status: 401 });
   }
 
   if (caller !== SUPERUSER) {

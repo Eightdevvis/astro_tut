@@ -36,6 +36,11 @@ await db.executeMultiple(`
     text       TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS site_settings (
+    setting_key TEXT PRIMARY KEY,
+    value       TEXT NOT NULL
+  );
 `);
 
 console.log('✓ Alle Tabellen in Turso angelegt.');
