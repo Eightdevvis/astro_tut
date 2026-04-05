@@ -22,7 +22,7 @@ const { frontmatter } = Astro.props;
 </BaseLayout>
 <style>
   a {
-    color: #00539F;
+    color: rgba(180, 220, 255, 0.95);
   }
 
   .tags {
@@ -32,10 +32,14 @@ const { frontmatter } = Astro.props;
 
   .tag {
     margin: 0.25em;
-    border: dotted 1px #a1a1a1;
-    border-radius: .5em;
-    padding: .5em 1em;
-    font-size: 1.15em;
-    background-color: #F8FCFD;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 0.5em;
+    padding: 0.5em 1em;
+    font-size: 1.05em;
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .tag a {
+    color: inherit;
   }
 </style>

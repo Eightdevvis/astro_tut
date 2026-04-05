@@ -8,15 +8,14 @@ import '../../styles/global.css';
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Minigames · SASH</title>
     <SiteFontOverrides />
   </head>
   <body>
-    <Nav2 />
+    <Nav2 variant="subpage" />
     <main class="mg-main">
       <p class="mg-kicker">Mindless Play + High Math</p>
-      <h1 class="mg-title">Minigames</h1>
       <p class="mg-lead">
         Kleine Spiele zum Abschalten — mit echter Mathe im Hintergrund. Erste Station: eine Sandbox für Mandelbrot- und
         Julia-Mengen.
@@ -61,6 +60,7 @@ import '../../styles/global.css';
     background-color: #000;
     margin: 0;
     padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
     color: rgba(255, 255, 255, 0.88);
   }
 
@@ -76,13 +76,6 @@ import '../../styles/global.css';
     text-transform: uppercase;
     opacity: 0.55;
     margin: 0 0 0.5rem;
-  }
-
-  .mg-title {
-    font-family: var(--font-hero, 'Protest Demo');
-    font-size: clamp(2rem, 8vw, 3rem);
-    margin: 0 0 1rem;
-    color: #fff;
   }
 
   .mg-lead {

@@ -23,16 +23,19 @@ const sorted = [...allPosts].sort((a, b) => {
 const lastPost = sorted[0] ?? null;
 ---
 
-<html lang="en">
+<html lang="en" class="home">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>SASH</title>
     <SiteFontOverrides />
   </head>
   <body>
-    <Nav2 />
+    <Nav2 variant="home" />
+    <header class="home-hero">
+      <h1 class="home-hero-title">SaSh</h1>
+    </header>
     <QuoteDisplay client:load />
 
     <section class="home-tail" aria-label="Blog-Vorschau (Entwurf)">
@@ -69,11 +72,61 @@ const lastPost = sorted[0] ?? null;
   </body>
 </html>
 
-<style>
-  body {
+<style is:global>
+  /* Default-Theme: html beige — Startseite schwarz. */
+  html.home {
+    background-color: #000;
+  }
+  /* Nur Abstand für fixierte Icon-Leiste; großer Titel scrollt mit im Fluss darunter. */
+  html.home body {
     background-color: #000;
     margin: 0;
     padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+  }
+
+  /* Global h1-Regeln (margin, font-weight) würden den Hero-Titel verschieben — hier zurücksetzen. */
+  html.home .home-hero-title {
+    margin: 0;
+    font-weight: normal;
+  }
+</style>
+<style>
+  .home-hero {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+
+  /*
+   * Zentrieren trotz scaleX: zuerst mit 50% + translateX(-50%) exakt mittig,
+   * dann scaleX (gleiche Reihenfolge in einer transform-Liste).
+   */
+  .home-hero-title {
+    font-family: var(--font-hero, 'Protest Demo');
+    font-size: 20vh;
+    color: white;
+    display: block;
+    position: relative;
+    left: 50%;
+    width: max-content;
+    max-width: min(100%, 100vw - 1.5rem);
+    padding: 0;
+    padding-top: calc(1rem + 5vh);
+    line-height: 1;
+    transform: translateX(-50%) scaleX(0.6);
+    transform-origin: center top;
+  }
+
+  @media screen and (max-width: 767px) {
+    .home-hero-title {
+      font-size: min(20vh, 46vw);
+    }
   }
 
   .home-tail {

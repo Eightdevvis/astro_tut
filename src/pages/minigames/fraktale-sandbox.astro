@@ -9,15 +9,14 @@ import '../../styles/global.css';
   <head>
     <meta charset="utf-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Fraktale Sandbox · Minigames</title>
     <SiteFontOverrides />
   </head>
   <body>
-    <Nav2 />
+    <Nav2 variant="subpage" />
     <header class="fs-page-head">
       <p class="fs-page-kicker"><a href="/minigames">Mindless Play + High Math</a></p>
-      <h1 class="fs-page-title">Fraktale Sandbox</h1>
       <p class="fs-page-lead">
         Iterationen z<sub>n+1</sub> = z<sub>n</sub>² + c — Mandelbrot (c aus der Ebene) und Julia (festes c). Ziehen zum Erkunden,
         Zoomen mit Mausrad oder zwei Fingern, Farben und c per Regler oder (Julia) „Ziehen bewegt c“.
@@ -35,6 +34,7 @@ import '../../styles/global.css';
     background-color: #000;
     margin: 0;
     padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
     color: rgba(255, 255, 255, 0.88);
   }
 
@@ -59,13 +59,6 @@ import '../../styles/global.css';
 
   .fs-page-kicker a:hover {
     text-decoration: underline;
-  }
-
-  .fs-page-title {
-    font-family: var(--font-hero, 'Protest Demo');
-    font-size: clamp(1.75rem, 5vw, 2.5rem);
-    margin: 0 0 0.75rem;
-    color: #fff;
   }
 
   .fs-page-lead {

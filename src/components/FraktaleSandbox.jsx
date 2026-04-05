@@ -813,6 +813,7 @@ export default function FraktaleSandbox() {
           gap: 1rem;
           align-items: start;
           width: 100%;
+          min-width: 0;
           max-width: 1200px;
           margin: 0 auto;
           padding: 0 0.5rem 1.5rem;

@@ -35,21 +35,29 @@ html {
   font-family: var(--font-family);
   height: 100%;
   color: var(--color-text);
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
   margin: 0;
   width: 100%;
+  max-width: 100%;
   padding: 1rem;
   line-height: 1.5;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   font-weight: var(--font-weight);
+  overflow-x: hidden;
 }
 
 * {
   box-sizing: border-box;
+}
+
+:root {
+  --nav-strip-h: 3.5rem;
 }
 
 h1 {
@@ -117,4 +125,36 @@ h2, h3, h4, h5, h6, strong, b {
    .menu {
     display: none;
   }
+}
+
+/* Unterseiten (BaseLayout): dunkles Shell wie Startseite, kein Theme-Cycling */
+html.site-subpage {
+  --color-bg: #000;
+  --color-text: rgba(255, 255, 255, 0.9);
+}
+
+html.site-subpage body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  padding: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px)) 1rem 2rem;
+}
+
+html.site-subpage .subpage-main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding-top: 1rem;
+}
+
+html.site-subpage h1 {
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  margin: 1rem 0 0.75rem;
+}
+
+html.site-subpage a {
+  color: rgba(180, 220, 255, 0.95);
+}
+
+html.site-subpage a:hover,
+html.site-subpage a:focus {
+  color: #fff;
 }
