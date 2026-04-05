@@ -484,18 +484,24 @@ export default function FraktaleSandbox() {
 
         <div class="fs-row fs-math">
           <h3 class="fs-math-title">Punkt unter dem Cursor</h3>
+          <p class="fs-mono subtle" style={{ marginBottom: '0.35rem' }}>
+            {mode === 'mandelbrot' ? (
+              <>
+                <strong>c</strong> (Parameter pro Pixel) ≈
+              </>
+            ) : (
+              <>
+                <strong>z<sub>0</sub></strong> (Start pro Pixel) ≈
+              </>
+            )}
+          </p>
           <p class="fs-mono">
-            z₀ ≈ {probe.re.toFixed(6)} + {probe.im.toFixed(6)} i
+            {probe.re.toFixed(6)} + {probe.im.toFixed(6)} i
           </p>
           <p class="fs-mono">{probe.label}</p>
           <p class="fs-mono subtle">
             Mitte: {centerX.toFixed(6)} + {centerY.toFixed(6)} i · halbe Breite: {halfWidth.toExponential(3)}
           </p>
-          {mode === 'julia' && (
-            <p class="fs-mono subtle">
-              Julia c = {juliaRe.toFixed(6)} + {juliaIm.toFixed(6)} i
-            </p>
-          )}
         </div>
 
         <div class="fs-row">
@@ -517,6 +523,70 @@ export default function FraktaleSandbox() {
         </div>
       </aside>
 
+      <section class="fs-learn" aria-label="Rechenregel und Erklärung">
+        <div class="fs-formula-live">
+          <h3 class="fs-learn-h">Die Rechenregel (bleibt immer dieselbe)</h3>
+          <p class="fs-formula-main">
+            z<sub>n+1</sub> = z<sub>n</sub>
+            <sup>2</sup> + c
+          </p>
+          {mode === 'mandelbrot' ? (
+            <div class="fs-formula-note">
+              <p>
+                <strong>Mandelbrot:</strong> Für jeden Bildpunkt ist <strong>c</strong> genau die komplexe Zahl an dieser Stelle in der Ebene, Start{' '}
+                <strong>
+                  z<sub>0</sub> = 0
+                </strong>
+                . Wenn du nur verschiebst oder zoomst, ändert sich <em>nicht</em> die Formel oben — nur <strong>welcher Ausschnitt</strong> der c-Ebene gezeichnet wird.
+              </p>
+              <p class="fs-formula-numline">
+                Unter dem Cursor: <strong>c</strong> ≈ {probe.re.toFixed(5)} + {probe.im.toFixed(5)} i
+                <span class="fs-formula-hint"> (bewegt sich mit der Maus)</span>
+              </p>
+            </div>
+          ) : (
+            <div class="fs-formula-note">
+              <p>
+                <strong>Julia:</strong> Hier ist <strong>c</strong> für das <em>gesamte</em> Bild fest — jeder Pixel liefert nur den Startwert{' '}
+                <strong>
+                  z<sub>0</sub>
+                </strong>
+                . Wenn du <strong>c</strong> verschiebst (Regler oder „Ziehen bewegt c“), ändern sich die Zahlen in der Formel — und damit das ganze Muster.
+              </p>
+              <p class="fs-formula-numline">
+                Aktuell: <strong>c</strong> = {juliaRe.toFixed(5)} + {juliaIm.toFixed(5)} i
+              </p>
+            </div>
+          )}
+        </div>
+
+        <details class="fs-learn-details">
+          <summary>Mitdenken: warum sieht es so aus?</summary>
+          <div class="fs-learn-body">
+            <p>
+              Eine komplexe Zahl schreibt man als <strong>a + bi</strong> (a und b sind normale reelle Zahlen; <strong>i</strong> ist die imaginäre Einheit).
+            </p>
+            <p>
+              <strong>Mandelbrot:</strong> Man nimmt jeden Punkt der Ebene als <strong>c</strong>, setzt <strong>
+                z<sub>0</sub> = 0
+              </strong> und wendet immer wieder <strong>
+                z<sub>n+1</sub> = z<sub>n</sub>
+                <sup>2</sup> + c
+              </strong> an. Bleibt die Folge beschränkt (explodiert der Betrag nicht), liegt <strong>c</strong> „im Set“ (dunkel). Die Farben entstehen daraus, <em>wie schnell</em> die Folge nach außen wandert (glatte Iterationszahl).
+            </p>
+            <p>
+              <strong>Julia:</strong> Dieselbe Regel, aber <strong>c</strong> ist einmal gewählt und gilt für alle Pixel; jeder Pixel ist sein eigenes <strong>
+                z<sub>0</sub>
+              </strong>
+              . Deshalb siehst du zu jedem <strong>c</strong> eine andere „Form“.
+            </p>
+            <p>
+              <strong>Zoom:</strong> Du vergrößerst nur einen Ausschnitt derselben Ebene — die Mathe dahinter bleibt, du siehst nur feiner.
+            </p>
+          </div>
+        </details>
+      </section>
+
       <style>{`
         .fs-root {
           display: grid;
@@ -528,6 +598,85 @@ export default function FraktaleSandbox() {
           margin: 0 auto;
           padding: 0 0.5rem 1.5rem;
           box-sizing: border-box;
+        }
+        .fs-learn {
+          grid-column: 1 / -1;
+          margin-top: 0.25rem;
+          padding: 1rem 1rem 1.1rem;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.03);
+        }
+        .fs-formula-live {
+          margin-bottom: 0.75rem;
+        }
+        .fs-learn-h {
+          margin: 0 0 0.5rem;
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.92);
+        }
+        .fs-formula-main {
+          margin: 0 0 0.75rem;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 1.15rem;
+          letter-spacing: 0.02em;
+          color: rgba(200, 220, 255, 0.98);
+        }
+        .fs-formula-note p {
+          margin: 0 0 0.65rem;
+          font-size: 0.88rem;
+          line-height: 1.55;
+          color: rgba(255, 255, 255, 0.82);
+        }
+        .fs-formula-numline {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 0.82rem;
+          padding: 0.5rem 0.65rem;
+          border-radius: 8px;
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: rgba(230, 240, 255, 0.95);
+        }
+        .fs-formula-hint {
+          font-family: inherit;
+          font-size: 0.78rem;
+          opacity: 0.65;
+        }
+        .fs-learn-details {
+          margin-top: 0.5rem;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          padding-top: 0.65rem;
+        }
+        .fs-learn-details summary {
+          cursor: pointer;
+          font-size: 0.88rem;
+          font-weight: 600;
+          color: rgba(180, 210, 255, 0.95);
+          list-style: none;
+        }
+        .fs-learn-details summary::-webkit-details-marker {
+          display: none;
+        }
+        .fs-learn-details summary::before {
+          content: '▸ ';
+          opacity: 0.7;
+        }
+        .fs-learn-details[open] summary::before {
+          content: '▾ ';
+        }
+        .fs-learn-body {
+          margin-top: 0.65rem;
+          padding-left: 0.15rem;
+        }
+        .fs-learn-body p {
+          margin: 0 0 0.65rem;
+          font-size: 0.85rem;
+          line-height: 1.55;
+          color: rgba(255, 255, 255, 0.78);
+        }
+        .fs-learn-body p:last-child {
+          margin-bottom: 0;
         }
         .fs-canvas-wrap {
           position: relative;
