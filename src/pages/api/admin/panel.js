@@ -1,6 +1,7 @@
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getPermissions, KNOWN_PERMISSIONS, SUPERUSER } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
+import { buildFontCatalog, getCustomFontFacesCss } from '../../../lib/font-catalog.js';
 import { getAllSiteFontSettings } from '../../../lib/site-font-settings.js';
 
 export async function GET({ cookies }) {
@@ -25,12 +26,16 @@ export async function GET({ cookies }) {
   }
 
   const fonts = await getAllSiteFontSettings();
+  const fontCatalog = await buildFontCatalog();
+  const fontPreviewCss = await getCustomFontFacesCss();
   return new Response(
     JSON.stringify({
       users,
       knownPermissions: KNOWN_PERMISSIONS,
       fonts,
       superuser: SUPERUSER,
+      fontCatalog,
+      fontPreviewCss,
     }),
     {
       status: 200,

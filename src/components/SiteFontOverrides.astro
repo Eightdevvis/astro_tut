@@ -1,7 +1,10 @@
 ---
 import { getFontOverrideStyleContent } from '../lib/site-font-settings.js';
+import { getCustomFontFacesCss } from '../lib/font-catalog.js';
 
-const inlineCss = await getFontOverrideStyleContent();
+const faces = await getCustomFontFacesCss();
+const overrides = await getFontOverrideStyleContent();
+const inlineCss = [faces, overrides].filter(Boolean).join('\n');
 ---
 
 {inlineCss ? <style is:inline set:html={inlineCss} /> : null}

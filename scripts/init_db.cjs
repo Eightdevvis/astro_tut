@@ -67,6 +67,19 @@ db.serialize(() => {
   `);
   console.log('✓ site_settings-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS custom_fonts (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      family_name       TEXT NOT NULL UNIQUE,
+      original_filename TEXT NOT NULL,
+      mime_type         TEXT NOT NULL,
+      format_hint       TEXT NOT NULL DEFAULT 'truetype',
+      data              BLOB NOT NULL,
+      created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ custom_fonts-Tabelle bereit.');
+
 });
 
 db.close();

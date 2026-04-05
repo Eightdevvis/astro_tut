@@ -71,6 +71,8 @@ export async function getFontOverrideStyleContent() {
     if (!cssVar) continue;
     if (key.includes('weight')) {
       declarations.push(`  ${cssVar}: ${val.trim()};`);
+    } else if (key.endsWith('_family')) {
+      declarations.push(`  ${cssVar}: ${formatFontFamilyCssValue(val)};`);
     } else {
       declarations.push(`  ${cssVar}: ${cssQuoteFont(val.trim())};`);
     }
@@ -82,4 +84,13 @@ export async function getFontOverrideStyleContent() {
 function cssQuoteFont(s) {
   if (/^["'].*["']$/.test(s)) return s;
   return JSON.stringify(s);
+}
+
+/** Werte aus dem Dropdown: einfache Namen quoten, Stacks (Komma) unverändert. */
+function formatFontFamilyCssValue(raw) {
+  const t = String(raw).trim();
+  if (!t) return '';
+  if (t.includes(',')) return t;
+  if (/^['"].*['"]$/.test(t)) return t;
+  return JSON.stringify(t);
 }

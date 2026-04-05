@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'preact/hooks';
-import { FONT_SETTING_KEYS, FONT_SETTING_LABELS } from '../constants/font-settings.js';
+import {
+  FONT_SETTING_LABELS,
+  FONT_FAMILY_KEYS,
+  FONT_WEIGHT_KEYS,
+} from '../constants/font-settings.js';
+import { previewFamilyForValue } from '../constants/font-preview-helpers.js';
 
 const box = {
   maxWidth: 720,
@@ -45,12 +50,15 @@ const labelStyle = {
   opacity: 0.75,
 };
 
-const inputStyle = {
-  padding: '8px 10px',
+const selectStyle = {
+  padding: '10px 12px',
   borderRadius: 6,
   border: '1px solid rgba(0,0,0,0.2)',
-  fontSize: '0.95rem',
+  fontSize: '1rem',
   boxSizing: 'border-box',
+  width: '100%',
+  maxWidth: '100%',
+  background: 'rgba(255,255,255,0.92)',
 };
 
 const btnPrimary = {
@@ -68,43 +76,71 @@ const btnPrimary = {
 const errStyle = { color: 'crimson', marginBottom: 12, fontSize: '0.9rem' };
 const okStyle = { color: 'seagreen', marginBottom: 12, fontSize: '0.9rem' };
 
+function mergeCatalogOptions(saved, options) {
+  if (saved == null || saved === '') return options;
+  const s = String(saved);
+  const found = options.some((o) => o.value === s);
+  if (found) return options;
+  return [
+    ...options,
+    {
+      value: s,
+      label: `${s} (aktuell)`,
+      previewFamily: previewFamilyForValue(s),
+      kind: 'legacy',
+    },
+  ];
+}
+
 export default function SuperSettings() {
   const [users, setUsers] = useState([]);
   const [knownPermissions, setKnownPermissions] = useState([]);
   const [fonts, setFonts] = useState(() => {
     const o = {};
-    for (const k of FONT_SETTING_KEYS) o[k] = '';
+    for (const k of [...FONT_FAMILY_KEYS, ...FONT_WEIGHT_KEYS]) o[k] = '';
     return o;
   });
+  const [fontCatalog, setFontCatalog] = useState({ options: [], weightOptions: [] });
+  const [fontPreviewCss, setFontPreviewCss] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveMsg, setSaveMsg] = useState('');
   const [permBusy, setPermBusy] = useState(null);
   const [superuserName, setSuperuserName] = useState('sash');
+  const [uploadLabel, setUploadLabel] = useState('');
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState('');
 
-  useEffect(() => {
-    fetch('/api/admin/panel', { credentials: 'same-origin' })
-      .then(async res => {
+  function loadPanel() {
+    return fetch('/api/admin/panel', { credentials: 'same-origin' })
+      .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Laden fehlgeschlagen');
         return data;
       })
-      .then(data => {
+      .then((data) => {
         setUsers(data.users || []);
         setKnownPermissions(data.knownPermissions || []);
         if (data.superuser) setSuperuserName(data.superuser);
+        setFontCatalog(data.fontCatalog || { options: [], weightOptions: [] });
+        setFontPreviewCss(data.fontPreviewCss || '');
         const next = {};
-        for (const k of FONT_SETTING_KEYS) {
-          next[k] = data.fonts && data.fonts[k] != null ? String(data.fonts[k]) : '';
+        for (const k of [...FONT_FAMILY_KEYS, ...FONT_WEIGHT_KEYS]) {
+          next[k] =
+            data.fonts && data.fonts[k] != null ? String(data.fonts[k]) : '';
         }
         setFonts(next);
-      })
-      .catch(e => setError(e.message || String(e)))
+      });
+  }
+
+  useEffect(() => {
+    loadPanel()
+      .catch((e) => setError(e.message || String(e)))
       .finally(() => setLoading(false));
   }, []);
 
   function setFontField(key, value) {
-    setFonts(f => ({ ...f, [key]: value }));
+    setFonts((f) => ({ ...f, [key]: value }));
   }
 
   async function saveFonts(e) {
@@ -122,7 +158,44 @@ export default function SuperSettings() {
       setError(data.error || 'Speichern fehlgeschlagen');
       return;
     }
-    setSaveMsg('Schriftarten gespeichert.');
+    setSaveMsg('Schriften gespeichert.');
+  }
+
+  async function onUpload(e) {
+    e.preventDefault();
+    setUploadMsg('');
+    setError('');
+    const input = document.getElementById('super-font-file');
+    const file = input?.files?.[0];
+    if (!file) {
+      setUploadMsg('Bitte eine Datei wählen.');
+      return;
+    }
+    setUploadBusy(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    if (uploadLabel.trim()) fd.append('label', uploadLabel.trim());
+    try {
+      const res = await fetch('/api/admin/font-upload', {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Upload fehlgeschlagen');
+        return;
+      }
+      setUploadMsg(`Hochgeladen: ${data.family_name}`);
+      setUploadLabel('');
+      if (input) input.value = '';
+      await loadPanel();
+      setSaveMsg('');
+    } catch (err) {
+      setError(err?.message || 'Upload fehlgeschlagen');
+    } finally {
+      setUploadBusy(false);
+    }
   }
 
   async function togglePermission(username, permission, currentlyHas) {
@@ -142,8 +215,8 @@ export default function SuperSettings() {
       setError(data.error || 'Recht konnte nicht geändert werden');
       return;
     }
-    setUsers(prev =>
-      prev.map(u => {
+    setUsers((prev) =>
+      prev.map((u) => {
         if (u.username !== username) return u;
         const set = new Set(u.permissions || []);
         if (currentlyHas) set.delete(permission);
@@ -161,8 +234,14 @@ export default function SuperSettings() {
     );
   }
 
+  const famOpts = fontCatalog.options || [];
+  const wOpts = fontCatalog.weightOptions || [];
+
   return (
     <div style={box}>
+      {fontPreviewCss ? (
+        <style dangerouslySetInnerHTML={{ __html: fontPreviewCss }} />
+      ) : null}
       {error ? <div style={errStyle}>{error}</div> : null}
       {saveMsg ? <div style={okStyle}>{saveMsg}</div> : null}
 
@@ -173,7 +252,7 @@ export default function SuperSettings() {
             <thead>
               <tr>
                 <th style={thtd}>User</th>
-                {knownPermissions.map(p => (
+                {knownPermissions.map((p) => (
                   <th key={p} style={thtd}>
                     {p}
                   </th>
@@ -181,15 +260,17 @@ export default function SuperSettings() {
               </tr>
             </thead>
             <tbody>
-              {users.map(u => (
+              {users.map((u) => (
                 <tr key={u.username}>
                   <td style={thtd}>
                     <strong>{u.username}</strong>
                     {u.username === superuserName ? (
-                      <span style={{ display: 'block', fontSize: 11, opacity: 0.65 }}>Superuser</span>
+                      <span style={{ display: 'block', fontSize: 11, opacity: 0.65 }}>
+                        Superuser
+                      </span>
                     ) : null}
                   </td>
-                  {knownPermissions.map(p => {
+                  {knownPermissions.map((p) => {
                     const has = (u.permissions || []).includes(p);
                     const busy =
                       permBusy === `${u.username}:${p}` || u.username === superuserName;
@@ -199,7 +280,11 @@ export default function SuperSettings() {
                           type="checkbox"
                           checked={has}
                           disabled={busy}
-                          title={u.username === superuserName ? 'Superuser hat immer alle Rechte' : ''}
+                          title={
+                            u.username === superuserName
+                              ? 'Superuser hat immer alle Rechte'
+                              : ''
+                          }
                           onChange={() => togglePermission(u.username, p, has)}
                         />
                       </td>
@@ -215,26 +300,107 @@ export default function SuperSettings() {
       <section style={section}>
         <h2 style={h2}>Schriften (global)</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1.2rem' }}>
-          Leere Felder = Standard aus dem Theme. Namen mit Leerzeichen sind erlaubt (z.&nbsp;B.{' '}
-          <code>Black Spiral</code>). Schriftstärken als Zahl (z.&nbsp;B. 400, 700).
+          Schriftfamilien aus der Liste wählen — jede Zeile in ihrer Schrift. Leer =
+          Theme-Standard. Hochgeladene Schriften landen in Turso (Blob) und stehen überall zur
+          Verfügung.
         </p>
+
         <form onSubmit={saveFonts}>
-          {FONT_SETTING_KEYS.map(key => (
+          {FONT_FAMILY_KEYS.map((key) => {
+            const merged = mergeCatalogOptions(fonts[key], famOpts);
+            return (
+              <div key={key} style={inputRow}>
+                <label style={labelStyle}>{FONT_SETTING_LABELS[key] || key}</label>
+                <select
+                  style={{
+                    ...selectStyle,
+                    fontFamily: (fonts[key] && previewFamilyForValue(fonts[key])) || 'inherit',
+                  }}
+                  value={fonts[key] ?? ''}
+                  onChange={(e) => setFontField(key, e.target.value)}
+                >
+                  {merged.map((o) => (
+                    <option
+                      key={`${key}-${o.value}-${o.label}`}
+                      value={o.value}
+                      style={{ fontFamily: o.previewFamily || 'inherit' }}
+                    >
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                {fonts[key] ? (
+                  <p
+                    style={{
+                      margin: '6px 0 0',
+                      fontSize: '1.35rem',
+                      lineHeight: 1.3,
+                      fontFamily: previewFamilyForValue(fonts[key]),
+                    }}
+                  >
+                    Aa Bb Üö 123 — Vorschau
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+          {FONT_WEIGHT_KEYS.map((key) => (
             <div key={key} style={inputRow}>
               <label style={labelStyle}>{FONT_SETTING_LABELS[key] || key}</label>
-              <input
-                style={inputStyle}
+              <select
+                style={selectStyle}
                 value={fonts[key] ?? ''}
-                onInput={e => setFontField(key, e.target.value)}
-                placeholder="(Standard)"
-                autoComplete="off"
-              />
+                onChange={(e) => setFontField(key, e.target.value)}
+              >
+                {wOpts.map((w) => (
+                  <option key={key + w} value={w}>
+                    {w === '' ? '(Theme-Standard)' : w}
+                  </option>
+                ))}
+              </select>
             </div>
           ))}
           <button type="submit" style={btnPrimary}>
             Schriften speichern
           </button>
         </form>
+
+        <div
+          style={{
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: '1px solid rgba(0,0,0,0.12)',
+          }}
+        >
+          <h3 style={{ ...h2, marginBottom: '0.75rem' }}>Neue Schrift hochladen</h3>
+          <p style={{ fontSize: '0.85rem', opacity: 0.75, marginBottom: '0.75rem' }}>
+            .ttf, .otf, .woff, .woff2 — max. 2&nbsp;MB. Optionaler Anzeigename (sonst Dateiname).
+          </p>
+          <form onSubmit={onUpload}>
+            <div style={{ ...inputRow, marginBottom: 10 }}>
+              <label style={labelStyle}>Bezeichnung (optional)</label>
+              <input
+                type="text"
+                value={uploadLabel}
+                onInput={(e) => setUploadLabel(e.target.value)}
+                style={{
+                  ...selectStyle,
+                  fontSize: '0.95rem',
+                }}
+                placeholder="z. B. Meine Display-Schrift"
+                autoComplete="off"
+              />
+            </div>
+            <div style={{ ...inputRow, marginBottom: 12 }}>
+              <label style={labelStyle}>Datei</label>
+              <input id="super-font-file" type="file" accept=".ttf,.otf,.woff,.woff2,font/*" />
+            </div>
+            <button type="submit" style={btnPrimary} disabled={uploadBusy}>
+              {uploadBusy ? 'Lade hoch…' : 'Hochladen'}
+            </button>
+          </form>
+          {uploadMsg ? <p style={{ ...okStyle, marginTop: 12 }}>{uploadMsg}</p> : null}
+        </div>
       </section>
     </div>
   );

@@ -9,6 +9,9 @@ export const FONT_SETTING_KEYS = [
   'font_quote_family',
 ];
 
+export const FONT_FAMILY_KEYS = FONT_SETTING_KEYS.filter((k) => k.endsWith('_family'));
+export const FONT_WEIGHT_KEYS = FONT_SETTING_KEYS.filter((k) => k.includes('weight'));
+
 export const FONT_SETTING_LABELS = {
   font_body_family: 'Body: Schriftfamilie',
   font_body_weight: 'Body: Schriftstärke (normal)',
