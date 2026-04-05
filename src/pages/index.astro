@@ -31,9 +31,11 @@ const lastPost = sorted[0] ?? null;
   </head>
   <body>
     <Nav2 />
-    <main class="home-main">
+    <QuoteDisplay client:load />
+
+    <section class="home-tail" aria-label="Blog-Vorschau (Entwurf)">
       <Veranda />
-      {lastPost && (
+      {lastPost?.url && lastPost?.frontmatter?.title && (
         <Grid>
           <a
             href={lastPost.url}
@@ -45,8 +47,7 @@ const lastPost = sorted[0] ?? null;
           </a>
         </Grid>
       )}
-      <QuoteDisplay client:load />
-    </main>
+    </section>
   </body>
 </html>
 
@@ -57,8 +58,10 @@ const lastPost = sorted[0] ?? null;
     padding: 0;
   }
 
-  .home-main {
-    padding: 0 1rem 2rem;
+  .home-tail {
+    margin-top: 4rem;
+    padding: 0 1rem 3rem;
+    opacity: 0.45;
   }
 
   :global(.grid-item--inset) {

@@ -9,18 +9,58 @@ import { useState, useEffect } from 'preact/hooks';
 function QuoteDisplay() {
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
     fetch('/api/quotes/random')
-      .then(res => res.json())
-      .then(data => {
-        setQuote(data.quote);
-        setLoading(false);
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Laden fehlgeschlagen');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setQuote(data.quote ?? null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError('Zitate konnten nicht geladen werden.');
+        setQuote(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading) return null;
-  if (!quote) return null;  // keine Zitate in der DB → nichts anzeigen
+  if (loading) {
+    return (
+      <div style={containerStyle}>
+        <div style={placeholderStyle}>…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={containerStyle}>
+        <div style={errorStyle}>{error}</div>
+      </div>
+    );
+  }
+
+  if (!quote) {
+    return (
+      <div style={containerStyle}>
+        <div style={placeholderStyle}>Noch keine Zitate in der Datenbank.</div>
+      </div>
+    );
+  }
 
   return (
     <div style={containerStyle}>
@@ -50,6 +90,17 @@ const authorStyle = {
   color: 'rgba(173, 216, 230, 0.7)',
   fontSize: '0.85rem',
   letterSpacing: '0.15em',
+};
+
+const placeholderStyle = {
+  color: 'rgba(255,255,255,0.45)',
+  fontSize: 'clamp(1rem, 2.5vw, 1.35rem)',
+  fontStyle: 'italic',
+};
+
+const errorStyle = {
+  ...placeholderStyle,
+  color: 'rgba(255, 160, 140, 0.9)',
 };
 
 export default QuoteDisplay;
