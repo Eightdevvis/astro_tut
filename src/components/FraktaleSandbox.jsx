@@ -141,6 +141,14 @@ export default function FraktaleSandbox() {
   const [cDrive, setCDrive] = useState(false);
   const [probe, setProbe] = useState({ re: 0, im: 0, label: '—' });
 
+  const [sessionUser, setSessionUser] = useState(/** @type {string | null} */ (null));
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [snapshots, setSnapshots] = useState(/** @type {Array<{ id: string; mode: string; created_at: string; settings: object }>} */ ([]));
+  const [galleryFilter, setGalleryFilter] = useState(/** @type {'all' | 'mandelbrot' | 'julia'} */ ('all'));
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [galleryMsg, setGalleryMsg] = useState('');
+
   const centerRef = useRef({ x: centerX, y: centerY });
   const halfRef = useRef(halfWidth);
   const juliaRef = useRef({ re: juliaRe, im: juliaIm });
@@ -153,6 +161,131 @@ export default function FraktaleSandbox() {
   useEffect(() => {
     juliaRef.current = { re: juliaRe, im: juliaIm };
   }, [juliaRe, juliaIm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/user')
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setSessionUser(data?.user?.username ?? null);
+        setSessionChecked(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSessionUser(null);
+          setSessionChecked(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionChecked || !sessionUser) {
+      setSnapshots([]);
+      return;
+    }
+    let cancelled = false;
+    setSnapshotsLoading(true);
+    const q = galleryFilter === 'all' ? '' : `?mode=${galleryFilter}`;
+    fetch(`/api/fractal-snapshots${q}`)
+      .then((res) => {
+        if (res.status === 401) return { snapshots: [] };
+        if (!res.ok) throw new Error('load');
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setSnapshots(Array.isArray(data.snapshots) ? data.snapshots : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSnapshots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSnapshotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionChecked, sessionUser, galleryFilter]);
+
+  function collectSnapshotPayload() {
+    return {
+      mode,
+      centerX,
+      centerY,
+      halfWidth,
+      juliaRe,
+      juliaIm,
+      maxIter,
+      hueOffset,
+      saturation,
+      cDrive,
+    };
+  }
+
+  function applySnapshotSettings(s) {
+    if (!s || typeof s !== 'object') return;
+    if (s.mode === 'mandelbrot' || s.mode === 'julia') setMode(s.mode);
+    if (Number.isFinite(s.centerX)) setCenterX(s.centerX);
+    if (Number.isFinite(s.centerY)) setCenterY(s.centerY);
+    if (Number.isFinite(s.halfWidth)) setHalfWidth(s.halfWidth);
+    if (Number.isFinite(s.juliaRe)) setJuliaRe(s.juliaRe);
+    if (Number.isFinite(s.juliaIm)) setJuliaIm(s.juliaIm);
+    if (Number.isFinite(s.maxIter)) setMaxIter(Math.round(s.maxIter));
+    if (Number.isFinite(s.hueOffset)) setHueOffset(s.hueOffset);
+    if (Number.isFinite(s.saturation)) setSaturation(s.saturation);
+    setCDrive(Boolean(s.cDrive));
+    setGalleryMsg('Ansicht aus Snapshot geladen.');
+    setTimeout(() => setGalleryMsg(''), 2500);
+  }
+
+  async function saveSnapshot() {
+    if (!sessionUser) return;
+    setSaveBusy(true);
+    setGalleryMsg('');
+    try {
+      const res = await fetch('/api/fractal-snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(collectSnapshotPayload()),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setGalleryMsg(data.error || 'Speichern fehlgeschlagen');
+        return;
+      }
+      setGalleryMsg('Snapshot gespeichert.');
+      setTimeout(() => setGalleryMsg(''), 2500);
+      const q = galleryFilter === 'all' ? '' : `?mode=${galleryFilter}`;
+      const list = await fetch(`/api/fractal-snapshots${q}`);
+      if (list.ok) {
+        const j = await list.json();
+        setSnapshots(Array.isArray(j.snapshots) ? j.snapshots : []);
+      }
+    } catch {
+      setGalleryMsg('Netzwerkfehler beim Speichern');
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  async function deleteSnapshot(id, e) {
+    e.stopPropagation();
+    if (!sessionUser) return;
+    try {
+      const res = await fetch(`/api/fractal-snapshots/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) return;
+      setSnapshots((prev) => prev.filter((x) => x.id !== id));
+    } catch {
+      /* ignore */
+    }
+  }
 
   const initGl = useCallback(() => {
     const canvas = canvasRef.current;
@@ -587,6 +720,92 @@ export default function FraktaleSandbox() {
         </details>
       </section>
 
+      <section class="fs-gallery" aria-label="Snapshots">
+        <div class="fs-gallery-head">
+          <h3 class="fs-gallery-title">Meine Snapshots</h3>
+          <div class="fs-gallery-actions">
+            {sessionUser && (
+              <button type="button" class="fs-btn fs-btn-small" disabled={saveBusy} onClick={saveSnapshot}>
+                {saveBusy ? 'Speichern…' : 'Snapshot speichern'}
+              </button>
+            )}
+            <label class="fs-gallery-filter">
+              <span class="fs-visually-hidden">Menge filtern</span>
+              <select
+                value={galleryFilter}
+                onChange={(e) => setGalleryFilter(e.currentTarget.value)}
+                disabled={!sessionUser}
+              >
+                <option value="all">Alle Mengen</option>
+                <option value="mandelbrot">Mandelbrot</option>
+                <option value="julia">Julia</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        {galleryMsg && <p class="fs-gallery-msg">{galleryMsg}</p>}
+        {!sessionChecked && <p class="fs-gallery-hint">Session wird geprüft…</p>}
+        {sessionChecked && !sessionUser && (
+          <p class="fs-gallery-hint">
+            Bitte oben rechts einloggen, um Snapshots zu speichern und deine Galerie zu sehen.
+          </p>
+        )}
+        {sessionUser && snapshotsLoading && <p class="fs-gallery-hint">Lade…</p>}
+        {sessionUser && !snapshotsLoading && snapshots.length === 0 && (
+          <p class="fs-gallery-hint">Noch keine Snapshots — stell das Fraktal ein und speichere.</p>
+        )}
+        {sessionUser && snapshots.length > 0 && (
+          <ul class="fs-gallery-grid">
+            {snapshots.map((sn) => (
+              <li key={sn.id}>
+                <div
+                  class="fs-snap-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => applySnapshotSettings(sn.settings)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      applySnapshotSettings(sn.settings);
+                    }
+                  }}
+                >
+                  <span class={`fs-snap-badge fs-snap-badge--${sn.mode}`}>
+                    {sn.mode === 'julia' ? 'Julia' : 'Mandelbrot'}
+                  </span>
+                  <span class="fs-snap-date">
+                    {typeof sn.created_at === 'string'
+                      ? new Date(sn.created_at.replace(' ', 'T')).toLocaleString('de-DE', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })
+                      : '—'}
+                  </span>
+                  <span class="fs-snap-meta">
+                    Mitte ({Number(sn.settings?.centerX).toFixed(3)}, {Number(sn.settings?.centerY).toFixed(3)}) · Zoom{' '}
+                    {Number(sn.settings?.halfWidth).toExponential(2)}
+                  </span>
+                  {sn.mode === 'julia' && (
+                    <span class="fs-snap-meta">
+                      c ≈ {Number(sn.settings?.juliaRe).toFixed(3)} + {Number(sn.settings?.juliaIm).toFixed(3)} i
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    class="fs-snap-delete"
+                    onClick={(e) => deleteSnapshot(sn.id, e)}
+                    title="Snapshot löschen"
+                    aria-label="Snapshot löschen"
+                  >
+                    ×
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       <style>{`
         .fs-root {
           display: grid;
@@ -598,6 +817,148 @@ export default function FraktaleSandbox() {
           margin: 0 auto;
           padding: 0 0.5rem 1.5rem;
           box-sizing: border-box;
+        }
+        .fs-visually-hidden {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
+        }
+        .fs-gallery {
+          grid-column: 1 / -1;
+          margin-top: 0.5rem;
+          padding: 1rem 1rem 1.15rem;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.25);
+        }
+        .fs-gallery-head {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          margin-bottom: 0.65rem;
+        }
+        .fs-gallery-title {
+          margin: 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.92);
+        }
+        .fs-gallery-actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .fs-btn-small {
+          width: auto;
+          padding: 0.4rem 0.75rem;
+          font-size: 0.8rem;
+        }
+        .fs-gallery-filter select {
+          padding: 0.4rem 0.5rem;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.08);
+          color: inherit;
+          font: inherit;
+          font-size: 0.8rem;
+        }
+        .fs-gallery-msg {
+          margin: 0 0 0.5rem;
+          font-size: 0.85rem;
+          color: rgba(160, 220, 180, 0.95);
+        }
+        .fs-gallery-hint {
+          margin: 0;
+          font-size: 0.85rem;
+          color: rgba(255, 255, 255, 0.55);
+        }
+        .fs-gallery-grid {
+          list-style: none;
+          margin: 0.75rem 0 0;
+          padding: 0;
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+          gap: 0.65rem;
+        }
+        .fs-snap-card {
+          position: relative;
+          width: 100%;
+          margin: 0;
+          padding: 0.65rem 1.6rem 0.65rem 0.65rem;
+          text-align: left;
+          border-radius: 10px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.88);
+          cursor: pointer;
+          outline: none;
+          font: inherit;
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .fs-snap-card:hover {
+          background: rgba(120, 160, 255, 0.12);
+          border-color: rgba(160, 190, 255, 0.35);
+        }
+        .fs-snap-card:focus-visible {
+          box-shadow: 0 0 0 2px rgba(160, 190, 255, 0.5);
+        }
+        .fs-snap-badge {
+          display: inline-block;
+          align-self: flex-start;
+          font-size: 0.65rem;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          padding: 0.15rem 0.4rem;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.12);
+        }
+        .fs-snap-badge--mandelbrot {
+          background: rgba(100, 180, 255, 0.25);
+        }
+        .fs-snap-badge--julia {
+          background: rgba(255, 160, 200, 0.2);
+        }
+        .fs-snap-date {
+          font-size: 0.72rem;
+          opacity: 0.7;
+        }
+        .fs-snap-meta {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 0.65rem;
+          line-height: 1.35;
+          opacity: 0.88;
+          word-break: break-all;
+        }
+        .fs-snap-delete {
+          position: absolute;
+          top: 0.2rem;
+          right: 0.25rem;
+          width: 1.5rem;
+          height: 1.5rem;
+          line-height: 1.4rem;
+          padding: 0;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          color: rgba(255, 255, 255, 0.45);
+          font-size: 1.1rem;
+          cursor: pointer;
+        }
+        .fs-snap-delete:hover {
+          color: #f88;
+          background: rgba(255, 255, 255, 0.08);
         }
         .fs-learn {
           grid-column: 1 / -1;

@@ -51,6 +51,14 @@ await db.executeMultiple(`
     data              BLOB NOT NULL,
     created_at        TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS fractal_snapshots (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT NOT NULL,
+    mode       TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 console.log('✓ Alle Tabellen in Turso angelegt.');

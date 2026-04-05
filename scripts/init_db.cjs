@@ -80,6 +80,17 @@ db.serialize(() => {
   `);
   console.log('✓ custom_fonts-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS fractal_snapshots (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      username   TEXT NOT NULL,
+      mode       TEXT NOT NULL,
+      payload    TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ fractal_snapshots-Tabelle bereit.');
+
 });
 
 db.close();
