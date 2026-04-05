@@ -1,0 +1,27 @@
+---
+description: Math-Minigames — Leitlinien, Pfade, Rand-Disclaimer (Detail-Memory)
+---
+
+# Math-Minigames
+
+**Ziel:** Konzepte **exakt, präzise und richtig** vermitteln. Mathematik und Simulation müssen zusammenpassen (eine Definition, eine Quelle der Wahrheit). **Spaß ist erwünscht, steht aber nach inhaltlicher Korrektheit und Klarheit.**
+
+**Ton & Aufmacher (Fluss-Spiel und ähnliche Minigames):** Der **Seiten-Aufmacher** soll das **sichtbare Spielkonzept** einführen (Richtungen, Punkt, Ziele) — **ohne** Fachvokabular im ersten Eindruck. Kein „Akademie-Hook“: lieber menschlich und ideenbasiert („wie Leute sich das gedacht haben“). **Fachbegriffe** (Differentialgleichung, Vektorfeld, Gradient, …) gehören in die **ausführliche Erklärung** und ins **Glossar**, dort sauber mit dem Bild verknüpft.
+
+- Formeln, Vektorfelder, Integratoren und erklärender Text dürfen sich nicht widersprechen.
+- Vereinfachungen (z. B. Randbehandlung) **explizit** kennzeichnen — in der UI als kurzer Disclaimer, wo es Spieler sichtbar betrifft.
+- Neue Minigames: gleiche Disziplin — erst mathematisch und didaktisch sauber, dann Polishing.
+
+## Relevante Dateien
+
+| Bereich | Pfad |
+|--------|------|
+| Fluss / Felder / ODE-Minigame | `src/components/FlowPuzzle.jsx` |
+| Seite Fluss-Spiel | `src/pages/minigames/flow-puzzle.astro` |
+| Minigames-Übersicht | `src/pages/minigames/index.astro` |
+| Fraktale-Sandbox | `src/components/FraktaleSandbox.jsx` |
+| Seite Fraktale | `src/pages/minigames/fraktale-sandbox.astro` |
+
+## Rand (`clampWorld`) und Simulation
+
+Wird der Zustand am sichtbaren Rand begrenzt, können Trajektorien gegenüber der „echten“ Integralkurve ohne Rand leicht verzerrt werden — für ein Spiel oft akzeptabel, aber kein Ersatz für eine unbeschränkte mathematische Lösung. Wo das vorkommt, gehört ein kurzer **Disclaimer** in die UI (siehe z. B. FlowPuzzle).

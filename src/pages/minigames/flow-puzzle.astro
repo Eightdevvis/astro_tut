@@ -1,0 +1,486 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import FlowPuzzle from '../../components/FlowPuzzle.jsx';
+import '../../styles/global.css';
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Fluss &amp; Felder · Minigames</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="subpage" />
+    <header class="fp-page-head">
+      <p class="fp-page-kicker"><a href="/minigames">le mathematicos rainbow</a></p>
+      <p class="fp-page-lead">
+        Eine Ebene voller kleiner Richtungen — als würde eine unsichtbare Strömung überall anzeigen, wohin sich etwas als Nächstes
+        bewegen würde. Du setzt einen Startpunkt; beim Abspielen wandert ein Punkt diesen Richtungen folgend. Dazu kommen eine
+        grüne Zielscheibe und manchmal ein roter Anker: es geht darum, dass die Bahn dort durchläuft, wo du hinwillst — nicht nur
+        dort, wohin der Fluss am Ende zieht. Unten erklären wir das in Ruhe; die Fachbegriffe stehen dort und im Glossar.
+      </p>
+    </header>
+    <FlowPuzzle client:load />
+    <p class="fp-page-back">
+      <a href="/minigames">← Alle Minigames</a>
+    </p>
+  </body>
+</html>
+
+<style is:global>
+  body {
+    background-color: #000;
+    margin: 0;
+    padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .fp-page-head {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.25rem 1rem 0.75rem;
+  }
+
+  .fp-page-kicker {
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin: 0 0 0.35rem;
+  }
+
+  .fp-page-kicker a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .fp-page-kicker a:hover {
+    text-decoration: underline;
+  }
+
+  .fp-page-lead {
+    margin: 0;
+    max-width: 52rem;
+    line-height: 1.55;
+    font-size: 0.95rem;
+    opacity: 0.78;
+  }
+
+  .fp-page-back {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 1rem 2rem;
+    opacity: 0.5;
+  }
+
+  .fp-page-back a {
+    color: inherit;
+    font-size: 0.9rem;
+  }
+
+  /* --- FlowPuzzle (mobile first) --- */
+  .fp-root {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem 2rem;
+    box-sizing: border-box;
+  }
+
+  .fp-head {
+    margin-bottom: 0.75rem;
+  }
+
+  .fp-level-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+  }
+
+  .fp-level-label {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-align: center;
+    flex: 1 1 12rem;
+  }
+
+  .fp-blurb {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    opacity: 0.72;
+    text-align: center;
+    max-width: 40rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .fp-canvas-wrap {
+    position: relative;
+    width: 100%;
+    min-height: min(52vh, 420px);
+    max-height: 70vh;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #07080f;
+    touch-action: none;
+  }
+
+  .fp-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: min(52vh, 420px);
+    cursor: grab;
+  }
+
+  .fp-canvas:active {
+    cursor: grabbing;
+  }
+
+  .fp-toast {
+    position: absolute;
+    left: 50%;
+    top: 0.75rem;
+    transform: translateX(-50%);
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    pointer-events: none;
+  }
+
+  .fp-toast--ok {
+    background: rgba(80, 255, 160, 0.2);
+    border: 1px solid rgba(120, 255, 190, 0.55);
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .fp-toast--miss {
+    background: rgba(255, 120, 120, 0.18);
+    border: 1px solid rgba(255, 160, 140, 0.5);
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .fp-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin: 0.85rem 0 1rem;
+  }
+
+  .fp-btn {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    padding: 0.55rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+    min-height: 44px;
+    min-width: 44px;
+    cursor: pointer;
+  }
+
+  .fp-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .fp-btn--primary {
+    background: rgba(120, 200, 255, 0.2);
+    border-color: rgba(120, 200, 255, 0.45);
+  }
+
+  .fp-math {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.65rem;
+    padding: 0.85rem 1rem 1rem;
+    margin-bottom: 1.25rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fp-math .katex-display {
+    margin: 0.35rem 0;
+  }
+
+  .fp-math-row {
+    text-align: center;
+  }
+
+  .fp-math-sub {
+    margin-top: 0.5rem;
+    font-size: 0.92em;
+    opacity: 0.88;
+  }
+
+  .fp-math-meta {
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+    opacity: 0.65;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .fp-math-sep::before {
+    content: '·';
+    margin: 0 0.25rem;
+    opacity: 0.5;
+  }
+
+  .fp-mono {
+    font-family: ui-monospace, monospace;
+  }
+
+  .fp-math-disc {
+    flex-basis: 100%;
+    text-align: center;
+    margin-top: 0.35rem;
+  }
+
+  .fp-math-disc .katex {
+    font-size: 0.95em;
+  }
+
+  .fp-dot {
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    margin-right: 0.35rem;
+    vertical-align: middle;
+  }
+
+  .fp-dot--on {
+    background: rgba(120, 255, 190, 0.85);
+    box-shadow: 0 0 8px rgba(120, 255, 190, 0.5);
+  }
+
+  .fp-disclaimer {
+    margin: 0.85rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    opacity: 0.55;
+    text-align: left;
+    max-width: 42rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .fp-disclaimer strong {
+    font-weight: 600;
+    opacity: 0.85;
+  }
+
+  /* Ausführliche Erklärung (analog Fraktal-Sandbox fs-learn) */
+  .fp-learn {
+    margin: 1.25rem 0 1.5rem;
+    padding: 1rem 1rem 1.1rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    max-width: 42rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .fp-learn-h {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.94);
+    letter-spacing: 0.02em;
+  }
+
+  .fp-learn-context {
+    margin: 0 0 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    opacity: 0.72;
+  }
+
+  .fp-learn-body p {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.58;
+    color: rgba(255, 255, 255, 0.84);
+  }
+
+  .fp-learn-body p:last-child {
+    margin-bottom: 0;
+  }
+
+  .fp-learn-body--main {
+    margin-bottom: 0.25rem;
+  }
+
+  .fp-learn-legend {
+    margin: 0.5rem 0 1rem;
+    padding: 0.65rem 0.85rem 0.7rem 2.25rem;
+    list-style: none;
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .fp-learn-legend li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.82);
+  }
+
+  .fp-learn-legend li:last-child {
+    margin-bottom: 0;
+  }
+
+  .fp-learn-dot {
+    flex-shrink: 0;
+    width: 0.65rem;
+    height: 0.65rem;
+    margin-top: 0.35rem;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  }
+
+  .fp-learn-dot--x {
+    background: #fff;
+  }
+
+  .fp-learn-dot--goal {
+    background: rgba(80, 255, 160, 0.85);
+  }
+
+  .fp-learn-dot--g {
+    background: rgba(255, 120, 160, 0.95);
+  }
+
+  .fp-learn-details {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .fp-learn-details summary {
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: rgba(180, 210, 255, 0.95);
+    list-style: none;
+  }
+
+  .fp-learn-details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .fp-learn-details summary::before {
+    content: '▸ ';
+    opacity: 0.7;
+  }
+
+  .fp-learn-details[open] summary::before {
+    content: '▾ ';
+  }
+
+  .fp-learn-details .fp-learn-body {
+    margin-top: 0.65rem;
+    padding-left: 0.1rem;
+  }
+
+  .fp-glossary {
+    margin-top: 0.5rem;
+  }
+
+  .fp-glossary-title {
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin: 0 0 0.75rem;
+    font-weight: 600;
+  }
+
+  .fp-glossary-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .fp-details {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0;
+  }
+
+  .fp-details summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 0.65rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .fp-details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .fp-gloss-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .fp-gloss-short {
+    font-size: 0.85rem;
+    opacity: 0.72;
+    line-height: 1.45;
+  }
+
+  .fp-gloss-long {
+    margin: 0;
+    padding: 0 0.85rem 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    opacity: 0.82;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 0.65rem;
+  }
+
+  @media (min-width: 768px) {
+    .fp-details summary {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem 1rem;
+    }
+
+    .fp-gloss-short {
+      flex: 1 1 12rem;
+    }
+  }
+</style>

@@ -101,11 +101,14 @@ const lastPost = sorted[0] ?? null;
     padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
     box-sizing: border-box;
     overflow-x: clip;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
   }
 
   /*
-   * Zentrieren trotz scaleX: zuerst mit 50% + translateX(-50%) exakt mittig,
-   * dann scaleX (gleiche Reihenfolge in einer transform-Liste).
+   * Zentrierung per Flexbox (stabil auf Mobile); scaleX separat ohne translateX,
+   * damit nichts nach rechts „wandert“.
    */
   .home-hero-title {
     font-family: var(--font-hero, 'Protest Demo');
@@ -113,19 +116,21 @@ const lastPost = sorted[0] ?? null;
     color: white;
     display: block;
     position: relative;
-    left: 50%;
+    left: auto;
     width: max-content;
     max-width: min(100%, 100vw - 1.5rem);
     padding: 0;
     padding-top: calc(1rem + 5vh);
     line-height: 1;
-    transform: translateX(-50%) scaleX(0.6);
+    text-align: center;
+    transform: scaleX(0.6);
     transform-origin: center top;
   }
 
   @media screen and (max-width: 767px) {
     .home-hero-title {
-      font-size: min(20vh, 46vw);
+      font-size: clamp(2.25rem, min(11vh, 12vw), 3.5rem);
+      padding-top: calc(0.75rem + 3vh);
     }
   }
 
