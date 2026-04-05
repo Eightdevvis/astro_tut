@@ -17,6 +17,14 @@ const KEY_TO_CSS_VAR = {
 const THEME_HTML_SELECTORS =
   'html, html.dark, html.ocean, html.sunset, html.forest, html.purple';
 
+/** @param {string} decl z.B. `  --font-family: "X";` */
+function withImportant(decl) {
+  const t = decl.trimEnd();
+  if (t.endsWith('!important;')) return `  ${t}`;
+  if (t.endsWith(';')) return `  ${t.slice(0, -1)} !important;`;
+  return `  ${t} !important;`;
+}
+
 /**
  * @returns {Promise<Record<string, string>>}
  */
@@ -70,14 +78,16 @@ export async function getFontOverrideStyleContent() {
     const cssVar = KEY_TO_CSS_VAR[key];
     if (!cssVar) continue;
     if (key.includes('weight')) {
-      declarations.push(`  ${cssVar}: ${val.trim()};`);
+      declarations.push(withImportant(`${cssVar}: ${val.trim()};`));
     } else if (key.endsWith('_family')) {
-      declarations.push(`  ${cssVar}: ${formatFontFamilyCssValue(val)};`);
+      declarations.push(withImportant(`${cssVar}: ${formatFontFamilyCssValue(val)};`));
     } else {
-      declarations.push(`  ${cssVar}: ${cssQuoteFont(val.trim())};`);
+      declarations.push(withImportant(`${cssVar}: ${cssQuoteFont(val.trim())};`));
     }
   }
   if (declarations.length === 0) return '';
+  // !important: themes.css setzt dieselben Variablen auf html.dark etc.; das gebündelte
+  // global.css liegt oft *nach* diesem Inline-Style und würde sonst die DB-Overrides überschreiben.
   return `${THEME_HTML_SELECTORS} {\n${declarations.join('\n')}\n}`;
 }
 
