@@ -1,10 +1,5 @@
 import { jwtVerify } from 'jose';
-
-/**
- * Dasselbe Secret wie in login.js/register.js — Tokens können nur verifiziert werden
- * wenn das Secret identisch ist.
- */
-const JWT_SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET);
+import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 
 /**
  * API-Endpunkt: GET /api/user
@@ -30,7 +25,7 @@ export async function GET({ cookies }) {
     // 1. Signatur korrekt? (Secret stimmt)
     // 2. Token abgelaufen? (exp claim)
     // Wenn beides ok → payload enthält unsere Daten (username, birthday)
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretBytes());
 
     return new Response(
       JSON.stringify({ user: { username: payload.username, birthday: payload.birthday } }),

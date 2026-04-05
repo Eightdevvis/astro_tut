@@ -8,10 +8,12 @@
  *   Für Demo-Zwecke ausreichend — in Produktion würde man zusätzlich eine
  *   Token-Blacklist oder kurze Ablaufzeiten nutzen.
  *
- * Wichtig: path: '/' muss identisch zum Setzen des Cookies sein,
- * sonst löscht cookies.delete() den falschen Cookie.
+ * Wichtig: path (und bei HTTPS secure) müssen zum Setzen passen.
  */
+import { getSessionCookieOptions } from '../../lib/session-cookie.js';
+
 export async function POST({ cookies }) {
-  cookies.delete('session', { path: '/' });
+  const o = getSessionCookieOptions();
+  cookies.delete('session', { path: o.path, secure: o.secure });
   return new Response(JSON.stringify({ success: true }), { status: 200 });
 }

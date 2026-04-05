@@ -1,8 +1,7 @@
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb } from '../../../lib/db.js';
-
-const JWT_SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET);
+import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 
 export async function POST({ request, cookies }) {
   const token = cookies.get('session')?.value;
@@ -12,7 +11,7 @@ export async function POST({ request, cookies }) {
 
   let username;
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretBytes());
     username = payload.username;
   } catch {
     return new Response(JSON.stringify({ error: 'Session ungültig' }), { status: 401 });

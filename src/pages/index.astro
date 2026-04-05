@@ -1,7 +1,25 @@
 ---
 import Nav2 from '../components/Nav2.astro';
 import QuoteDisplay from '../components/QuoteDisplay.jsx';
+import Grid from '../components/Grid.astro';
+import Veranda from '../components/Veranda.astro';
 import '../styles/global.css';
+
+const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
+
+function pubTime(post: any): number {
+  const d = post?.frontmatter?.pubDate;
+  if (d == null) return 0;
+  const t = Date.parse(String(d));
+  return Number.isNaN(t) ? 0 : t;
+}
+
+const sorted = [...allPosts].sort((a, b) => {
+  const diff = pubTime(b) - pubTime(a);
+  if (diff !== 0) return diff;
+  return String(b.url ?? '').localeCompare(String(a.url ?? ''));
+});
+const lastPost = sorted[0] ?? null;
 ---
 
 <html lang="en">
@@ -13,7 +31,22 @@ import '../styles/global.css';
   </head>
   <body>
     <Nav2 />
-    <QuoteDisplay client:load />
+    <main class="home-main">
+      <Veranda />
+      {lastPost && (
+        <Grid>
+          <a
+            href={lastPost.url}
+            class="grid-item grid-item--inset"
+            style="text-decoration: none; color: inherit; display: block;"
+          >
+            <h1 class="lastPost-title">{lastPost.frontmatter.title}</h1>
+            <div class="lastPost-eye">eye</div>
+          </a>
+        </Grid>
+      )}
+      <QuoteDisplay client:load />
+    </main>
   </body>
 </html>
 
@@ -22,5 +55,39 @@ import '../styles/global.css';
     background-color: #000;
     margin: 0;
     padding: 0;
+  }
+
+  .home-main {
+    padding: 0 1rem 2rem;
+  }
+
+  :global(.grid-item--inset) {
+    background: #fff;
+    box-shadow:
+      inset 0 0 40px 10px rgba(0, 0, 0, 0.35),
+      inset 0 0 80px 10px rgba(0, 0, 0, 0.25),
+      inset 0 0 8px 2px rgba(0, 0, 0, 0.45);
+    border-radius: 1rem;
+  }
+
+  :global(.grid-item--inset h1) {
+    font-size: 2.5rem;
+    transition: font-size 0.5s cubic-bezier(0.4, 1.6, 0.4, 1);
+  }
+
+  :global(.grid-item--inset:hover h1) {
+    font-size: 1.2rem;
+  }
+
+  .lastPost-title {
+    font-size: 1rem;
+    padding: 10px;
+  }
+
+  .lastPost-eye {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
   }
 </style>

@@ -12,9 +12,8 @@
 
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../lib/permissions.js';
+import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import '../../styles/global.css';
-
-const JWT_SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET);
 
 // Session aus Cookie lesen
 const token = Astro.cookies.get('session')?.value;
@@ -23,7 +22,7 @@ let allowed = false;
 
 if (token) {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecretBytes());
     username = payload.username as string;
     allowed = await hasPermission(username, 'quote_poster');
   } catch {

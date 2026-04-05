@@ -12,7 +12,7 @@
  * 2. hasPermission() aufrufen wo gebraucht
  */
 
-import { getDb } from './db.js';
+import { getDb, ensureDbSchema } from './db.js';
 
 const SUPERUSER = 'sash';
 
@@ -23,6 +23,7 @@ export const KNOWN_PERMISSIONS = [
 export async function hasPermission(username, permission) {
   if (username === SUPERUSER) return true;
 
+  await ensureDbSchema();
   const db = getDb();
   const result = await db.execute({
     sql: 'SELECT id FROM user_permissions WHERE username = ? AND permission = ?',
@@ -34,6 +35,7 @@ export async function hasPermission(username, permission) {
 export async function getPermissions(username) {
   if (username === SUPERUSER) return [...KNOWN_PERMISSIONS];
 
+  await ensureDbSchema();
   const db = getDb();
   const result = await db.execute({
     sql: 'SELECT permission FROM user_permissions WHERE username = ?',
@@ -43,6 +45,7 @@ export async function getPermissions(username) {
 }
 
 export async function grantPermission(username, permission) {
+  await ensureDbSchema();
   const db = getDb();
   await db.execute({
     sql: 'INSERT OR IGNORE INTO user_permissions (username, permission) VALUES (?, ?)',
@@ -51,6 +54,7 @@ export async function grantPermission(username, permission) {
 }
 
 export async function revokePermission(username, permission) {
+  await ensureDbSchema();
   const db = getDb();
   await db.execute({
     sql: 'DELETE FROM user_permissions WHERE username = ? AND permission = ?',

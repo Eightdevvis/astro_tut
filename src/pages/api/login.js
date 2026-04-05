@@ -1,8 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
-import { getDb } from '../../lib/db.js';
-
-const JWT_SECRET = new TextEncoder().encode(import.meta.env.JWT_SECRET);
+import { getDb, ensureDbSchema } from '../../lib/db.js';
+import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
+import { getSessionCookieOptions } from '../../lib/session-cookie.js';
 
 export async function POST({ request, cookies }) {
   const { username, password } = await request.json();
@@ -11,6 +11,7 @@ export async function POST({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Alle Felder ausfüllen' }), { status: 400 });
   }
 
+  await ensureDbSchema();
   const db = getDb();
   const result = await db.execute({
     sql: 'SELECT * FROM users WHERE username = ?',
@@ -30,9 +31,9 @@ export async function POST({ request, cookies }) {
   const token = await new SignJWT({ username: user.username, birthday: user.birthday })
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecretBytes());
 
-  cookies.set('session', token, { httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 7 });
+  cookies.set('session', token, getSessionCookieOptions());
 
   return new Response(
     JSON.stringify({ success: true, user: { username: user.username, birthday: user.birthday } }),
