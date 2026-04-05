@@ -129,20 +129,27 @@ if (token) {
           if (!text) { msg.textContent = 'ZITAT DARF NICHT LEER SEIN'; return; }
 
           btn.disabled = true;
-          const res = await fetch('/api/quotes/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
-          });
-          const data = await res.json();
+          msg.textContent = '';
+          try {
+            const res = await fetch('/api/quotes/add', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ text })
+            });
+            const data = await res.json().catch(() => ({}));
 
-          if (res.ok && data.success) {
-            msg.style.color = 'lightblue';
-            msg.textContent = 'ZITAT GESPEICHERT ✓';
-            textarea.value = '';
-          } else {
+            if (res.ok && data.success) {
+              msg.style.color = 'lightblue';
+              msg.textContent = 'ZITAT GESPEICHERT ✓';
+              textarea.value = '';
+            } else {
+              msg.style.color = 'salmon';
+              msg.textContent = (data.error || 'FEHLER').toUpperCase();
+            }
+          } catch {
             msg.style.color = 'salmon';
-            msg.textContent = data.error?.toUpperCase() || 'FEHLER';
+            msg.textContent = 'NETZWERK- ODER SERVERFEHLER';
           }
           btn.disabled = false;
         });

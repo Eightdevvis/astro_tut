@@ -1,6 +1,6 @@
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
-import { getDb } from '../../../lib/db.js';
+import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 
 export async function POST({ request, cookies }) {
@@ -22,16 +22,32 @@ export async function POST({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }
 
-  const { text } = await request.json();
-  if (!text || text.trim().length === 0) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Ungültiger JSON-Body' }), { status: 400 });
+  }
+
+  const { text } = body;
+  if (!text || String(text).trim().length === 0) {
     return new Response(JSON.stringify({ error: 'Zitat darf nicht leer sein' }), { status: 400 });
   }
 
-  const db = getDb();
-  const result = await db.execute({
-    sql: 'INSERT INTO quotes (username, text) VALUES (?, ?)',
-    args: [username, text.trim()]
-  });
+  try {
+    await ensureDbSchema();
+    const db = getDb();
+    const result = await db.execute({
+      sql: 'INSERT INTO quotes (username, text) VALUES (?, ?)',
+      args: [username, String(text).trim()]
+    });
 
-  return new Response(JSON.stringify({ success: true, id: result.lastInsertRowid }), { status: 201 });
+    const rid = result.lastInsertRowid;
+    const id = rid === undefined || rid === null ? null : String(rid);
+
+    return new Response(JSON.stringify({ success: true, id }), { status: 201 });
+  } catch (err) {
+    console.error('quotes/add', err);
+    return new Response(JSON.stringify({ error: 'Speichern fehlgeschlagen' }), { status: 500 });
+  }
 }
