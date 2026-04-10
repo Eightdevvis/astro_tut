@@ -80,7 +80,13 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
 
   if (!open) return null;
 
-  const otherQuests = graph.quests.filter((q) => q.id !== (mode === 'edit' ? questId : id));
+  const normalizedCreateId = mode === 'create' ? normalizeQuestId(id) : '';
+  const duplicateQuestId =
+    mode === 'create' &&
+    normalizedCreateId.length > 0 &&
+    graph.quests.some((q) => q.id === normalizedCreateId);
+
+  const otherQuests = graph.quests.filter((q) => (mode === 'edit' ? q.id !== questId : true));
 
   const togglePrereq = (pid) => {
     setPrereqIds((prev) => {
@@ -99,7 +105,6 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       return;
     }
     if (mode === 'create' && graph.quests.some((q) => q.id === nid)) {
-      window.alert('Diese ID gibt es bereits.');
       return;
     }
     const steps = linesToSteps(stepsText);
@@ -147,13 +152,21 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
           <label class="rpg-graph-editor__field">
             <span class="rpg-graph-editor__label">ID (Kurzname)</span>
             <input
-              class="rpg-graph-editor__input"
+              class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
               value={id}
               onInput={(ev) => setId(ev.currentTarget.value)}
               disabled={mode === 'edit'}
               required={mode === 'create'}
               placeholder="z. B. meine-nebenquest"
+              aria-invalid={duplicateQuestId ? 'true' : undefined}
+              aria-describedby={duplicateQuestId ? 'rpg-graph-editor-id-dup-warn' : undefined}
             />
+            {duplicateQuestId && (
+              <p id="rpg-graph-editor-id-dup-warn" class="rpg-graph-editor__warning" role="alert">
+                Diese ID ist bereits vergeben (eindeutig pro Quest). Nach Normalisierung:{' '}
+                <code class="rpg-graph-editor__code">{normalizedCreateId}</code>
+              </p>
+            )}
           </label>
           <label class="rpg-graph-editor__field">
             <span class="rpg-graph-editor__label">Typ</span>
@@ -220,7 +233,11 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
             <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
               Abbrechen
             </button>
-            <button type="submit" class="rpg-graph-editor__btn rpg-graph-editor__btn--primary">
+            <button
+              type="submit"
+              class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+              disabled={duplicateQuestId}
+            >
               Speichern
             </button>
           </div>

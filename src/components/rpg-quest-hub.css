@@ -368,6 +368,9 @@
     border-right: none;
     border-bottom: 1px solid var(--rpg-border);
     min-height: 0;
+    padding: max(0.85rem, env(safe-area-inset-top, 0px)) 1rem max(0.85rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
   }
 
   .rpg-hub__rail-label {
@@ -378,12 +381,31 @@
   .rpg-hub__cat {
     width: auto;
     flex: 1 1 40%;
+    touch-action: manipulation;
   }
 
   .rpg-hub__tree-link {
     flex: 1 1 100%;
     justify-content: center;
     margin-top: 0.25rem;
+    touch-action: manipulation;
+  }
+
+  .rpg-hub__main {
+    padding: 1rem 1rem 1.5rem;
+    padding-bottom: max(1.5rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  }
+
+  .rpg-quest-block {
+    padding: 1rem 1.05rem;
+  }
+
+  .rpg-strip__focus {
+    min-height: 44px;
+    padding: 0.35rem 0.35rem;
+    touch-action: manipulation;
   }
 
   .rpg-strip__title {
@@ -399,9 +421,25 @@
     height: 44px;
     min-width: 44px;
     min-height: 44px;
+    touch-action: manipulation;
   }
 
   .rpg-quest-block__title {
     font-size: 1.2rem;
+  }
+
+  .rpg-step {
+    min-height: 44px;
+    padding: 0.2rem 0;
+    align-items: center;
+  }
+
+  .rpg-step input {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .rpg-quest-block__desc {
+    font-size: 0.9rem;
   }
 }

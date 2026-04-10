@@ -22,6 +22,14 @@ export async function persistRpgState(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (!res.ok) {
+    try {
+      const err = await res.json();
+      console.warn('[rpg] persist failed', res.status, err);
+    } catch {
+      console.warn('[rpg] persist failed', res.status);
+    }
+  }
   return res.ok;
 }
 

@@ -9,6 +9,11 @@ Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum**
 - **Deep-Link Baum:** `/rpg/tree?focus=<questId>` — zentriert die Node im Viewport, **öffnet kein** Detail-Panel.
 - **Einstieg von der Startseite:** kleiner Link in der **Veranda**, nur sichtbar wenn `/api/user` → `isSuperuser`.
 
+## Roadmap (Memory)
+
+- **Kommende Features:** [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc) (z. B. DB-Backup, …)
+- **Vielleicht kommend:** [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc) (z. B. eigener Default-Graph / „Standard“-Reset in der UI)
+
 ## Datenmodell
 
 ### GET `/api/rpg/quests` (Superuser, 403 sonst)
@@ -22,14 +27,21 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
   "graph": { "quests": [GraphQuest], "edges": [...] },
   "addedIds": ["..."],
   "stepDone": { "questId": { "stepId": true } },
-  "persisted": true
+  "persisted": true,
+  "schemaVersion": 1
 }
 ```
 
+### `schemaVersion` (Pflicht ab Speicherung)
+
+- **Sinn:** Beim Lesen aus der DB weiß der Server (und später der Client), **welches Payload-Format** gemeint ist. Bei strukturellen Änderungen: Konstante `RPG_PAYLOAD_SCHEMA_VERSION` in `src/lib/rpg-payload-schema.js` **erhöhen** und eine **Migration** einbauen (alte `schemaVersion` einlesen → Daten umbauen → mit neuer Version speichern).
+- **GET:** liefert immer `schemaVersion` (bei neuem Nutzer / nur Sample: aktuelle Konstante; bei persistiertem State: gespeicherter Wert, mindestens 1).
+- **PUT:** setzt `schemaVersion` auf `max(RPG_PAYLOAD_SCHEMA_VERSION, bisher gespeicherte Version)` — damit bleibt ein aus **neuerer** Deploy-Version geschriebener Stand nicht durch ein Rollback auf älteren Code „heruntergezählt“.
+
 ### PUT `/api/rpg/quests` (Superuser)
 
-- **`{ "resetToDefault": true }`** — löscht den gespeicherten State; nächstes GET liefert wieder den Sample-Graph.
-- **`{ "graph", "addedIds", "stepDone" }`** — vollständiger Ersatz des gespeicherten Snapshots (Debouncing ~450 ms im Client).
+- **`{ "resetToDefault": true }`** — löscht den gespeicherten State; nächstes GET liefert wieder den Sample-Graph. *(Derzeit nur API; UI-Button „Standard“ bewusst entfernt — Wiederverwendung siehe [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc).)*
+- **`{ "graph", "addedIds", "stepDone" }`** — Client-Snapshot; serverseitig **Merge** mit vorherigem JSON (siehe unten). `schemaVersion` wird beim Speichern gesetzt (nicht vom Client abhängig).
 
 **GraphQuest** erweitert die bisherige Quest um **`kind`:** `"main"` | `"side"`.
 
@@ -49,7 +61,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 
 ### Persistenz (Server)
 
-- Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: `graph`, `addedIds`, `stepDone`), `updated_at`.
+- Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: u. a. `graph`, `addedIds`, `stepDone`, `schemaVersion`), `updated_at`.
 - Allgemeine **DB-Anbindung und Init**: [`database.mdc`](database.mdc).
 - Client-Helfer: `src/lib/rpg-server-sync.js` (`fetchRpgBootstrap`, `persistRpgState`, Migration).
 - RPG-spezifischer DB-Zugriff: `src/lib/rpg-state-db.js`.
@@ -82,7 +94,16 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 | Hub | `src/components/RpgQuestHub.jsx`, `rpg-quest-hub.css` |
 | Baum + Editor-Modal | `RpgQuestTree.jsx`, `RpgQuestGraphEditor.jsx`, `rpg-quest-tree.css` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
-| API | `src/pages/api/rpg/quests.js` (GET + PUT), `rpg-state-db.js` |
+| API | `src/pages/api/rpg/quests.js` (GET + PUT), `rpg-state-db.js`, `rpg-payload-schema.js` |
 | Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
 
 **KI später:** gleiche Payload-Form (`graph` + Quest-Felder); Generierung/Validierung (DAG, IDs) serverseitig.
+
+## Datenintegrität & Ausbau (ohne stillen Datenverlust)
+
+- **PUT-Merge:** Beim Speichern wird der neue Stand mit dem **bereits gespeicherten** JSON **zusammengeführt** (Top-Level und `graph`-Objekt). Felder, die ein älterer Client nicht mitschickt (z. B. spätere `categories`, Filter, Automatik-Config), bleiben in der DB, solange der neue Request sie nicht explizit ersetzt.
+- **Quest bearbeiten:** Beim Speichern im Graph-Editor werden **unbekannte Quest-Felder** mit dem vorherigen Objekt **gemerged** (`{ …prev, …fromEditor }`), damit KI-/Meta-Felder nicht durch den Editor verloren gehen.
+- **Graph-Form:** Ein Graph mit **0 Quests** gilt weiterhin als gültig (kein Fallback auf den Sample-Graph nur wegen „leer“ — vermeidet versehentliches Überschreiben der DB durch den Debounce-Persist).
+- **Monitoring:** Schlägt `persistRpgState` fehl, erscheint ein **`console.warn`** mit Status/Fehlerbody — lokal prüfen, wenn der Server State und UI auseinanderlaufen.
+
+Grenzen: Kein Versions-/Locking bei parallelen Tabs; `resetToDefault` per API löscht weiterhin den gespeicherten State. **Schema-Sprünge:** `schemaVersion` ist implementiert — bei Formatwechsel Konstante erhöhen und Migration im GET/PUT-Pfad ergänzen (siehe Abschnitt `schemaVersion`).

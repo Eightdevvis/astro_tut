@@ -4,6 +4,10 @@ import { ensureDbSchema } from '../../../lib/db.js';
 import { SAMPLE_RPG_QUESTS, SAMPLE_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
+import {
+  RPG_PAYLOAD_SCHEMA_VERSION,
+  coerceRpgPayloadSchemaVersion,
+} from '../../../lib/rpg-payload-schema.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -28,9 +32,11 @@ export async function GET({ cookies }) {
   let stepDone = {};
   let persisted = false;
 
+  let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
     graph = /** @type {typeof SAMPLE_RPG_GRAPH} */ (stored.graph);
     persisted = true;
+    schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
     if (stored.stepDone && typeof stored.stepDone === 'object') stepDone = stored.stepDone;
   }
@@ -42,6 +48,7 @@ export async function GET({ cookies }) {
       addedIds,
       stepDone,
       persisted,
+      schemaVersion,
     }),
     {
       status: 200,
@@ -80,6 +87,15 @@ export async function PUT({ request, cookies }) {
   if (!isValidGraphShape(body?.graph)) {
     return new Response(JSON.stringify({ error: 'Ungültiger graph' }), { status: 400 });
   }
+
+  const questIds = body.graph.quests.map((/** @type {{ id?: unknown }} */ q) => q?.id);
+  if (questIds.some((x) => typeof x !== 'string' || !x.trim())) {
+    return new Response(JSON.stringify({ error: 'Jede Quest braucht eine nicht-leere id' }), { status: 400 });
+  }
+  const idSet = new Set(questIds);
+  if (idSet.size !== questIds.length) {
+    return new Response(JSON.stringify({ error: 'Doppelte Quest-IDs im Graph' }), { status: 400 });
+  }
   if (!Array.isArray(body.addedIds)) {
     return new Response(JSON.stringify({ error: 'addedIds fehlt' }), { status: 400 });
   }
@@ -88,13 +104,26 @@ export async function PUT({ request, cookies }) {
   }
 
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
+
+  const existing = await getRpgState(username);
+  const base =
+    existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  const prevGraph =
+    base.graph && typeof base.graph === 'object' && !Array.isArray(base.graph) ? base.graph : {};
   const payload = {
+    ...base,
     graph: {
+      ...prevGraph,
+      ...body.graph,
       quests: body.graph.quests,
       edges: body.graph.edges,
     },
     addedIds,
     stepDone: body.stepDone,
+    schemaVersion: Math.max(
+      RPG_PAYLOAD_SCHEMA_VERSION,
+      coerceRpgPayloadSchemaVersion(base.schemaVersion)
+    ),
   };
 
   await saveRpgState(username, payload);

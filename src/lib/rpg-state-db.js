@@ -1,7 +1,16 @@
 import { getDb } from './db.js';
 
 /**
- * @typedef {{ graph: { quests: unknown[]; edges: unknown[] }; addedIds: string[]; stepDone: Record<string, Record<string, boolean>> }} RpgStoredPayload
+ * Server-Payload: Pflichtfelder unten; zusätzliche Top-Level-Keys (z. B. später Kategorien, KI-Meta)
+ * bleiben beim PUT erhalten, solange der Client sie nicht überschreibt (Merge mit vorherigem Stand).
+ *
+ * @typedef {{
+ *   graph: { quests: unknown[]; edges: unknown[] } & Record<string, unknown>;
+ *   addedIds: string[];
+ *   stepDone: Record<string, Record<string, boolean>>;
+ *   schemaVersion?: number;
+ *   [key: string]: unknown;
+ * }} RpgStoredPayload
  */
 
 /** @param {string} username */

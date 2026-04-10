@@ -14,7 +14,6 @@ import {
   migrateLocalRpgToServerIfNeeded,
   pickRpgPayloadFromResponse,
   persistRpgState,
-  resetRpgToDefaultOnServer,
 } from '../lib/rpg-server-sync.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import './rpg-quest-tree.css';
@@ -140,19 +139,6 @@ export default function RpgQuestTree() {
 
   const applyGraph = useCallback((next) => {
     setGraph(next);
-  }, []);
-
-  const restoreDefaultGraph = useCallback(async () => {
-    await resetRpgToDefaultOnServer();
-    const data = await fetchRpgBootstrap();
-    if (data) {
-      const { graph: g, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
-      setGraph(g);
-      setAdded(new Set(addedIds));
-      setStepDone(mergeStepDoneBase(buildInitialStepMapFromGraph(g), sd));
-    }
-    setSelectedId(null);
-    setEditorOpen(false);
   }, []);
 
   useEffect(() => {
@@ -391,9 +377,6 @@ export default function RpgQuestTree() {
             >
               + Quest
             </button>
-            <button type="button" class="rpg-tree__btn" onClick={restoreDefaultGraph}>
-              Standard
-            </button>
           </>
         )}
         <a href="/rpg">Zum Quest-Hub</a>
@@ -416,7 +399,9 @@ export default function RpgQuestTree() {
     return (
       <div class="rpg-tree">
         {topBar}
-        <p class="rpg-tree__empty">Keine Quests im Graph. Mit „+ Quest“ anlegen oder „Standard“ laden.</p>
+        <p class="rpg-tree__empty">
+          Keine Quests im Graph. „Bearbeiten“ aktivieren und mit „+ Quest“ eine Quest anlegen.
+        </p>
         {graphEditor}
       </div>
     );

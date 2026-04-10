@@ -74,6 +74,7 @@
 
 .rpg-tree-node {
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .rpg-tree-node--locked .rpg-tree-node__shape {
@@ -301,13 +302,15 @@
   padding: 2rem 1rem;
   padding-left: max(1rem, env(safe-area-inset-left, 0px));
   padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(2rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
   opacity: 0.5;
   font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 @media (max-width: 560px) {
   .rpg-tree-panel {
-    max-height: min(55dvh, 55svh);
+    max-height: min(58dvh, 58svh);
   }
 
   .rpg-tree-panel__title {
@@ -322,11 +325,40 @@
     font-size: 10px;
   }
 
+  .rpg-tree__top {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 0.5rem;
+  }
+
+  .rpg-tree__top-title {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .rpg-tree__top-actions {
+    max-width: none;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .rpg-tree__btn {
+    min-height: 44px;
+    padding: 0.5rem 0.75rem;
+    touch-action: manipulation;
+  }
+
   .rpg-tree__top a {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
-    padding: 0 0.25rem;
+    padding: 0 0.35rem;
+    touch-action: manipulation;
+  }
+
+  .rpg-tree-panel__edit-btn {
+    min-height: 48px;
+    touch-action: manipulation;
   }
 }
 
@@ -348,6 +380,7 @@
   color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   font-family: inherit;
+  touch-action: manipulation;
 }
 
 .rpg-tree__btn:hover {
@@ -408,7 +441,8 @@
 .rpg-graph-editor {
   width: 100%;
   max-width: 28rem;
-  max-height: min(92dvh, 92vh);
+  max-height: min(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px), 92vh);
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -442,8 +476,10 @@
 }
 
 .rpg-graph-editor__close {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 44px;
+  min-height: 44px;
   border: none;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
@@ -451,6 +487,7 @@
   font-size: 1.2rem;
   cursor: pointer;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .rpg-graph-editor__form {
@@ -511,6 +548,18 @@
   margin: 0.25rem 0;
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.45);
+}
+
+.rpg-graph-editor__warning {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #e8b86a;
+}
+
+.rpg-graph-editor__input--invalid {
+  border-color: rgba(232, 184, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(232, 184, 106, 0.2);
 }
 
 .rpg-graph-editor__checks {
@@ -575,4 +624,47 @@
   background: rgba(180, 60, 60, 0.2);
   border-color: rgba(255, 120, 120, 0.35);
   color: #ffb4b4;
+}
+
+@media (max-width: 559px) {
+  .rpg-graph-editor__form {
+    padding-bottom: max(1.25rem, calc(0.85rem + env(safe-area-inset-bottom, 0px)));
+  }
+
+  .rpg-graph-editor__input,
+  .rpg-graph-editor__textarea {
+    font-size: 16px;
+  }
+
+  .rpg-graph-editor__checks {
+    max-height: min(32dvh, 14rem);
+  }
+
+  .rpg-graph-editor__check {
+    padding: 0.35rem 0;
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .rpg-graph-editor__check input {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+  }
+
+  .rpg-graph-editor__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .rpg-graph-editor__actions .rpg-graph-editor__btn {
+    min-height: 48px;
+    width: 100%;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+
+  .rpg-graph-editor__actions .rpg-graph-editor__btn--danger {
+    margin-right: 0;
+  }
 }

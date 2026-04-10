@@ -1,0 +1,6 @@
+# RPG Quests — kommende Features
+
+Geplante oder naheliegende Erweiterungen (Priorität offen).
+
+- **DB-Backup** für `rpg_user_state` bzw. gesamte App-DB in Prod (Snapshots/Export; Git sichert nur Code).
+- **Und andere** — z. B. Monitoring bei fehlgeschlagenem Persist, Kategorien/Filter, Automatik, KI-Anbindung (siehe Haupt-Doku [`rpg-quests.mdc`](rpg-quests.mdc)).

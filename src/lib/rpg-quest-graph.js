@@ -12,7 +12,6 @@ export function isValidGraphShape(g) {
     !!g &&
     typeof g === 'object' &&
     Array.isArray(/** @type {any} */ (g).quests) &&
-    /** @type {any} */ (g).quests.length > 0 &&
     Array.isArray(/** @type {any} */ (g).edges)
   );
 }
@@ -191,8 +190,11 @@ export function computeLayeredLayout(graph, opts = {}) {
 export function upsertQuestInGraph(graph, quest, prerequisiteIds) {
   const ids = new Set((prerequisiteIds || []).filter((x) => typeof x === 'string'));
   ids.delete(quest.id);
+  const prev = (graph.quests || []).find((q) => q.id === quest.id);
+  const mergedQuest =
+    prev && typeof prev === 'object' ? { ...prev, ...quest } : quest;
   const quests = (graph.quests || []).filter((q) => q.id !== quest.id);
-  quests.push(quest);
+  quests.push(mergedQuest);
   const edges = (graph.edges || []).filter((e) => e.to !== quest.id);
   for (const from of ids) {
     if (quests.some((q) => q.id === from)) edges.push({ from, to: quest.id });
