@@ -809,14 +809,14 @@ export default function FraktaleSandbox() {
       <style>{`
         .fs-root {
           display: grid;
-          grid-template-columns: 1fr minmax(260px, 340px);
+          grid-template-columns: 1fr minmax(min(260px, 100%), 340px);
           gap: 1rem;
           align-items: start;
           width: 100%;
           min-width: 0;
-          max-width: 1200px;
+          max-width: min(1200px, 100%);
           margin: 0 auto;
-          padding: 0 0.5rem 1.5rem;
+          padding: 0 min(0.5rem, 2vw) 1.5rem;
           box-sizing: border-box;
         }
         .fs-visually-hidden {
@@ -990,6 +990,7 @@ export default function FraktaleSandbox() {
           font-size: 0.88rem;
           line-height: 1.55;
           color: rgba(255, 255, 255, 0.82);
+          overflow-wrap: break-word;
         }
         .fs-formula-numline {
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -999,6 +1000,7 @@ export default function FraktaleSandbox() {
           background: rgba(0, 0, 0, 0.35);
           border: 1px solid rgba(255, 255, 255, 0.08);
           color: rgba(230, 240, 255, 0.95);
+          overflow-wrap: break-word;
         }
         .fs-formula-hint {
           font-family: inherit;
@@ -1036,6 +1038,7 @@ export default function FraktaleSandbox() {
           font-size: 0.85rem;
           line-height: 1.55;
           color: rgba(255, 255, 255, 0.78);
+          overflow-wrap: break-word;
         }
         .fs-learn-body p:last-child {
           margin-bottom: 0;
@@ -1077,6 +1080,7 @@ export default function FraktaleSandbox() {
           color: rgba(255, 255, 255, 0.88);
           font-size: 0.9rem;
           line-height: 1.45;
+          min-width: 0;
         }
         .fs-row {
           margin-bottom: 1rem;

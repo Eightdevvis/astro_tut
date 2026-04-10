@@ -40,6 +40,14 @@ import '../../styles/global.css';
     color: rgba(255, 255, 255, 0.88);
   }
 
+  /* Flex-Children von body (global.css: flex column) dürfen schrumpfen, sonst overflow-x + Abschneiden */
+  header.fp-page-head,
+  .fp-root,
+  .fp-page-back {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .fp-page-head {
     max-width: 1200px;
     margin: 0 auto;
@@ -69,6 +77,7 @@ import '../../styles/global.css';
     line-height: 1.55;
     font-size: 0.95rem;
     opacity: 0.78;
+    overflow-wrap: break-word;
   }
 
   .fp-page-back {
@@ -110,6 +119,8 @@ import '../../styles/global.css';
     letter-spacing: 0.02em;
     text-align: center;
     flex: 1 1 12rem;
+    min-width: 0;
+    overflow-wrap: break-word;
   }
 
   .fp-blurb {
@@ -121,6 +132,7 @@ import '../../styles/global.css';
     max-width: 40rem;
     margin-left: auto;
     margin-right: auto;
+    overflow-wrap: break-word;
   }
 
   .fp-canvas-wrap {
@@ -282,6 +294,7 @@ import '../../styles/global.css';
     max-width: 42rem;
     margin-left: auto;
     margin-right: auto;
+    overflow-wrap: break-word;
   }
 
   .fp-disclaimer strong {
@@ -314,6 +327,7 @@ import '../../styles/global.css';
     font-size: 0.88rem;
     line-height: 1.45;
     opacity: 0.72;
+    overflow-wrap: break-word;
   }
 
   .fp-learn-body p {
@@ -321,6 +335,7 @@ import '../../styles/global.css';
     font-size: 0.9rem;
     line-height: 1.58;
     color: rgba(255, 255, 255, 0.84);
+    overflow-wrap: break-word;
   }
 
   .fp-learn-body p:last-child {
@@ -348,6 +363,11 @@ import '../../styles/global.css';
     font-size: 0.88rem;
     line-height: 1.5;
     color: rgba(255, 255, 255, 0.82);
+  }
+
+  .fp-learn-legend li > span:last-child {
+    min-width: 0;
+    overflow-wrap: break-word;
   }
 
   .fp-learn-legend li:last-child {
@@ -459,6 +479,8 @@ import '../../styles/global.css';
     font-size: 0.85rem;
     opacity: 0.72;
     line-height: 1.45;
+    min-width: 0;
+    overflow-wrap: break-word;
   }
 
   .fp-gloss-long {
@@ -469,6 +491,7 @@ import '../../styles/global.css';
     opacity: 0.82;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     padding-top: 0.65rem;
+    overflow-wrap: break-word;
   }
 
   @media (min-width: 768px) {

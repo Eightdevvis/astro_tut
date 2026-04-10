@@ -38,6 +38,13 @@ import '../../styles/global.css';
     color: rgba(255, 255, 255, 0.88);
   }
 
+  header.fs-page-head,
+  :global(.fs-root),
+  .fs-page-back {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .fs-page-head {
     max-width: 1200px;
     margin: 0 auto;
@@ -67,6 +74,7 @@ import '../../styles/global.css';
     line-height: 1.55;
     font-size: 0.95rem;
     opacity: 0.78;
+    overflow-wrap: break-word;
   }
 
   .fs-page-back {

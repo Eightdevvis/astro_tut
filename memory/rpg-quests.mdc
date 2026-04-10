@@ -1,0 +1,77 @@
+# RPG Quest-Hub (Sash)
+
+Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum** (Graph), gemeinsamer **Persistenz-Layer** (`localStorage`) für hinzugefügte Quests und Schritt-Fortschritt.
+
+## Routen & Zugriff
+
+- **Hub:** `/rpg` — volles eigenes HTML **ohne** `BaseLayout`; Zugriff nur eingeloggt als Superuser `sash` (Server-Redirect wie `/super/settings`).
+- **Quest-Baum:** `/rpg/tree` — gleiche Zugriffsregel.
+- **Deep-Link Baum:** `/rpg/tree?focus=<questId>` — zentriert die Node im Viewport, **öffnet kein** Detail-Panel.
+- **Einstieg von der Startseite:** kleiner Link in der **Veranda**, nur sichtbar wenn `/api/user` → `isSuperuser`.
+
+## Datenmodell
+
+### GET `/api/rpg/quests` (Superuser, 403 sonst)
+
+Antwort enthält **`graph`** plus optionale leere Legacy-Felder `main` / `side`:
+
+```json
+{
+  "main": [],
+  "side": [],
+  "graph": {
+    "quests": [GraphQuest],
+    "edges": [{ "from": "id", "to": "id" }]
+  }
+}
+```
+
+**GraphQuest** erweitert die bisherige Quest um **`kind`:** `"main"` | `"side"`.
+
+| Feld | Typ | Hinweis |
+|------|-----|---------|
+| `id` | string | stabil |
+| `kind` | `"main"` \| `"side"` | Main = Sechseck im Baum, Side = Kreis |
+| `title`, `description`, `steps`, `rewards` | wie zuvor | |
+
+**Kanten:** gerichtet von **Voraussetzung** (`from`) zu **abhängiger** Quest (`to`). Der Baum wächst **von unten nach oben** (Roots = keine eingehenden Kanten, gelten als **freigeschaltet**).
+
+**Freigeschaltet:** alle direkten Vorgänger-Quests sind zu **100 %** abgeschlossen (alle Schritte erledigt).
+
+**Hub-Liste:** nur Quests, die **per „Add“** in `localStorage` stehen **und** noch **nicht** completed sind. Abgeschlossene Quests **verschwinden** aus dem Hub (bleiben aber im Baum sichtbar, „fertig“-Stil).
+
+**Invariante:** Es gibt keinen Zustand „hinzugefügt, aber nicht freigeschaltet“ — Persistenz und Hub bereinigen `added` entsprechend.
+
+### Persistenz (Client)
+
+- `rpg-quest-added-ids` — JSON-Array von Quest-IDs.
+- `rpg-quest-step-done` — verschachteltes Objekt `{ [questId]: { [stepId]: true } }`.
+
+Module: `src/lib/rpg-persistence.js`.
+
+## Quest-Baum (UI)
+
+- **Canvas:** Pan (Pointer auf Hintergrund, nicht auf Nodes), Zoom (Rad). **Nodes sind nicht verschiebbar**; Layout kommt aus `computeLayeredLayout` in `src/lib/rpg-quest-graph.js`.
+- **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look.
+- **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
+- **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert.
+
+## Hub (UI)
+
+- Sidebar-Link **„Quest-Baum“** → `/rpg/tree`.
+- Pro Quest (Fokus + ausgeklappte Streifen): unten links **runder Link** mit Mini-Graph-SVG → `/rpg/tree?focus=<id>`.
+
+## Code-Übersicht
+
+| Teil | Pfade |
+|------|--------|
+| Sample-Graph | `src/lib/rpg-quests-data.js` (`SAMPLE_RPG_GRAPH`) |
+| Graph-Hilfen (Unlock, Layout, Fortschritt) | `src/lib/rpg-quest-graph.js` |
+| Persistenz | `src/lib/rpg-persistence.js` |
+| Hub | `src/components/RpgQuestHub.jsx`, `rpg-quest-hub.css` |
+| Baum | `src/components/RpgQuestTree.jsx`, `rpg-quest-tree.css` |
+| Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
+| API | `src/pages/api/rpg/quests.js` |
+| Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
+
+**KI später:** gleiche Payload-Form (`graph` + Quest-Felder); Generierung/Validierung (DAG, IDs) serverseitig.
