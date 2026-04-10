@@ -6,7 +6,13 @@ import {
   isQuestUnlocked,
   questProgress,
 } from '../lib/rpg-quest-graph.js';
-import { loadAddedIds, saveAddedIds, loadStepDone, saveStepDone } from '../lib/rpg-persistence.js';
+import {
+  loadAddedIds,
+  saveAddedIds,
+  loadStepDone,
+  saveStepDone,
+  loadCustomGraph,
+} from '../lib/rpg-persistence.js';
 import './rpg-quest-hub.css';
 
 function mergeStepDoneBase(serverBase, persisted) {
@@ -119,6 +125,15 @@ export default function RpgQuestHub() {
   }, [stepDone]);
 
   useEffect(() => {
+    const custom = loadCustomGraph();
+    if (custom?.quests?.length) {
+      /** @type {{ quests: typeof SAMPLE_RPG_GRAPH.quests; edges: typeof SAMPLE_RPG_GRAPH.edges }} */
+      const g = { quests: /** @type {typeof SAMPLE_RPG_GRAPH.quests} */ (custom.quests), edges: /** @type {typeof SAMPLE_RPG_GRAPH.edges} */ (custom.edges) };
+      setGraph(g);
+      const base = buildInitialStepMapFromGraph(g);
+      setStepDone((prev) => mergeStepDoneBase(base, prev));
+      return;
+    }
     fetch('/api/rpg/quests')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {

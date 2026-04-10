@@ -1,5 +1,6 @@
 const ADDED_KEY = 'rpg-quest-added-ids';
 const STEPS_KEY = 'rpg-quest-step-done';
+const GRAPH_CUSTOM_KEY = 'rpg-quest-graph-custom';
 
 /** @param {unknown} v */
 function parseJson(v, fallback) {
@@ -47,4 +48,33 @@ export function loadStepDone() {
 export function saveStepDone(stepDone) {
   if (typeof localStorage === 'undefined') return;
   localStorage.setItem(STEPS_KEY, JSON.stringify(stepDone));
+}
+
+/**
+ * @returns {{ quests: unknown[]; edges: unknown[] } | null}
+ */
+export function loadCustomGraph() {
+  if (typeof localStorage === 'undefined') return null;
+  const raw = parseJson(localStorage.getItem(GRAPH_CUSTOM_KEY), null);
+  if (!raw || typeof raw !== 'object') return null;
+  const quests = raw.quests;
+  const edges = raw.edges;
+  if (!Array.isArray(quests) || quests.length === 0) return null;
+  if (!Array.isArray(edges)) return null;
+  return { quests, edges };
+}
+
+/** @param {{ quests: unknown[]; edges: unknown[] }} graph */
+export function saveCustomGraph(graph) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(GRAPH_CUSTOM_KEY, JSON.stringify({ quests: graph.quests, edges: graph.edges }));
+  } catch {
+    /* quota */
+  }
+}
+
+export function clearCustomGraph() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(GRAPH_CUSTOM_KEY);
 }

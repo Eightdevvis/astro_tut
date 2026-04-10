@@ -1,5 +1,5 @@
 /** @typedef {{ id: string; label: string; done?: boolean }} RpgQuestStep */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards: string[] }} RpgGraphQuest */
+/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards: string[]; orderInLayer?: number }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
@@ -127,7 +127,19 @@ export function computeLayeredLayout(graph, opts = {}) {
     if (!byLevel.has(L)) byLevel.set(L, []);
     byLevel.get(L).push(id);
   }
-  for (const row of byLevel.values()) row.sort((a, b) => a.localeCompare(b));
+  const orderOf = (id) => {
+    const q = quests.find((x) => x.id === id);
+    const o = q?.orderInLayer;
+    return typeof o === 'number' && !Number.isNaN(o) ? o : 0;
+  };
+  for (const row of byLevel.values()) {
+    row.sort((a, b) => {
+      const da = orderOf(a);
+      const db = orderOf(b);
+      if (da !== db) return da - db;
+      return a.localeCompare(b);
+    });
+  }
 
   let maxRowW = 0;
   for (let L = 0; L <= maxL; L++) {
@@ -155,4 +167,58 @@ export function computeLayeredLayout(graph, opts = {}) {
   const width = padding * 2 + maxRowW + 80;
   const height = padding * 2 + (maxL + 1) * rowGap;
   return { positions, width, height, maxLevel: maxL };
+}
+
+/**
+ * @param {RpgGraph} graph
+ * @param {RpgGraphQuest} quest
+ * @param {string[]} prerequisiteIds — Kanten from → quest.id
+ */
+export function upsertQuestInGraph(graph, quest, prerequisiteIds) {
+  const ids = new Set((prerequisiteIds || []).filter((x) => typeof x === 'string'));
+  ids.delete(quest.id);
+  const quests = (graph.quests || []).filter((q) => q.id !== quest.id);
+  quests.push(quest);
+  const edges = (graph.edges || []).filter((e) => e.to !== quest.id);
+  for (const from of ids) {
+    if (quests.some((q) => q.id === from)) edges.push({ from, to: quest.id });
+  }
+  return { quests, edges };
+}
+
+/** @param {RpgGraph} graph @param {string} questId */
+export function removeQuestFromGraph(graph, questId) {
+  return {
+    quests: (graph.quests || []).filter((q) => q.id !== questId),
+    edges: (graph.edges || []).filter((e) => e.from !== questId && e.to !== questId),
+  };
+}
+
+/** @param {RpgGraph} graph */
+export function graphHasCycle(graph) {
+  /** @type {Map<string, string[]>} */
+  const out = new Map();
+  for (const q of graph.quests || []) out.set(q.id, []);
+  for (const e of graph.edges || []) {
+    if (!out.has(e.from)) out.set(e.from, []);
+    out.get(e.from).push(e.to);
+  }
+  const visiting = new Set();
+  const done = new Set();
+  /** @param {string} id */
+  function dfs(id) {
+    if (done.has(id)) return false;
+    if (visiting.has(id)) return true;
+    visiting.add(id);
+    for (const v of out.get(id) || []) {
+      if (dfs(v)) return true;
+    }
+    visiting.delete(id);
+    done.add(id);
+    return false;
+  }
+  for (const id of out.keys()) {
+    if (dfs(id)) return true;
+  }
+  return false;
 }

@@ -7,7 +7,16 @@ import {
   isQuestCompleted,
   questProgress,
 } from '../lib/rpg-quest-graph.js';
-import { loadAddedIds, saveAddedIds, loadStepDone, saveStepDone } from '../lib/rpg-persistence.js';
+import {
+  loadAddedIds,
+  saveAddedIds,
+  loadStepDone,
+  saveStepDone,
+  loadCustomGraph,
+  saveCustomGraph,
+  clearCustomGraph,
+} from '../lib/rpg-persistence.js';
+import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import './rpg-quest-tree.css';
 
 const PANEL_RESERVE_DESKTOP = 280;
@@ -59,6 +68,10 @@ export default function RpgQuestTree() {
   const [scale, setScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
+  const [editorQuestId, setEditorQuestId] = useState(/** @type {string | null} */ (null));
   const dragRef = useRef(/** @type {{ px: number; py: number; vx: number; vy: number } | null} */ (null));
   const viewportRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const didCenterFocusRef = useRef(false);
@@ -93,6 +106,14 @@ export default function RpgQuestTree() {
   );
 
   useEffect(() => {
+    const custom = loadCustomGraph();
+    if (custom?.quests?.length) {
+      setGraph({
+        quests: /** @type {typeof SAMPLE_RPG_GRAPH.quests} */ (custom.quests),
+        edges: /** @type {typeof SAMPLE_RPG_GRAPH.edges} */ (custom.edges),
+      });
+      return;
+    }
     fetch('/api/rpg/quests')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -102,6 +123,39 @@ export default function RpgQuestTree() {
       })
       .catch(() => {});
   }, []);
+
+  const applyGraph = useCallback((next) => {
+    setGraph(next);
+    saveCustomGraph(next);
+  }, []);
+
+  const restoreDefaultGraph = useCallback(() => {
+    clearCustomGraph();
+    setSelectedId(null);
+    setEditorOpen(false);
+    fetch('/api/rpg/quests')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.graph?.quests?.length) setGraph(data.graph);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const ids = new Set((graph.quests || []).map((q) => q.id));
+    setStepDone((prev) => {
+      let changed = false;
+      /** @type {typeof prev} */
+      const next = { ...prev };
+      for (const qid of Object.keys(next)) {
+        if (!ids.has(qid)) {
+          delete next[qid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [graph]);
 
   useEffect(() => {
     saveAddedIds(added);
@@ -307,24 +361,64 @@ export default function RpgQuestTree() {
   const panelAddLabel = selectedAdded ? 'Weg' : 'Add';
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
+  const topBar = (
+    <header class="rpg-tree__top">
+      <p class="rpg-tree__top-title">Quest-Baum</p>
+      <div class="rpg-tree__top-actions">
+        <button
+          type="button"
+          class={editMode ? 'rpg-tree__btn rpg-tree__btn--active' : 'rpg-tree__btn'}
+          onClick={() => setEditMode((v) => !v)}
+        >
+          Bearbeiten
+        </button>
+        {editMode && (
+          <>
+            <button
+              type="button"
+              class="rpg-tree__btn rpg-tree__btn--primary"
+              onClick={() => {
+                setEditorMode('create');
+                setEditorQuestId(null);
+                setEditorOpen(true);
+              }}
+            >
+              + Quest
+            </button>
+            <button type="button" class="rpg-tree__btn" onClick={restoreDefaultGraph}>
+              Standard
+            </button>
+          </>
+        )}
+        <a href="/rpg">Zum Quest-Hub</a>
+      </div>
+    </header>
+  );
+
+  const graphEditor = (
+    <RpgQuestGraphEditor
+      open={editorOpen}
+      mode={editorMode}
+      graph={graph}
+      questId={editorMode === 'edit' ? editorQuestId : null}
+      onClose={() => setEditorOpen(false)}
+      onApply={applyGraph}
+    />
+  );
+
   if (!graph.quests?.length) {
     return (
       <div class="rpg-tree">
-        <header class="rpg-tree__top">
-          <p class="rpg-tree__top-title">Quest-Baum</p>
-          <a href="/rpg">Zum Quest-Hub</a>
-        </header>
-        <p class="rpg-tree__empty">Kein Graph geladen.</p>
+        {topBar}
+        <p class="rpg-tree__empty">Keine Quests im Graph. Mit „+ Quest“ anlegen oder „Standard“ laden.</p>
+        {graphEditor}
       </div>
     );
   }
 
   return (
     <div class="rpg-tree">
-      <header class="rpg-tree__top">
-        <p class="rpg-tree__top-title">Quest-Baum</p>
-        <a href="/rpg">Zum Quest-Hub</a>
-      </header>
+      {topBar}
 
       <div
         ref={viewportRef}
@@ -506,10 +600,26 @@ export default function RpgQuestTree() {
                   </span>
                 ))}
               </div>
+              {editMode && (
+                <div class="rpg-tree-panel__edit">
+                  <button
+                    type="button"
+                    class="rpg-tree-panel__edit-btn"
+                    onClick={() => {
+                      setEditorMode('edit');
+                      setEditorQuestId(selectedQuest.id);
+                      setEditorOpen(true);
+                    }}
+                  >
+                    Quest bearbeiten …
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </aside>
       )}
+      {graphEditor}
     </div>
   );
 }
