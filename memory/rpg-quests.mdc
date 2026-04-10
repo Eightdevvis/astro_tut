@@ -1,6 +1,6 @@
 # RPG Quest-Hub (Sash)
 
-Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum** (Graph), gemeinsamer **Persistenz-Layer** (`localStorage`) für hinzugefügte Quests und Schritt-Fortschritt.
+Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum** (Graph), **serverseitige Persistenz** pro Superuser in SQLite/Turso (`rpg_user_state`). Beim ersten Besuch nach dem Update: einmalige **Migration** aus älterem `localStorage`, danach leeren der RPG-localStorage-Keys.
 
 ## Routen & Zugriff
 
@@ -13,18 +13,23 @@ Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum**
 
 ### GET `/api/rpg/quests` (Superuser, 403 sonst)
 
-Antwort enthält **`graph`** plus optionale leere Legacy-Felder `main` / `side`:
+Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (ob schon ein DB-Eintrag existiert), plus leere Legacy-Felder `main` / `side`:
 
 ```json
 {
   "main": [],
   "side": [],
-  "graph": {
-    "quests": [GraphQuest],
-    "edges": [{ "from": "id", "to": "id" }]
-  }
+  "graph": { "quests": [GraphQuest], "edges": [...] },
+  "addedIds": ["..."],
+  "stepDone": { "questId": { "stepId": true } },
+  "persisted": true
 }
 ```
+
+### PUT `/api/rpg/quests` (Superuser)
+
+- **`{ "resetToDefault": true }`** — löscht den gespeicherten State; nächstes GET liefert wieder den Sample-Graph.
+- **`{ "graph", "addedIds", "stepDone" }`** — vollständiger Ersatz des gespeicherten Snapshots (Debouncing ~450 ms im Client).
 
 **GraphQuest** erweitert die bisherige Quest um **`kind`:** `"main"` | `"side"`.
 
@@ -38,16 +43,21 @@ Antwort enthält **`graph`** plus optionale leere Legacy-Felder `main` / `side`:
 
 **Freigeschaltet:** alle direkten Vorgänger-Quests sind zu **100 %** abgeschlossen (alle Schritte erledigt).
 
-**Hub-Liste:** nur Quests, die **per „Add“** in `localStorage` stehen **und** noch **nicht** completed sind. Abgeschlossene Quests **verschwinden** aus dem Hub (bleiben aber im Baum sichtbar, „fertig“-Stil).
+**Hub-Liste:** nur Quests, die **per „Add“** in **`addedIds`** stehen **und** noch **nicht** completed sind. Abgeschlossene Quests **verschwinden** aus dem Hub (bleiben aber im Baum sichtbar, „fertig“-Stil).
 
-**Invariante:** Es gibt keinen Zustand „hinzugefügt, aber nicht freigeschaltet“ — Persistenz und Hub bereinigen `added` entsprechend.
+**Invariante:** Es gibt keinen Zustand „hinzugefügt, aber nicht freigeschaltet“ — Hub/Tree bereinigen `added` entsprechend.
 
-### Persistenz (Client)
+### Persistenz (Server)
 
-- `rpg-quest-added-ids` — JSON-Array von Quest-IDs.
-- `rpg-quest-step-done` — verschachteltes Objekt `{ [questId]: { [stepId]: true } }`.
+- Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: `graph`, `addedIds`, `stepDone`), `updated_at`.
+- Schema: `src/lib/db.js` (`ensureDbSchema`), manuell auch `scripts/init_db.cjs` / `scripts/init_turso.js`.
+- Client-Helfer: `src/lib/rpg-server-sync.js` (`fetchRpgBootstrap`, `persistRpgState`, Migration).
+- DB-Zugriff: `src/lib/rpg-state-db.js`.
 
-Module: `src/lib/rpg-persistence.js`.
+### Persistenz (Client, nur noch Migration / Altbestand)
+
+- Keys `rpg-quest-graph-custom`, `rpg-quest-added-ids`, `rpg-quest-step-done` werden nach erfolgreicher Migration mit `clearAllRpgLocalStorage()` entfernt.
+- Modul: `src/lib/rpg-persistence.js`.
 
 ## Quest-Baum (UI)
 
@@ -67,11 +77,12 @@ Module: `src/lib/rpg-persistence.js`.
 |------|--------|
 | Sample-Graph | `src/lib/rpg-quests-data.js` (`SAMPLE_RPG_GRAPH`) |
 | Graph-Hilfen (Unlock, Layout, Fortschritt) | `src/lib/rpg-quest-graph.js` |
-| Persistenz | `src/lib/rpg-persistence.js` |
+| Persistenz (lokal / Migration) | `src/lib/rpg-persistence.js` |
+| Server-Sync (Client) | `src/lib/rpg-server-sync.js` |
 | Hub | `src/components/RpgQuestHub.jsx`, `rpg-quest-hub.css` |
-| Baum | `src/components/RpgQuestTree.jsx`, `rpg-quest-tree.css` |
+| Baum + Editor-Modal | `RpgQuestTree.jsx`, `RpgQuestGraphEditor.jsx`, `rpg-quest-tree.css` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
-| API | `src/pages/api/rpg/quests.js` |
+| API | `src/pages/api/rpg/quests.js` (GET + PUT), `rpg-state-db.js` |
 | Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
 
 **KI später:** gleiche Payload-Form (`graph` + Quest-Felder); Generierung/Validierung (DAG, IDs) serverseitig.

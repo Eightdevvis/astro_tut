@@ -4,6 +4,20 @@
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
 /**
+ * @param {unknown} g
+ * @returns {g is RpgGraph}
+ */
+export function isValidGraphShape(g) {
+  return (
+    !!g &&
+    typeof g === 'object' &&
+    Array.isArray(/** @type {any} */ (g).quests) &&
+    /** @type {any} */ (g).quests.length > 0 &&
+    Array.isArray(/** @type {any} */ (g).edges)
+  );
+}
+
+/**
  * @param {RpgGraphQuest} quest
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
@@ -195,6 +209,28 @@ export function removeQuestFromGraph(graph, questId) {
 }
 
 /** @param {RpgGraph} graph */
+/** @param {RpgGraph} graph */
+export function buildInitialStepMapFromGraph(graph) {
+  /** @type {Record<string, Record<string, boolean>>} */
+  const m = {};
+  for (const q of graph.quests || []) {
+    m[q.id] = {};
+    for (const s of q.steps || []) {
+      if (s.done) m[q.id][s.id] = true;
+    }
+  }
+  return m;
+}
+
+/** @param {Record<string, Record<string, boolean>>} serverBase @param {Record<string, Record<string, boolean>>} persisted */
+export function mergeStepDoneBase(serverBase, persisted) {
+  const out = { ...serverBase };
+  for (const qid of Object.keys(persisted)) {
+    out[qid] = { ...(out[qid] || {}), ...persisted[qid] };
+  }
+  return out;
+}
+
 export function graphHasCycle(graph) {
   /** @type {Map<string, string[]>} */
   const out = new Map();

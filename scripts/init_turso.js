@@ -59,6 +59,12 @@ await db.executeMultiple(`
     payload    TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS rpg_user_state (
+    username   TEXT PRIMARY KEY,
+    payload    TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 console.log('✓ Alle Tabellen in Turso angelegt.');

@@ -5,35 +5,16 @@ import {
   isQuestCompleted,
   isQuestUnlocked,
   questProgress,
+  mergeStepDoneBase,
+  buildInitialStepMapFromGraph,
 } from '../lib/rpg-quest-graph.js';
 import {
-  loadAddedIds,
-  saveAddedIds,
-  loadStepDone,
-  saveStepDone,
-  loadCustomGraph,
-} from '../lib/rpg-persistence.js';
+  fetchRpgBootstrap,
+  migrateLocalRpgToServerIfNeeded,
+  pickRpgPayloadFromResponse,
+  persistRpgState,
+} from '../lib/rpg-server-sync.js';
 import './rpg-quest-hub.css';
-
-function mergeStepDoneBase(serverBase, persisted) {
-  const out = { ...serverBase };
-  for (const qid of Object.keys(persisted)) {
-    out[qid] = { ...(out[qid] || {}), ...persisted[qid] };
-  }
-  return out;
-}
-
-function buildInitialStepMapFromGraph(graph) {
-  /** @type {Record<string, Record<string, boolean>>} */
-  const m = {};
-  for (const q of graph.quests || []) {
-    m[q.id] = {};
-    for (const s of q.steps || []) {
-      if (s.done) m[q.id][s.id] = true;
-    }
-  }
-  return m;
-}
 
 function firstId(list) {
   return list?.[0]?.id ?? null;
@@ -108,43 +89,44 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
 
 export default function RpgQuestHub() {
   const [graph, setGraph] = useState(SAMPLE_RPG_GRAPH);
-  const [added, setAdded] = useState(() => loadAddedIds());
+  const [added, setAdded] = useState(() => new Set());
   const [category, setCategory] = useState(/** @type {'main' | 'side'} */ ('main'));
   const [focusedByCat, setFocusedByCat] = useState({ main: null, side: null });
   const [expanded, setExpanded] = useState(() => new Set());
   const [stepDone, setStepDone] = useState(() =>
-    mergeStepDoneBase(buildInitialStepMapFromGraph(SAMPLE_RPG_GRAPH), loadStepDone())
+    mergeStepDoneBase(buildInitialStepMapFromGraph(SAMPLE_RPG_GRAPH), {})
   );
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
-    saveAddedIds(added);
-  }, [added]);
-
-  useEffect(() => {
-    saveStepDone(stepDone);
-  }, [stepDone]);
-
-  useEffect(() => {
-    const custom = loadCustomGraph();
-    if (custom?.quests?.length) {
-      /** @type {{ quests: typeof SAMPLE_RPG_GRAPH.quests; edges: typeof SAMPLE_RPG_GRAPH.edges }} */
-      const g = { quests: /** @type {typeof SAMPLE_RPG_GRAPH.quests} */ (custom.quests), edges: /** @type {typeof SAMPLE_RPG_GRAPH.edges} */ (custom.edges) };
+    let cancelled = false;
+    (async () => {
+      let data = await fetchRpgBootstrap();
+      if (!data || cancelled) return;
+      data = await migrateLocalRpgToServerIfNeeded(data);
+      if (!data || cancelled) return;
+      const { graph: g, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
       setGraph(g);
-      const base = buildInitialStepMapFromGraph(g);
-      setStepDone((prev) => mergeStepDoneBase(base, prev));
-      return;
-    }
-    fetch('/api/rpg/quests')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.graph?.quests?.length) {
-          setGraph(data.graph);
-          const base = buildInitialStepMapFromGraph(data.graph);
-          setStepDone((prev) => mergeStepDoneBase(base, prev));
-        }
-      })
-      .catch(() => {});
+      setAdded(new Set(addedIds));
+      setStepDone(mergeStepDoneBase(buildInitialStepMapFromGraph(g), sd));
+      setBootstrapped(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!bootstrapped) return;
+    const t = setTimeout(() => {
+      persistRpgState({
+        graph,
+        addedIds: [...added],
+        stepDone,
+      });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [bootstrapped, graph, added, stepDone]);
 
   useEffect(() => {
     const m = questMap(graph);

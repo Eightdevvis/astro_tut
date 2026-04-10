@@ -6,16 +6,16 @@ import {
   isQuestUnlocked,
   isQuestCompleted,
   questProgress,
+  mergeStepDoneBase,
+  buildInitialStepMapFromGraph,
 } from '../lib/rpg-quest-graph.js';
 import {
-  loadAddedIds,
-  saveAddedIds,
-  loadStepDone,
-  saveStepDone,
-  loadCustomGraph,
-  saveCustomGraph,
-  clearCustomGraph,
-} from '../lib/rpg-persistence.js';
+  fetchRpgBootstrap,
+  migrateLocalRpgToServerIfNeeded,
+  pickRpgPayloadFromResponse,
+  persistRpgState,
+  resetRpgToDefaultOnServer,
+} from '../lib/rpg-server-sync.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import './rpg-quest-tree.css';
 
@@ -61,8 +61,11 @@ function nodeClass(quest, unlocked, added, completed) {
 
 export default function RpgQuestTree() {
   const [graph, setGraph] = useState(SAMPLE_RPG_GRAPH);
-  const [added, setAdded] = useState(() => loadAddedIds());
-  const [stepDone, setStepDone] = useState(() => loadStepDone());
+  const [added, setAdded] = useState(() => new Set());
+  const [stepDone, setStepDone] = useState(() =>
+    mergeStepDoneBase(buildInitialStepMapFromGraph(SAMPLE_RPG_GRAPH), {})
+  );
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [selectedId, setSelectedId] = useState(/** @type {string | null} */ (null));
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
@@ -106,39 +109,50 @@ export default function RpgQuestTree() {
   );
 
   useEffect(() => {
-    const custom = loadCustomGraph();
-    if (custom?.quests?.length) {
-      setGraph({
-        quests: /** @type {typeof SAMPLE_RPG_GRAPH.quests} */ (custom.quests),
-        edges: /** @type {typeof SAMPLE_RPG_GRAPH.edges} */ (custom.edges),
-      });
-      return;
-    }
-    fetch('/api/rpg/quests')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.graph?.quests?.length) {
-          setGraph(data.graph);
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    (async () => {
+      let data = await fetchRpgBootstrap();
+      if (!data || cancelled) return;
+      data = await migrateLocalRpgToServerIfNeeded(data);
+      if (!data || cancelled) return;
+      const { graph: g, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
+      setGraph(g);
+      setAdded(new Set(addedIds));
+      setStepDone(mergeStepDoneBase(buildInitialStepMapFromGraph(g), sd));
+      setBootstrapped(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!bootstrapped) return;
+    const t = setTimeout(() => {
+      persistRpgState({
+        graph,
+        addedIds: [...added],
+        stepDone,
+      });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [bootstrapped, graph, added, stepDone]);
 
   const applyGraph = useCallback((next) => {
     setGraph(next);
-    saveCustomGraph(next);
   }, []);
 
-  const restoreDefaultGraph = useCallback(() => {
-    clearCustomGraph();
+  const restoreDefaultGraph = useCallback(async () => {
+    await resetRpgToDefaultOnServer();
+    const data = await fetchRpgBootstrap();
+    if (data) {
+      const { graph: g, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
+      setGraph(g);
+      setAdded(new Set(addedIds));
+      setStepDone(mergeStepDoneBase(buildInitialStepMapFromGraph(g), sd));
+    }
     setSelectedId(null);
     setEditorOpen(false);
-    fetch('/api/rpg/quests')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.graph?.quests?.length) setGraph(data.graph);
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -156,14 +170,6 @@ export default function RpgQuestTree() {
       return changed ? next : prev;
     });
   }, [graph]);
-
-  useEffect(() => {
-    saveAddedIds(added);
-  }, [added]);
-
-  useEffect(() => {
-    saveStepDone(stepDone);
-  }, [stepDone]);
 
   const byId = useMemo(() => questMap(graph), [graph]);
   const layout = useMemo(

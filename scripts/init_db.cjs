@@ -91,6 +91,15 @@ db.serialize(() => {
   `);
   console.log('✓ fractal_snapshots-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rpg_user_state (
+      username   TEXT PRIMARY KEY,
+      payload    TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ rpg_user_state-Tabelle bereit.');
+
 });
 
 db.close();

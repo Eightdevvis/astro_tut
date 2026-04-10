@@ -78,3 +78,11 @@ export function clearCustomGraph() {
   if (typeof localStorage === 'undefined') return;
   localStorage.removeItem(GRAPH_CUSTOM_KEY);
 }
+
+/** Entfernt alle RPG-localStorage-Keys (nach Migration auf Server-Persistenz). */
+export function clearAllRpgLocalStorage() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(GRAPH_CUSTOM_KEY);
+  localStorage.removeItem(ADDED_KEY);
+  localStorage.removeItem(STEPS_KEY);
+}
