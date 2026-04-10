@@ -4,6 +4,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 
 | Thema | Details |
 |--------|---------|
+| Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
 | RPG Quest-Hub (Main/Side, Fokus, API für KI-Quests) | [`rpg-quests.mdc`](rpg-quests.mdc) |
 

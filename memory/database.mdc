@@ -1,0 +1,34 @@
+# Datenbank-Anbindung
+
+Eine zentrale Verbindung über **`src/lib/db.js`** (`@libsql/client`):
+
+| Umgebung | URL / Hinweis |
+|----------|----------------|
+| **Lokal** | `file:users.db` (SQLite-Datei im Projektroot), sofern `TURSO_URL` nicht gesetzt |
+| **Prod / Vercel** | **Turso**: `TURSO_URL` + `TURSO_AUTH_TOKEN` in der Umgebung — Serverless braucht eine echte Cloud-DB, nicht nur eine lokale Datei |
+
+- **`getDb()`** — Client pro Aufruf (libsql-typisch).
+- **`ensureDbSchema()`** — idempotentes Anlegen aller Tabellen (gleiches DDL wie in den Init-Skripten).
+
+## Init-Skripte (manuell / einmalig)
+
+- **`scripts/init_db.cjs`** — lokale `users.db` (sqlite3).
+- **`scripts/init_turso.js`** — Turso (`.env` mit `TURSO_*`).
+
+Schema-Änderungen: zuerst **`SCHEMA_DDL`** in `db.js` ergänzen, dann die beiden Skripte im gleichen Stil nachziehen.
+
+## Tabellen (Überblick)
+
+Vollständiges DDL nur in **`db.js`** / Init-Skripten; hier nur Namen:
+
+| Tabelle | Kurz |
+|---------|------|
+| `users` | Registrierung / Login |
+| `user_permissions` | Rechte pro User |
+| `quotes` | Zitate |
+| `site_settings` | Key-Value |
+| `custom_fonts` | Font-Blobs |
+| `fractal_snapshots` | Fraktal-Snapshots |
+| `rpg_user_state` | RPG Graph + `addedIds` + `stepDone` (Superuser `sash`) |
+
+**Auth** (JWT, Session-Cookie) ist getrennt dokumentiert im Code (`session.js`, `login.js`); die **User-Daten** liegen aber in derselben DB wie oben.

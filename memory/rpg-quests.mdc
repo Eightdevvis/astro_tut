@@ -1,6 +1,6 @@
 # RPG Quest-Hub (Sash)
 
-Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum** (Graph), **serverseitige Persistenz** pro Superuser in SQLite/Turso (`rpg_user_state`). Beim ersten Besuch nach dem Update: einmalige **Migration** aus älterem `localStorage`, danach leeren der RPG-localStorage-Keys.
+Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum** (Graph), **serverseitige Persistenz** pro Superuser in der **bestehenden** App-Datenbank (Tabelle `rpg_user_state`, siehe [`database.mdc`](database.mdc)). Beim ersten Besuch nach dem Update: einmalige **Migration** aus älterem `localStorage`, danach leeren der RPG-localStorage-Keys.
 
 ## Routen & Zugriff
 
@@ -50,9 +50,9 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 ### Persistenz (Server)
 
 - Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: `graph`, `addedIds`, `stepDone`), `updated_at`.
-- Schema: `src/lib/db.js` (`ensureDbSchema`), manuell auch `scripts/init_db.cjs` / `scripts/init_turso.js`.
+- Allgemeine **DB-Anbindung und Init**: [`database.mdc`](database.mdc).
 - Client-Helfer: `src/lib/rpg-server-sync.js` (`fetchRpgBootstrap`, `persistRpgState`, Migration).
-- DB-Zugriff: `src/lib/rpg-state-db.js`.
+- RPG-spezifischer DB-Zugriff: `src/lib/rpg-state-db.js`.
 
 ### Persistenz (Client, nur noch Migration / Altbestand)
 
