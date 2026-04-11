@@ -101,64 +101,101 @@ if (token) {
         padding: 0;
         margin: 0;
       }
-      .quote-item {
-        border: 1px solid rgba(173, 216, 230, 0.25);
+      /* Dezente „Streifen“ pro Zitat: kaum sichtbare Kante + leichte Fläche */
+      .quote-stripe {
+        margin-bottom: 0.5rem;
+        padding: 0.65rem 0 0.65rem 0.65rem;
+        border-radius: 4px;
+        border-left: 2px solid rgba(173, 216, 230, 0.14);
+        background: linear-gradient(
+          90deg,
+          rgba(173, 216, 230, 0.045) 0%,
+          rgba(255, 255, 255, 0.015) min(100%, 12rem),
+          transparent 100%
+        );
+        box-sizing: border-box;
+      }
+      .quote-stripe-inner {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+      .quote-stripe-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .quote-stripe-tools {
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.15rem;
+        padding-top: 0.1rem;
+      }
+      .quote-icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.75rem;
+        height: 2.75rem;
+        margin: 0;
+        padding: 0;
+        border: none;
         border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        background: rgba(173, 216, 230, 0.06);
+        background: transparent;
+        color: rgba(173, 216, 230, 0.55);
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .quote-icon-btn:hover,
+      .quote-icon-btn:focus-visible {
+        color: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.06);
+        outline: none;
+      }
+      .quote-icon-btn--danger {
+        color: rgba(255, 140, 130, 0.55);
+      }
+      .quote-icon-btn--danger:hover,
+      .quote-icon-btn--danger:focus-visible {
+        color: rgba(255, 170, 160, 0.95);
+        background: rgba(255, 80, 80, 0.12);
+      }
+      .quote-icon-btn svg {
+        display: block;
+        pointer-events: none;
       }
       .quote-item-text {
         color: rgba(255, 255, 255, 0.88);
-        font-size: 1rem;
-        line-height: 1.5;
+        font-size: 0.95rem;
+        line-height: 1.45;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
         text-transform: uppercase;
       }
       .quote-item-meta {
-        margin-top: 0.6rem;
-        font-size: clamp(0.68rem, 2.8vw, 0.8rem);
-        letter-spacing: 0.08em;
-        color: rgba(173, 216, 230, 0.55);
+        margin-top: 0.45rem;
+        font-size: clamp(0.65rem, 2.6vw, 0.78rem);
+        letter-spacing: 0.07em;
+        color: rgba(173, 216, 230, 0.48);
         overflow-wrap: anywhere;
       }
-      .quote-actions {
-        margin-top: 0.75rem;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-      }
-      .quote-actions button {
-        flex: 1;
-        min-width: min(100%, 8rem);
-        min-height: 2.75rem;
-        padding: 0.5rem 0.65rem;
-        background: rgba(173, 216, 230, 0.2);
-        border: 1px solid rgba(173, 216, 230, 0.45);
-        border-radius: 6px;
-        color: #fff;
-        font-size: max(0.8rem, 13px);
-        letter-spacing: 1px;
-        cursor: pointer;
-        text-transform: uppercase;
-        touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .quote-actions button:hover {
-        background: rgba(173, 216, 230, 0.35);
+      .quote-stripe--editing {
+        padding: 0.75rem 0.65rem 0.75rem 0.75rem;
       }
       textarea.edit-text {
         width: 100%;
-        min-height: 100px;
+        min-height: 96px;
         max-width: 100%;
-        background: rgba(173, 216, 230, 0.15);
-        border: 1px solid rgba(173, 216, 230, 0.4);
-        border-radius: 8px;
+        background: rgba(173, 216, 230, 0.1);
+        border: 1px solid rgba(173, 216, 230, 0.28);
+        border-radius: 6px;
         color: #fff;
         font-size: 1rem;
-        padding: 0.75rem;
+        padding: 0.65rem 0.7rem;
         resize: vertical;
         box-sizing: border-box;
         text-transform: uppercase;
@@ -166,22 +203,58 @@ if (token) {
       input.edit-author {
         width: 100%;
         max-width: 100%;
-        margin-top: 0.6rem;
+        margin-top: 0.5rem;
         min-height: 2.75rem;
-        padding: 0.6rem 0.75rem;
-        background: rgba(173, 216, 230, 0.12);
-        border: 1px solid rgba(173, 216, 230, 0.35);
-        border-radius: 8px;
+        padding: 0.55rem 0.7rem;
+        background: rgba(173, 216, 230, 0.08);
+        border: 1px solid rgba(173, 216, 230, 0.25);
+        border-radius: 6px;
         color: #fff;
         font-size: 1rem;
         box-sizing: border-box;
         text-transform: uppercase;
       }
+      .edit-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.6rem;
+      }
+      .edit-btn-primary,
+      .edit-btn-secondary {
+        min-height: 2.5rem;
+        padding: 0.35rem 0.9rem;
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        border-radius: 6px;
+        cursor: pointer;
+        text-transform: uppercase;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .edit-btn-primary {
+        border: 1px solid rgba(173, 216, 230, 0.45);
+        background: rgba(173, 216, 230, 0.18);
+        color: #fff;
+      }
+      .edit-btn-primary:hover {
+        background: rgba(173, 216, 230, 0.3);
+      }
+      .edit-btn-secondary {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: transparent;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      .edit-btn-secondary:hover {
+        color: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.05);
+      }
       .edit-msg {
-        margin-top: 0.5rem;
-        font-size: 0.8rem;
-        text-align: center;
-        letter-spacing: 1px;
+        margin-top: 0.45rem;
+        font-size: 0.75rem;
+        text-align: right;
+        letter-spacing: 0.06em;
       }
       .quote-new-link {
         position: fixed;
@@ -247,6 +320,11 @@ if (token) {
     {
       username && allowed ? (
         <script>
+          const ICON_PENCIL =
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+          const ICON_TRASH =
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+
           function attributionLabel(q: {
             author: string | null;
             username: string;
@@ -262,6 +340,13 @@ if (token) {
 
           const statusEl = document.getElementById('status') as HTMLElement | null;
           const listEl = document.getElementById('quoteList') as HTMLUListElement | null;
+
+          function refreshEmptyState() {
+            if (!statusEl || !listEl) return;
+            if (listEl.children.length === 0) {
+              statusEl.textContent = 'NOCH KEINE ZITATE.';
+            }
+          }
 
           async function load() {
             if (!statusEl || !listEl) return;
@@ -296,8 +381,14 @@ if (token) {
             created_at: string;
           }) {
             const li = document.createElement('li');
-            li.className = 'quote-item';
+            li.className = 'quote-stripe';
             li.dataset.id = String(q.id);
+
+            const inner = document.createElement('div');
+            inner.className = 'quote-stripe-inner';
+
+            const body = document.createElement('div');
+            body.className = 'quote-stripe-body';
 
             const textEl = document.createElement('div');
             textEl.className = 'quote-item-text';
@@ -307,20 +398,67 @@ if (token) {
             meta.className = 'quote-item-meta';
             meta.textContent = `${attributionLabel(q)} · ${formatDate(q.created_at)}`;
 
-            const actions = document.createElement('div');
-            actions.className = 'quote-actions';
+            body.appendChild(textEl);
+            body.appendChild(meta);
+
+            const tools = document.createElement('div');
+            tools.className = 'quote-stripe-tools';
+            tools.setAttribute('role', 'group');
+            tools.setAttribute('aria-label', 'Aktionen');
+
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
-            editBtn.textContent = 'BEARBEITEN';
+            editBtn.className = 'quote-icon-btn';
+            editBtn.title = 'Bearbeiten';
+            editBtn.setAttribute('aria-label', 'Bearbeiten');
+            editBtn.innerHTML = ICON_PENCIL;
             editBtn.addEventListener('click', () => {
               enterEdit(li, q);
             });
-            actions.appendChild(editBtn);
 
-            li.appendChild(textEl);
-            li.appendChild(meta);
-            li.appendChild(actions);
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'quote-icon-btn quote-icon-btn--danger';
+            delBtn.title = 'Löschen';
+            delBtn.setAttribute('aria-label', 'Löschen');
+            delBtn.innerHTML = ICON_TRASH;
+            delBtn.addEventListener('click', () => {
+              void deleteQuote(li, q, delBtn);
+            });
+
+            tools.appendChild(editBtn);
+            tools.appendChild(delBtn);
+
+            inner.appendChild(body);
+            inner.appendChild(tools);
+            li.appendChild(inner);
             return li;
+          }
+
+          async function deleteQuote(
+            li: HTMLLIElement,
+            q: { id: number },
+            btn: HTMLButtonElement
+          ) {
+            if (!confirm('Dieses Zitat wirklich löschen?')) return;
+            btn.disabled = true;
+            try {
+              const res = await fetch(`/api/quotes/${q.id}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok && data.success) {
+                li.remove();
+                refreshEmptyState();
+              } else {
+                alert((data.error || 'Löschen fehlgeschlagen').toString());
+                btn.disabled = false;
+              }
+            } catch {
+              alert('Netzwerk- oder Serverfehler');
+              btn.disabled = false;
+            }
           }
 
           function formatDate(iso: string) {
@@ -347,7 +485,9 @@ if (token) {
               created_at: string;
             }
           ) {
+            li.className = 'quote-stripe quote-stripe--editing';
             li.innerHTML = '';
+
             const ta = document.createElement('textarea');
             ta.className = 'edit-text';
             ta.value = q.text;
@@ -368,14 +508,17 @@ if (token) {
             msg.className = 'edit-msg';
 
             const row = document.createElement('div');
-            row.className = 'quote-actions';
+            row.className = 'edit-toolbar';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'edit-btn-secondary';
+            cancelBtn.textContent = 'ABBRECHEN';
 
             const saveBtn = document.createElement('button');
             saveBtn.type = 'button';
+            saveBtn.className = 'edit-btn-primary';
             saveBtn.textContent = 'SPEICHERN';
-            const cancelBtn = document.createElement('button');
-            cancelBtn.type = 'button';
-            cancelBtn.textContent = 'ABBRECHEN';
 
             const id = q.id;
 
@@ -422,8 +565,8 @@ if (token) {
               li.replaceWith(renderItem(q));
             });
 
-            row.appendChild(saveBtn);
             row.appendChild(cancelBtn);
+            row.appendChild(saveBtn);
             li.appendChild(ta);
             li.appendChild(auth);
             li.appendChild(msg);

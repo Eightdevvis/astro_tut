@@ -174,9 +174,11 @@ function LoginWidget() {
     <div style={containerStyle}>
       {/* Einziger Button: großes Human-Head-Icon, egal ob ein- oder ausgeloggt */}
       <button
+        type="button"
         style={iconButtonStyle}
         onClick={() => { setOpen(!open); setRegisterMode(false); setError(''); }}
-        title={user ? user.username : 'Login'}
+        aria-label={user ? `Konto (${user.username})` : 'Anmelden oder registrieren'}
+        title={user ? `Eingeloggt als ${user.username} — Konto öffnen` : 'Anmelden oder registrieren'}
       >
         {/* SVG Human Head Icon */}
         <svg width="38" height="38" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
