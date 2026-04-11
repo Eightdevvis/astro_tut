@@ -34,7 +34,15 @@ export async function GET({ cookies }) {
             FROM quotes WHERE username = ? ORDER BY datetime(created_at) DESC`,
       args: [username],
     });
-    return new Response(JSON.stringify({ quotes: result.rows ?? [] }), {
+    const raw = result.rows ?? [];
+    const quotes = raw.map((row) => ({
+      id: Number(row.id),
+      username: row.username,
+      text: row.text,
+      author: row.author ?? null,
+      created_at: row.created_at,
+    }));
+    return new Response(JSON.stringify({ quotes }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

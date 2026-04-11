@@ -443,9 +443,12 @@ if (token) {
             if (!confirm('Dieses Zitat wirklich löschen?')) return;
             btn.disabled = true;
             try {
-              const res = await fetch(`/api/quotes/${q.id}`, {
-                method: 'DELETE',
+              const id = Number(q.id);
+              const res = await fetch('/api/quotes/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
+                body: JSON.stringify({ id }),
               });
               const data = await res.json().catch(() => ({}));
               if (res.ok && data.success) {
