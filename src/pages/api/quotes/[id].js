@@ -3,7 +3,11 @@ import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 
-export async function POST({ request, cookies }) {
+/**
+ * PATCH /api/quotes/:id
+ * Text und angezeigten Autor bearbeiten — nur eigenes Zitat.
+ */
+export async function PATCH({ cookies, params, request }) {
   const token = cookies.get('session')?.value;
   if (!token) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), { status: 401 });
@@ -20,6 +24,11 @@ export async function POST({ request, cookies }) {
   const allowed = await hasPermission(username, 'quote_poster');
   if (!allowed) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
+  }
+
+  const id = Number(params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return new Response(JSON.stringify({ error: 'Ungültige ID' }), { status: 400 });
   }
 
   let body;
@@ -40,17 +49,22 @@ export async function POST({ request, cookies }) {
   try {
     await ensureDbSchema();
     const db = getDb();
-    const result = await db.execute({
-      sql: 'INSERT INTO quotes (username, text, author) VALUES (?, ?, ?)',
-      args: [username, String(text).trim(), authorTrim]
+    const chk = await db.execute({
+      sql: 'SELECT id FROM quotes WHERE id = ? AND username = ?',
+      args: [id, username],
+    });
+    if (!chk.rows?.length) {
+      return new Response(JSON.stringify({ error: 'Nicht gefunden' }), { status: 404 });
+    }
+
+    await db.execute({
+      sql: 'UPDATE quotes SET text = ?, author = ? WHERE id = ? AND username = ?',
+      args: [String(text).trim(), authorTrim, id, username],
     });
 
-    const rid = result.lastInsertRowid;
-    const id = rid === undefined || rid === null ? null : String(rid);
-
-    return new Response(JSON.stringify({ success: true, id }), { status: 201 });
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
   } catch (err) {
-    console.error('quotes/add', err);
+    console.error('quotes PATCH', err);
     return new Response(JSON.stringify({ error: 'Speichern fehlgeschlagen' }), { status: 500 });
   }
 }

@@ -54,6 +54,7 @@ db.serialize(() => {
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       username   TEXT NOT NULL,             -- wer hat es eingereicht
       text       TEXT NOT NULL,             -- das Zitat selbst
+      author     TEXT,                      -- angezeigter Urheber (optional; leer = keiner)
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);

@@ -34,6 +34,7 @@ await db.executeMultiple(`
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT NOT NULL,
     text       TEXT NOT NULL,
+    author     TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 

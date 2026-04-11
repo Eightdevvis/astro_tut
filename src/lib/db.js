@@ -39,6 +39,7 @@ const SCHEMA_DDL = `
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT NOT NULL,
     text       TEXT NOT NULL,
+    author     TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -74,6 +75,17 @@ const SCHEMA_DDL = `
 
 let schemaPromise = null;
 
+/** Bestehende DBs ohne Spalte: einmalig ALTER (idempotent). */
+async function ensureQuotesAuthorColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE quotes ADD COLUMN author TEXT');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     const db = createDbClient();
@@ -83,6 +95,7 @@ export async function ensureDbSchema() {
     });
   }
   await schemaPromise;
+  await ensureQuotesAuthorColumn();
 }
 
 export function getDb() {

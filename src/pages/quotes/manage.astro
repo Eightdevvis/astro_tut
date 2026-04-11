@@ -1,0 +1,444 @@
+---
+/**
+ * /quotes/manage — eigene Zitate listen und bearbeiten.
+ * Gleiche Auth wie /quotes/new (quote_poster).
+ */
+
+import { jwtVerify } from 'jose';
+import { hasPermission } from '../../lib/permissions.js';
+import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import '../../styles/global.css';
+
+const token = Astro.cookies.get('session')?.value;
+let username: string | null = null;
+let allowed = false;
+
+if (token) {
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecretBytes());
+    username = payload.username as string;
+    allowed = await hasPermission(username, 'quote_poster');
+  } catch {
+    // ungültig
+  }
+}
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MEINE ZITATE</title>
+    <SiteFontOverrides />
+    <style>
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        background: #000;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100dvh;
+        margin: 0;
+        font-family: var(--font-family);
+        padding-left: max(0.75rem, env(safe-area-inset-left));
+        padding-right: max(0.75rem, env(safe-area-inset-right));
+        padding-top: max(1rem, env(safe-area-inset-top));
+        padding-bottom: max(5rem, calc(env(safe-area-inset-bottom) + 3.5rem));
+        box-sizing: border-box;
+        overflow-x: hidden;
+      }
+      h1 {
+        font-family: var(--font-quote, 'Black Spiral');
+        font-size: clamp(1.75rem, 8vmin, 4rem);
+        line-height: 1.08;
+        margin-bottom: 1.25rem;
+        letter-spacing: 2px;
+        text-align: center;
+        word-break: break-word;
+        max-width: 100%;
+      }
+      .container {
+        width: 100%;
+        max-width: 600px;
+        flex: 1 0 auto;
+        box-sizing: border-box;
+      }
+      .no-permission {
+        text-align: center;
+        color: rgba(173, 216, 230, 0.8);
+        letter-spacing: 2px;
+      }
+      .no-permission p {
+        margin: 0 0 1rem;
+        max-width: 100%;
+        word-break: break-word;
+      }
+      .back {
+        display: block;
+        margin-top: 2rem;
+        color: rgba(255, 255, 255, 0.5);
+        text-align: center;
+        text-decoration: none;
+        letter-spacing: 1px;
+        font-size: 0.85rem;
+      }
+      .back:hover {
+        color: #fff;
+      }
+      #status {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.45);
+        font-size: 0.9rem;
+        letter-spacing: 1px;
+        margin-bottom: 1rem;
+      }
+      .quote-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .quote-item {
+        border: 1px solid rgba(173, 216, 230, 0.25);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: rgba(173, 216, 230, 0.06);
+      }
+      .quote-item-text {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 1rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        text-transform: uppercase;
+      }
+      .quote-item-meta {
+        margin-top: 0.6rem;
+        font-size: clamp(0.68rem, 2.8vw, 0.8rem);
+        letter-spacing: 0.08em;
+        color: rgba(173, 216, 230, 0.55);
+        overflow-wrap: anywhere;
+      }
+      .quote-actions {
+        margin-top: 0.75rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .quote-actions button {
+        flex: 1;
+        min-width: min(100%, 8rem);
+        min-height: 2.75rem;
+        padding: 0.5rem 0.65rem;
+        background: rgba(173, 216, 230, 0.2);
+        border: 1px solid rgba(173, 216, 230, 0.45);
+        border-radius: 6px;
+        color: #fff;
+        font-size: max(0.8rem, 13px);
+        letter-spacing: 1px;
+        cursor: pointer;
+        text-transform: uppercase;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .quote-actions button:hover {
+        background: rgba(173, 216, 230, 0.35);
+      }
+      textarea.edit-text {
+        width: 100%;
+        min-height: 100px;
+        max-width: 100%;
+        background: rgba(173, 216, 230, 0.15);
+        border: 1px solid rgba(173, 216, 230, 0.4);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1rem;
+        padding: 0.75rem;
+        resize: vertical;
+        box-sizing: border-box;
+        text-transform: uppercase;
+      }
+      input.edit-author {
+        width: 100%;
+        max-width: 100%;
+        margin-top: 0.6rem;
+        min-height: 2.75rem;
+        padding: 0.6rem 0.75rem;
+        background: rgba(173, 216, 230, 0.12);
+        border: 1px solid rgba(173, 216, 230, 0.35);
+        border-radius: 8px;
+        color: #fff;
+        font-size: 1rem;
+        box-sizing: border-box;
+        text-transform: uppercase;
+      }
+      .edit-msg {
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        text-align: center;
+        letter-spacing: 1px;
+      }
+      .quote-new-link {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.35rem max(0.75rem, env(safe-area-inset-right)) max(0.55rem, env(safe-area-inset-bottom))
+          max(0.75rem, env(safe-area-inset-left));
+        text-align: center;
+        z-index: 20;
+        font-size: clamp(0.68rem, 2.8vw, 0.75rem);
+        letter-spacing: 0.12em;
+        pointer-events: none;
+      }
+      .quote-new-link a {
+        color: rgba(173, 216, 230, 0.55);
+        text-decoration: none;
+        display: inline-block;
+        min-height: 2.75rem;
+        line-height: 2.75rem;
+        padding: 0 0.75rem;
+        pointer-events: auto;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .quote-new-link a:hover {
+        color: rgba(173, 216, 230, 0.95);
+      }
+    </style>
+  </head>
+  <body>
+    {
+      !username ? (
+        <div class="container no-permission">
+          <h1>HEY</h1>
+          <p>DU MUSST EINGELOGGT SEIN.</p>
+          <a href="/" class="back">
+            ← ZURÜCK
+          </a>
+        </div>
+      ) : !allowed ? (
+        <div class="container no-permission">
+          <h1>NOPE</h1>
+          <p>DU HAST KEINE BERECHTIGUNG.</p>
+          <a href="/" class="back">
+            ← ZURÜCK
+          </a>
+        </div>
+      ) : (
+        <>
+          <div class="container">
+            <h1>MEINE ZITATE</h1>
+            <div id="status">…</div>
+            <ul class="quote-list" id="quoteList" />
+          </div>
+          <div class="quote-new-link">
+            <a href="/quotes/new">NEUES ZITAT</a>
+          </div>
+        </>
+      )
+    }
+
+    {
+      username && allowed ? (
+        <script>
+          function attributionLabel(q: {
+            author: string | null;
+            username: string;
+          }) {
+            const a = q.author;
+            if (a !== null && a !== undefined) {
+              const t = String(a).trim();
+              if (t !== '') return t.toUpperCase();
+              return 'OHNE AUTOR';
+            }
+            return String(q.username).toUpperCase();
+          }
+
+          const statusEl = document.getElementById('status') as HTMLElement | null;
+          const listEl = document.getElementById('quoteList') as HTMLUListElement | null;
+
+          async function load() {
+            if (!statusEl || !listEl) return;
+            statusEl.textContent = '…';
+            listEl.innerHTML = '';
+            try {
+              const res = await fetch('/api/quotes/mine', { credentials: 'same-origin' });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                statusEl.textContent = (data.error || 'FEHLER').toUpperCase();
+                return;
+              }
+              const quotes = data.quotes || [];
+              if (quotes.length === 0) {
+                statusEl.textContent = 'NOCH KEINE ZITATE.';
+                return;
+              }
+              statusEl.textContent = '';
+              for (const q of quotes) {
+                listEl.appendChild(renderItem(q));
+              }
+            } catch {
+              statusEl.textContent = 'LADEN FEHLGESCHLAGEN';
+            }
+          }
+
+          function renderItem(q: {
+            id: number;
+            text: string;
+            author: string | null;
+            username: string;
+            created_at: string;
+          }) {
+            const li = document.createElement('li');
+            li.className = 'quote-item';
+            li.dataset.id = String(q.id);
+
+            const textEl = document.createElement('div');
+            textEl.className = 'quote-item-text';
+            textEl.textContent = q.text;
+
+            const meta = document.createElement('div');
+            meta.className = 'quote-item-meta';
+            meta.textContent = `${attributionLabel(q)} · ${formatDate(q.created_at)}`;
+
+            const actions = document.createElement('div');
+            actions.className = 'quote-actions';
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.textContent = 'BEARBEITEN';
+            editBtn.addEventListener('click', () => {
+              enterEdit(li, q);
+            });
+            actions.appendChild(editBtn);
+
+            li.appendChild(textEl);
+            li.appendChild(meta);
+            li.appendChild(actions);
+            return li;
+          }
+
+          function formatDate(iso: string) {
+            try {
+              const d = new Date(iso);
+              if (Number.isNaN(d.getTime())) return iso;
+              return d.toLocaleDateString('de-DE', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              });
+            } catch {
+              return iso;
+            }
+          }
+
+          function enterEdit(
+            li: HTMLLIElement,
+            q: {
+              id: number;
+              text: string;
+              author: string | null;
+              username: string;
+              created_at: string;
+            }
+          ) {
+            li.innerHTML = '';
+            const ta = document.createElement('textarea');
+            ta.className = 'edit-text';
+            ta.value = q.text;
+
+            const auth = document.createElement('input');
+            auth.type = 'text';
+            auth.className = 'edit-author';
+            auth.placeholder = 'AUTOR (LEER = KEINE ANGABE)';
+            auth.maxLength = 200;
+            auth.autocomplete = 'off';
+            if (q.author !== null && q.author !== undefined) {
+              auth.value = String(q.author);
+            } else {
+              auth.value = q.username;
+            }
+
+            const msg = document.createElement('div');
+            msg.className = 'edit-msg';
+
+            const row = document.createElement('div');
+            row.className = 'quote-actions';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.textContent = 'SPEICHERN';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.textContent = 'ABBRECHEN';
+
+            const id = q.id;
+
+            saveBtn.addEventListener('click', async () => {
+              const text = ta.value.trim();
+              if (!text) {
+                msg.style.color = 'salmon';
+                msg.textContent = 'ZITAT DARF NICHT LEER SEIN';
+                return;
+              }
+              saveBtn.disabled = true;
+              cancelBtn.disabled = true;
+              msg.textContent = '';
+              try {
+                const res = await fetch(`/api/quotes/${id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'same-origin',
+                  body: JSON.stringify({ text, author: auth.value }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success) {
+                  const updated = {
+                    ...q,
+                    text,
+                    author: auth.value.trim() === '' ? '' : auth.value.trim(),
+                  };
+                  li.replaceWith(renderItem(updated));
+                } else {
+                  msg.style.color = 'salmon';
+                  msg.textContent = (data.error || 'FEHLER').toUpperCase();
+                  saveBtn.disabled = false;
+                  cancelBtn.disabled = false;
+                }
+              } catch {
+                msg.style.color = 'salmon';
+                msg.textContent = 'NETZWERK- ODER SERVERFEHLER';
+                saveBtn.disabled = false;
+                cancelBtn.disabled = false;
+              }
+            });
+
+            cancelBtn.addEventListener('click', () => {
+              li.replaceWith(renderItem(q));
+            });
+
+            row.appendChild(saveBtn);
+            row.appendChild(cancelBtn);
+            li.appendChild(ta);
+            li.appendChild(auth);
+            li.appendChild(msg);
+            li.appendChild(row);
+          }
+
+          load();
+        </script>
+      ) : null
+    }
+
+    {username && allowed ? (
+      <a href="/" class="back" style="margin-top: auto;">
+        ← ZURÜCK
+      </a>
+    ) : null}
+  </body>
+</html>

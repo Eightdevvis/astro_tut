@@ -62,19 +62,38 @@ function QuoteDisplay() {
     );
   }
 
+  const attribution = getDisplayAttribution(quote);
+
   return (
     <div style={containerStyle}>
       <div style={textStyle}>„{quote.text}"</div>
-      <div style={authorStyle}>— {quote.username.toUpperCase()}</div>
+      {attribution ? (
+        <div style={authorStyle}>— {attribution.toUpperCase()}</div>
+      ) : null}
     </div>
   );
 }
 
+/** Angezeigter Urheber: gesetzter Autor; leerer String = keine Zeile; NULL = Legacy → Einreicher. */
+function getDisplayAttribution(quote) {
+  const a = quote.author;
+  if (a !== null && a !== undefined) {
+    const t = String(a).trim();
+    if (t !== '') return t;
+    return null;
+  }
+  return quote.username ? String(quote.username) : null;
+}
+
 const containerStyle = {
   textAlign: 'center',
-  padding: '2rem 3rem',
+  padding: 'clamp(1rem, 4vw, 2rem) clamp(0.75rem, 4vw, 3rem)',
+  paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+  paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
   maxWidth: 700,
   margin: '0 auto',
+  boxSizing: 'border-box',
+  width: '100%',
 };
 
 const textStyle = {
@@ -83,13 +102,16 @@ const textStyle = {
   fontStyle: 'italic',
   lineHeight: 1.6,
   letterSpacing: '0.05em',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 };
 
 const authorStyle = {
   marginTop: '0.75rem',
   color: 'rgba(173, 216, 230, 0.7)',
-  fontSize: '0.85rem',
+  fontSize: 'clamp(0.75rem, 2.5vw, 0.85rem)',
   letterSpacing: '0.15em',
+  overflowWrap: 'anywhere',
 };
 
 const placeholderStyle = {
