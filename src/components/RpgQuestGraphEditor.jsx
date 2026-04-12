@@ -15,7 +15,12 @@ import {
   isDraftStepMeaningful,
   ensureStepDraftFields,
   ensureRewardRowFields,
+  collectQuestmakerItemsFromDrafts,
 } from '../lib/rpg-quest-editor-draft.js';
+import {
+  collectAllItemIdsFromGraph,
+  normalizeQuestmakerCatalogPayloadItem,
+} from '../lib/rpg-questmaker-sync.js';
 import {
   addManualQuestDraft,
   removeManualQuestDraft,
@@ -34,7 +39,7 @@ export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
  *   graph: import('../lib/rpg-quest-graph.js').RpgGraph;
  *   questId: string | null;
  *   onClose: () => void;
- *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph) => void;
+ *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph, opts?: { questmakerItems?: { id: string; category: string; title: string; description: string }[] }) => void;
  *   createEntry?: 'manual' | 'questmaker';
  *   editEntry?: 'form' | 'ai';
  *   itemCatalog?: Record<string, { title?: string }>;
@@ -86,6 +91,10 @@ export default function RpgQuestGraphEditor({
   const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftListTick, setDraftListTick] = useState(0);
+  /** KI-generierte Katalog-Zeilen für neue Item-IDs (Merge mit manuellen Entwürfen beim Speichern). */
+  const aiQuestmakerItemsRef = useRef(
+    /** @type {{ id: string; category: string; title: string; description: string }[]} */ ([])
+  );
 
   const resetAiSession = () => {
     aiSeedRef.current = '';
@@ -105,9 +114,11 @@ export default function RpgQuestGraphEditor({
   useEffect(() => {
     if (!open) {
       aiSeedRef.current = '';
+      aiQuestmakerItemsRef.current = [];
       return;
     }
     if (mode === 'edit' && questId) {
+      aiQuestmakerItemsRef.current = [];
       const q = graph.quests.find((x) => x.id === questId);
       if (!q) return;
       setId(q.id);
@@ -306,7 +317,28 @@ export default function RpgQuestGraphEditor({
       window.alert('Diese Vorgänger würden einen Kreis erzeugen — bitte anpassen.');
       return;
     }
-    onApply(next);
+    const catalogIds = new Set(Object.keys(itemCatalog));
+    /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
+    const mergedMap = new Map();
+    for (const x of aiQuestmakerItemsRef.current) {
+      const n = normalizeQuestmakerCatalogPayloadItem(x);
+      if (n) mergedMap.set(n.id, n);
+    }
+    for (const x of collectQuestmakerItemsFromDrafts(stepDrafts, rewardRows, catalogIds)) {
+      mergedMap.set(x.id, x);
+    }
+    const needed = collectAllItemIdsFromGraph(next);
+    for (const id of needed) {
+      if (!catalogIds.has(id) && !mergedMap.has(id)) {
+        window.alert(
+          `Für die Item-ID „${id}“ fehlt eine vollständige Katalog-Definition (Kategorie, Anzeigename/Titel, Kurzbeschreibung). Bitte im Editor ausfüllen oder die KI erneut mit gültigen questmakerItems nutzen.`
+        );
+        return;
+      }
+    }
+    const toSend = [...mergedMap.values()].filter((row) => needed.has(row.id));
+    aiQuestmakerItemsRef.current = [];
+    onApply(next, toSend.length ? { questmakerItems: toSend } : undefined);
     setDraftsOpen(false);
     onClose();
   };
@@ -341,6 +373,10 @@ export default function RpgQuestGraphEditor({
         ? normalizeQuestRewards(data.questRewards)
         : rewardLines.map((text) => ({ type: 'text', text }));
     setRewardRows(questRewardsToDraftRows(entries));
+    const rawQm = Array.isArray(data.questmakerItems) ? data.questmakerItems : [];
+    aiQuestmakerItemsRef.current = rawQm
+      .map((x) => normalizeQuestmakerCatalogPayloadItem(x))
+      .filter(Boolean);
   };
 
   /**

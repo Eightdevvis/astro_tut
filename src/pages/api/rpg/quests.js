@@ -9,10 +9,13 @@ import {
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
 import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
-import { collectItemRewardRefsFromGraph } from '../../../lib/rpg-questmaker-sync.js';
 import {
-  insertMissingQuestmakerItems,
+  collectAllItemIdsFromGraph,
+  normalizeQuestmakerCatalogPayloadItem,
+} from '../../../lib/rpg-questmaker-sync.js';
+import {
   listQuestmakerCatalogRows,
+  upsertQuestmakerCatalogItems,
 } from '../../../lib/rpg-questmaker-catalog-db.js';
 
 function forbidden() {
@@ -71,7 +74,7 @@ export async function GET({ cookies }) {
 
 /**
  * PUT /api/rpg/quests — vollen RPG-State speichern oder auf Default zurücksetzen.
- * Body: { resetToDefault?: true } | { graph, addedIds, stepDone }
+ * Body: { resetToDefault?: true } | { graph, addedIds, stepDone, questmakerItems?: unknown[] }
  */
 export async function PUT({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
@@ -138,10 +141,38 @@ export async function PUT({ request, cookies }) {
     ),
   };
 
+  const rawQm = Array.isArray(body.questmakerItems) ? body.questmakerItems : [];
+  /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
+  const proposedMap = new Map();
+  for (const raw of rawQm) {
+    const row = normalizeQuestmakerCatalogPayloadItem(raw);
+    if (row) proposedMap.set(row.id, row);
+  }
+
+  const existingRows = await listQuestmakerCatalogRows();
+  const existingIds = new Set(existingRows.map((r) => r.id));
+  const needed = collectAllItemIdsFromGraph(body.graph);
+  /** @type {string[]} */
+  const missing = [];
+  for (const id of needed) {
+    if (existingIds.has(id)) continue;
+    if (!proposedMap.has(id)) missing.push(id);
+  }
+  if (missing.length > 0) {
+    return new Response(
+      JSON.stringify({
+        error:
+          'Für im Graph referenzierte Item-IDs fehlen vollständige Katalog-Einträge (category, title, description).',
+        missing,
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const toUpsert = [...proposedMap.values()].filter((row) => needed.has(row.id));
+  await upsertQuestmakerCatalogItems(toUpsert);
   await saveRpgState(username, payload);
 
-  const refs = collectItemRewardRefsFromGraph(body.graph);
-  await insertMissingQuestmakerItems(refs);
   const questmakerItems = await listQuestmakerCatalogRows();
 
   return new Response(JSON.stringify({ ok: true, questmakerItems }), {

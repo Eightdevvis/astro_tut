@@ -65,9 +65,8 @@ export async function fetchRpgBootstrap() {
   return res.json();
 }
 
-/** @param {{ graph: object; addedIds: string[]; stepDone: object }} payload */
 /**
- * @param {{ graph: object; addedIds: string[]; stepDone: object }} payload
+ * @param {{ graph: object; addedIds: string[]; stepDone: object; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
  * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }> }>}
  */
 export async function persistRpgState(payload) {

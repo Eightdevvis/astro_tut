@@ -31,5 +31,6 @@ Vollständiges DDL nur in **`db.js`** / Init-Skripten; hier nur Namen:
 | `fractal_snapshots` | Fraktal-Snapshots |
 | `rpg_user_state` | RPG Graph + `addedIds` + `stepDone` (Superuser `sash`) |
 | `rpg_questmaker_items` | Questmaker-Item-Katalog (`id`, Kategorie, Titel, Kurzbeschreibung); Anzeige für Item-Rewards |
+| `ai_usage_log` | KI-Token/Kosten pro User (`feature` z. B. `rpg`); siehe `src/lib/ai-usage-db.js`, UI `/settings` Tab KI-Nutzung |
 
 **Auth** (JWT, Session-Cookie) ist getrennt dokumentiert im Code (`session.js`, `login.js`); die **User-Daten** liegen aber in derselben DB wie oben.

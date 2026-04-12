@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import UserSettings from '../components/UserSettings.jsx';
+import { getUsernameFromCookies } from '../lib/session.js';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+if (!username) {
+  return Astro.redirect('/');
+}
+---
+
+<BaseLayout pageTitle="Einstellungen">
+  <UserSettings client:load />
+</BaseLayout>

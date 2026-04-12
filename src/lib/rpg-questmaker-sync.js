@@ -2,11 +2,38 @@
  * Questmaker-Katalog ↔ Quest-Graph: Referenzen sammeln, Map für UI.
  */
 
+import { isRpgItemCategoryId } from './rpg-item-categories.js';
 import {
   walkStepsPreOrder,
   normalizeRewardEntry,
   getQuestRewardEntries,
 } from './rpg-quest-steps.js';
+
+/**
+ * Vollständige Item-Zeile für DB / PUT (keine Platzhalter).
+ * @param {unknown} raw
+ * @returns {{ id: string; category: string; title: string; description: string } | null}
+ */
+export function normalizeQuestmakerCatalogPayloadItem(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  const id = typeof o.id === 'string' ? o.id.trim() : '';
+  if (!id) return null;
+  const title = typeof o.title === 'string' ? o.title.trim() : '';
+  const description = typeof o.description === 'string' ? o.description.trim() : '';
+  if (!title || !description) return null;
+  const catRaw = typeof o.category === 'string' ? o.category.trim() : '';
+  const category = isRpgItemCategoryId(catRaw) ? catRaw : 'sonstiges';
+  return { id, category, title, description };
+}
+
+/**
+ * @param {import('./rpg-quests-data.js').RpgGraph} graph
+ * @returns {Set<string>}
+ */
+export function collectAllItemIdsFromGraph(graph) {
+  return new Set([...collectItemRewardRefsFromGraph(graph).keys()]);
+}
 
 /**
  * @param {import('./rpg-quests-data.js').RpgGraph} graph
@@ -35,6 +62,26 @@ export function collectItemRewardRefsFromGraph(graph) {
     }
   }
   return refs;
+}
+
+/**
+ * Item-IDs aus einer Quest (Schritte + questRewards), z. B. für KI-Validierung.
+ * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[] | undefined} steps
+ * @param {import('./rpg-quest-steps.js').RpgQuestRewardEntry[] | undefined} questRewardEntries
+ * @returns {Set<string>}
+ */
+export function collectItemIdsFromStepsAndQuestRewards(steps, questRewardEntries) {
+  const ids = new Set();
+  walkStepsPreOrder(steps || [], (s) => {
+    const e = normalizeRewardEntry(s.reward);
+    if (e?.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
+  });
+  if (Array.isArray(questRewardEntries)) {
+    for (const e of questRewardEntries) {
+      if (e && e.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
+    }
+  }
+  return ids;
 }
 
 /**

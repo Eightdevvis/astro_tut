@@ -45,21 +45,22 @@ export async function listQuestmakerCatalogRows() {
 }
 
 /**
- * Nur fehlende IDs anlegen (Titel aus Quest-Referenz, Kategorie sonstiges).
- * @param {Map<string, { displayName?: string }>} refs
+ * Upsert vollständiger Katalog-Zeilen (keine Platzhalter — title/description Pflicht).
+ * @param {{ id: string; category: string; title: string; description: string }[]} items
  */
-export async function insertMissingQuestmakerItems(refs) {
-  if (refs.size === 0) return;
+export async function upsertQuestmakerCatalogItems(items) {
+  if (!items.length) return;
   const db = getDb();
-  for (const [id, meta] of refs) {
-    if (!id.trim()) continue;
-    const title = (meta.displayName && meta.displayName.trim()) || id;
-    const description = '';
-    const category = 'sonstiges';
+  for (const it of items) {
     await db.execute({
-      sql: `INSERT OR IGNORE INTO rpg_questmaker_items (id, category, title, description, updated_at)
-            VALUES (?, ?, ?, ?, datetime('now'))`,
-      args: [id, category, title, description],
+      sql: `INSERT INTO rpg_questmaker_items (id, category, title, description, updated_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+              category = excluded.category,
+              title = excluded.title,
+              description = excluded.description,
+              updated_at = datetime('now')`,
+      args: [it.id, it.category, it.title, it.description],
     });
   }
 }

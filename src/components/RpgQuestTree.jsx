@@ -74,6 +74,9 @@ export default function RpgQuestTree() {
   const itemCatalogRef = useRef(
     /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
   );
+  const questmakerBatchRef = useRef(
+    /** @type {{ id: string; category: string; title: string; description: string }[]} */ ([])
+  );
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [bootstrapped, setBootstrapped] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
@@ -206,7 +209,14 @@ export default function RpgQuestTree() {
   useEffect(() => {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone };
+      const batch = questmakerBatchRef.current;
+      questmakerBatchRef.current = [];
+      const payload = {
+        graph,
+        addedIds: [...added],
+        stepDone,
+        ...(batch.length ? { questmakerItems: batch } : {}),
+      };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok && r.itemCatalog) {
@@ -222,8 +232,19 @@ export default function RpgQuestTree() {
     return () => clearTimeout(t);
   }, [bootstrapped, canPersist, graph, added, stepDone]);
 
-  const applyGraph = useCallback((next) => {
+  const applyGraph = useCallback((next, opts) => {
     setGraph(next);
+    const extra = opts?.questmakerItems;
+    if (Array.isArray(extra) && extra.length > 0) {
+      const prev = questmakerBatchRef.current;
+      const byId = new Map(prev.map((x) => [x.id, x]));
+      for (const x of extra) {
+        if (x && typeof x === 'object' && typeof x.id === 'string' && x.id.trim()) {
+          byId.set(x.id.trim(), x);
+        }
+      }
+      questmakerBatchRef.current = [...byId.values()];
+    }
   }, []);
 
   const closeEditor = useCallback(() => {

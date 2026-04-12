@@ -4,6 +4,11 @@ import { ensureDbSchema } from '../../../lib/db.js';
 import { listQuestmakerCatalogRows } from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
 import { normalizeQuestStepsTree, normalizeQuestRewards } from '../../../lib/rpg-quest-steps.js';
+import {
+  collectItemIdsFromStepsAndQuestRewards,
+  normalizeQuestmakerCatalogPayloadItem,
+} from '../../../lib/rpg-questmaker-sync.js';
+import { AI_FEATURE_RPG, recordAiUsage } from '../../../lib/ai-usage-db.js';
 
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -31,7 +36,8 @@ Wenn "responseType":"quest":
 - "description": 1–3 Sätze Alltag / echtes Leben
 - "kind": "main" oder "side"
 - "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
-- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } (itemId nur aus ITEM_KATALOG wenn es passt, sonst Text-Reward)
+- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" }
+- "questmakerItems": Pflicht sobald du irgendwo eine **neue** itemId verwendest (nicht in ITEM_KATALOG): Array von { "id", "category", "title", "description" } — category eine von: alltag, studium, arbeit, gesundheit, beziehungen, organisation, sonstiges; title und description jeweils nicht leer (Kurzbeschreibung des Items).
 - "steps": Array aus Schritt-Objekten (siehe unten)
 
 Schritt-Objekt (rekursiv, "substeps" optional):
@@ -39,20 +45,20 @@ Schritt-Objekt (rekursiv, "substeps" optional):
 - "label": konkrete Handlung im echten Leben
 - "optional": boolean
 - "dependsOn": Array von ids anderer Schritte (gleiche Quest), die zuerst erledigt sein müssen; leer [] wenn keine Abhängigkeit
-- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } (item nur mit passender ITEM_KATALOG-Zeile)
+- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } — bei neuer itemId Eintrag in "questmakerItems" (siehe oben)
 - "timeDueAt": optional ISO-Datum "YYYY-MM-DD" nur wenn eine echte Frist sinnvoll ist (z. B. Bewerbungsende)
 - "substeps": optional Array weiterer Schritt-Objekte für Gruppen (Unterschritte)
 
 Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Keine Fantasy-Begriffe (keine Elfen, Mana, Questgeber im Sinne von RPG).
 
-Wenn ITEM_KATALOG leer ist oder kein Item passt: nutze nur Text-Rewards (type "text" oder kurze Strings in "rewards").`;
+Wenn ein passendes Item schon in ITEM_KATALOG steht, nutze dieselbe itemId. Wenn du ein neues Item brauchst: erfinde eine stabile slug-artige itemId und liefere die vollständige Zeile in "questmakerItems". Weder neue Items ohne questmakerItems noch leere description/title bei neuen Items.`;
 
 /** @param {{ id: string; category: string; title: string; description: string }[]} rows */
 function formatCatalogInstruction(rows) {
   if (!rows.length) {
     return `
 
-ITEM_KATALOG: (noch leer — nutze nur Text-Belohnungen in "rewards" / type "text".)`;
+ITEM_KATALOG: (noch leer — du darfst neue Items mit "questmakerItems" anlegen oder nur Text-Belohnungen nutzen.)`;
   }
   const lines = rows.map(
     (r) =>
@@ -60,7 +66,7 @@ ITEM_KATALOG: (noch leer — nutze nur Text-Belohnungen in "rewards" / type "tex
   );
   return `
 
-ITEM_KATALOG (bestehend — für type "item" nur itemId verwenden, wenn Titel/Beschreibung zur Quest passen; sonst Text-Reward):
+ITEM_KATALOG (bestehend — bei Treffer dieselbe itemId nutzen; sonst neue Id + vollständiger Eintrag in questmakerItems):
 ${lines.join('\n')}`;
 }
 
@@ -104,6 +110,19 @@ function forbidden() {
     status: 403,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+/**
+ * @param {string} username
+ * @param {string} model
+ * @param {unknown} completion
+ */
+async function logRpgAiUsage(username, model, completion) {
+  try {
+    await recordAiUsage({ username, feature: AI_FEATURE_RPG, model, completion });
+  } catch (e) {
+    console.error('ai_usage_log (rpg quests-generate):', e);
+  }
 }
 
 /**
@@ -239,6 +258,8 @@ export async function POST({ request, cookies }) {
     });
   }
 
+  await logRpgAiUsage(username, model, completion);
+
   const content = completion?.choices?.[0]?.message?.content;
   if (typeof content !== 'string' || !content.trim()) {
     return new Response(JSON.stringify({ error: 'Leere Modell-Antwort' }), {
@@ -322,6 +343,30 @@ export async function POST({ request, cookies }) {
     nid = fromAi;
   }
 
+  const catalogIds = new Set(catalogRows.map((r) => r.id));
+  const neededItemIds = collectItemIdsFromStepsAndQuestRewards(steps, questRewards);
+  const needsNewDefinition = [...neededItemIds].filter((id) => !catalogIds.has(id));
+  /** @type {{ id: string; category: string; title: string; description: string }[]} */
+  let questmakerItemsOut = [];
+  if (needsNewDefinition.length > 0) {
+    const rawQm = Array.isArray(parsed.questmakerItems) ? parsed.questmakerItems : [];
+    const normalizedQm = rawQm
+      .map((x) => normalizeQuestmakerCatalogPayloadItem(x))
+      .filter(Boolean);
+    const qmById = new Map(normalizedQm.map((x) => [x.id, x]));
+    const missingQm = needsNewDefinition.filter((id) => !qmById.has(id));
+    if (missingQm.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: 'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
+          detail: missingQm.join(', '),
+        }),
+        { status: 502, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    questmakerItemsOut = needsNewDefinition.map((id) => /** @type {any} */ (qmById.get(id)));
+  }
+
   return new Response(
     JSON.stringify({
       responseType: 'quest',
@@ -333,6 +378,7 @@ export async function POST({ request, cookies }) {
       steps,
       rewards: rewardStrings,
       questRewards,
+      questmakerItems: questmakerItemsOut,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
   );

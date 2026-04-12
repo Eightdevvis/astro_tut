@@ -2,7 +2,9 @@
  * Entwurfs-Modell für den Quest-Schritt-Editor (UI) ↔ API-Bäume (`rpg-quest-steps`).
  */
 
+import { isRpgItemCategoryId } from './rpg-item-categories.js';
 import { normalizeQuestStepsTree, normalizeRewardEntry } from './rpg-quest-steps.js';
+import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js';
 
 /**
  * @typedef {{
@@ -15,6 +17,8 @@ import { normalizeQuestStepsTree, normalizeRewardEntry } from './rpg-quest-steps
  *   rewardText: string;
  *   itemId: string;
  *   itemDisplayName: string;
+ *   itemCategory: string;
+ *   itemDescription: string;
  *   substepsOn: boolean;
  *   children: QuestStepDraft[];
  *   saved: boolean;
@@ -44,6 +48,8 @@ export function createEmptyStepDraft(saved = false) {
     rewardText: '',
     itemId: '',
     itemDisplayName: '',
+    itemCategory: '',
+    itemDescription: '',
     substepsOn: false,
     children: [],
     saved,
@@ -83,6 +89,8 @@ export function questNodeToDraft(node) {
     rewardText,
     itemId,
     itemDisplayName,
+    itemCategory: '',
+    itemDescription: '',
     substepsOn: subs,
     children: subs ? node.substeps.map(questNodeToDraft) : [],
     saved: true,
@@ -240,12 +248,28 @@ export function aiQuestNodesToDraftSteps(nodes) {
 }
 
 /**
- * @typedef {{ key: string; kind: 'text' | 'item'; text: string; itemId: string; displayName: string }} QuestRewardDraftRow
+ * @typedef {{
+ *   key: string;
+ *   kind: 'text' | 'item';
+ *   text: string;
+ *   itemId: string;
+ *   displayName: string;
+ *   itemCategory: string;
+ *   itemDescription: string;
+ * }} QuestRewardDraftRow
  */
 
 /** @returns {QuestRewardDraftRow} */
 export function createEmptyRewardRow() {
-  return { key: newDraftKey(), kind: 'text', text: '', itemId: '', displayName: '' };
+  return {
+    key: newDraftKey(),
+    kind: 'text',
+    text: '',
+    itemId: '',
+    displayName: '',
+    itemCategory: '',
+    itemDescription: '',
+  };
 }
 
 /**
@@ -264,6 +288,8 @@ export function ensureRewardRowFields(raw) {
       text: '',
       itemId: typeof r.itemId === 'string' ? r.itemId : '',
       displayName: typeof r.displayName === 'string' ? r.displayName : '',
+      itemCategory: typeof r.itemCategory === 'string' ? r.itemCategory : '',
+      itemDescription: typeof r.itemDescription === 'string' ? r.itemDescription : '',
     };
   }
   return {
@@ -272,6 +298,8 @@ export function ensureRewardRowFields(raw) {
     text: typeof r.text === 'string' ? r.text : '',
     itemId: '',
     displayName: '',
+    itemCategory: '',
+    itemDescription: '',
   };
 }
 
@@ -287,6 +315,8 @@ export function ensureStepDraftFields(raw) {
   }
   if (typeof d.itemId !== 'string') d.itemId = '';
   if (typeof d.itemDisplayName !== 'string') d.itemDisplayName = '';
+  if (typeof d.itemCategory !== 'string') d.itemCategory = '';
+  if (typeof d.itemDescription !== 'string') d.itemDescription = '';
   if (typeof d.rewardText !== 'string') d.rewardText = '';
   if (Array.isArray(d.children) && d.children.length > 0) {
     d.children = d.children.map((c) => ensureStepDraftFields(c));
@@ -308,6 +338,8 @@ export function questRewardsToDraftRows(entries) {
         text: '',
         itemId: e.itemId,
         displayName: e.displayName || '',
+        itemCategory: '',
+        itemDescription: '',
       };
     }
     return {
@@ -316,6 +348,8 @@ export function questRewardsToDraftRows(entries) {
       text: e.text,
       itemId: '',
       displayName: '',
+      itemCategory: '',
+      itemDescription: '',
     };
   });
 }
@@ -337,4 +371,55 @@ export function draftRewardRowsToQuestRewards(rows) {
     }
   }
   return out;
+}
+
+/**
+ * Vollständige Katalog-Zeilen aus Entwürfen (nur IDs, die noch nicht im Katalog sind).
+ * @param {QuestStepDraft[]} stepDrafts
+ * @param {QuestRewardDraftRow[]} rewardRows
+ * @param {Set<string> | Record<string, unknown>} catalogIdSet
+ * @returns {{ id: string; category: string; title: string; description: string }[]}
+ */
+export function collectQuestmakerItemsFromDrafts(stepDrafts, rewardRows, catalogIdSet) {
+  const inCatalog =
+    catalogIdSet instanceof Set
+      ? catalogIdSet
+      : new Set(Object.keys(/** @type {Record<string, unknown>} */ (catalogIdSet)));
+  /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
+  const map = new Map();
+  /** @param {QuestStepDraft} d */
+  function walk(d) {
+    if (d.rewardOn && d.rewardKind === 'item' && (d.itemId || '').trim()) {
+      const id = d.itemId.trim();
+      if (inCatalog.has(id)) return;
+      const row = {
+        id,
+        category: isRpgItemCategoryId((d.itemCategory || '').trim())
+          ? /** @type {string} */ ((d.itemCategory || '').trim())
+          : 'sonstiges',
+        title: (d.itemDisplayName || '').trim(),
+        description: (d.itemDescription || '').trim(),
+      };
+      const n = normalizeQuestmakerCatalogPayloadItem(row);
+      if (n) map.set(id, n);
+    }
+    for (const c of d.children || []) walk(c);
+  }
+  for (const d of stepDrafts) walk(d);
+  for (const r of rewardRows) {
+    if (r.kind !== 'item' || !(r.itemId || '').trim()) continue;
+    const id = r.itemId.trim();
+    if (inCatalog.has(id)) continue;
+    const row = {
+      id,
+      category: isRpgItemCategoryId((r.itemCategory || '').trim())
+        ? /** @type {string} */ ((r.itemCategory || '').trim())
+        : 'sonstiges',
+      title: (r.displayName || '').trim(),
+      description: (r.itemDescription || '').trim(),
+    };
+    const n = normalizeQuestmakerCatalogPayloadItem(row);
+    if (n) map.set(id, n);
+  }
+  return [...map.values()];
 }

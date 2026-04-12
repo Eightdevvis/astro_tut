@@ -4,6 +4,18 @@ import {
   createEmptyRewardRow,
   reorderDraftSteps,
 } from '../lib/rpg-quest-editor-draft.js';
+import { RPG_ITEM_CATEGORY_IDS } from '../lib/rpg-item-categories.js';
+
+/** @type {Record<string, string>} */
+const ITEM_CAT_UI = {
+  alltag: 'Alltag',
+  studium: 'Studium',
+  arbeit: 'Arbeit',
+  gesundheit: 'Gesundheit',
+  beziehungen: 'Beziehungen',
+  organisation: 'Organisation',
+  sonstiges: 'Sonstiges',
+};
 
 /**
  * @typedef {import('../lib/rpg-quest-editor-draft.js').QuestStepDraft} QuestStepDraft
@@ -172,6 +184,8 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                     rewardText: '',
                     itemId: '',
                     itemDisplayName: '',
+                    itemCategory: '',
+                    itemDescription: '',
                   }),
             });
           }}
@@ -225,6 +239,30 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 value={draft.itemDisplayName}
                 placeholder="Name in der Reward-Pill"
                 onInput={(ev) => update({ itemDisplayName: ev.currentTarget.value })}
+              />
+              <span class="rpg-step-card__field-label">Kategorie (Katalog)</span>
+              <select
+                class="rpg-graph-editor__input"
+                value={
+                  draft.itemCategory && RPG_ITEM_CATEGORY_IDS.includes(/** @type {any} */ (draft.itemCategory))
+                    ? draft.itemCategory
+                    : 'sonstiges'
+                }
+                onChange={(ev) => update({ itemCategory: ev.currentTarget.value })}
+              >
+                {RPG_ITEM_CATEGORY_IDS.map((cid) => (
+                  <option key={cid} value={cid}>
+                    {ITEM_CAT_UI[cid] ?? cid}
+                  </option>
+                ))}
+              </select>
+              <span class="rpg-step-card__field-label">Kurzbeschreibung (neue Items)</span>
+              <input
+                type="text"
+                class="rpg-graph-editor__input"
+                value={draft.itemDescription}
+                placeholder="Für den Katalog beim Speichern"
+                onInput={(ev) => update({ itemDescription: ev.currentTarget.value })}
               />
             </>
           )}
@@ -522,6 +560,36 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                     onInput={(ev) => {
                       const copy = [...rows];
                       copy[i] = { ...row, displayName: ev.currentTarget.value };
+                      onRowsChange(copy);
+                    }}
+                  />
+                  <select
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={
+                      row.itemCategory && RPG_ITEM_CATEGORY_IDS.includes(/** @type {any} */ (row.itemCategory))
+                        ? row.itemCategory
+                        : 'sonstiges'
+                    }
+                    onChange={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = { ...row, itemCategory: ev.currentTarget.value };
+                      onRowsChange(copy);
+                    }}
+                  >
+                    {RPG_ITEM_CATEGORY_IDS.map((cid) => (
+                      <option key={cid} value={cid}>
+                        {ITEM_CAT_UI[cid] ?? cid}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={row.itemDescription}
+                    placeholder="Kurzbeschreibung (neue Items)"
+                    onInput={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = { ...row, itemDescription: ev.currentTarget.value };
                       onRowsChange(copy);
                     }}
                   />
