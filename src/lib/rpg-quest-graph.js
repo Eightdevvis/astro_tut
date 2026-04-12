@@ -5,7 +5,7 @@ import {
   stepIsLeaf,
 } from './rpg-quest-steps.js';
 
-/** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string }} RpgQuestStep */
+/** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string; orderLinked?: boolean }} RpgQuestStep */
 /** @typedef {{ text: string; unlockAtPercent: number }} RpgQuestRewardEntry */
 /** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; orderInLayer?: number }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */

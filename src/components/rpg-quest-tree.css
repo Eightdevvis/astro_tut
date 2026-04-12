@@ -753,3 +753,378 @@
     margin-right: 0;
   }
 }
+
+/* —— Quest-Editor: Schritt-Builder (formularbasiert) —— */
+.rpg-graph-editor--wide {
+  max-width: min(36rem, calc(100vw - 1.25rem));
+}
+
+@media (min-width: 560px) {
+  .rpg-graph-editor--wide {
+    max-height: min(92vh, 760px);
+  }
+}
+
+.rpg-step-builder__section-head {
+  margin-bottom: 0.65rem;
+}
+
+.rpg-step-builder__section-title {
+  display: block;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  margin-bottom: 0.35rem;
+}
+
+.rpg-step-builder__section-intro {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.rpg-step-builder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.rpg-step-builder__list--nested {
+  margin-top: 0.45rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid rgba(126, 184, 218, 0.22);
+  gap: 0.55rem;
+}
+
+.rpg-step-card {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.75rem 0.85rem;
+  box-sizing: border-box;
+}
+
+.rpg-step-card--collapsed {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rpg-step-card__collapsed-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rpg-step-card__preview-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.35;
+}
+
+.rpg-step-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rpg-step-card__badge {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(126, 184, 218, 0.12);
+  color: #9ec8e6;
+  border: 1px solid rgba(126, 184, 218, 0.28);
+}
+
+.rpg-step-card__edit-btn {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #7eb8da;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rpg-step-card__edit-btn:hover {
+  background: rgba(126, 184, 218, 0.16);
+}
+
+.rpg-step-card__icon {
+  display: block;
+}
+
+.rpg-step-card--open .rpg-step-card__field {
+  margin-bottom: 0.65rem;
+}
+
+.rpg-step-card__field-label {
+  display: block;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  margin-bottom: 0.3rem;
+}
+
+.rpg-step-card__field--indented {
+  padding-left: 0.55rem;
+  border-left: 2px solid rgba(126, 184, 218, 0.2);
+  margin-left: 0.1rem;
+}
+
+.rpg-step-card__toggle {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  margin-bottom: 0.55rem;
+  line-height: 1.4;
+}
+
+.rpg-step-card__toggle input {
+  margin-top: 0.2rem;
+  accent-color: #7eb8da;
+  flex-shrink: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.rpg-step-card__nest {
+  margin-top: 0.25rem;
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.rpg-step-card__nest-label {
+  display: block;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  margin-bottom: 0.45rem;
+}
+
+.rpg-step-card__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.rpg-step-card__remove {
+  font-size: 0.78rem;
+}
+
+.rpg-step-builder__add-root,
+.rpg-step-builder__add-nested {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  border: 1px dashed rgba(126, 184, 218, 0.45);
+  background: rgba(126, 184, 218, 0.07);
+  color: #7eb8da;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-sizing: border-box;
+}
+
+.rpg-step-builder__add-nested {
+  width: auto;
+  margin-top: 0.45rem;
+}
+
+.rpg-step-builder__plus {
+  font-size: 1.25rem;
+  font-weight: 300;
+  line-height: 1;
+  opacity: 0.95;
+}
+
+.rpg-reward-builder__empty {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.42);
+  margin: 0 0 0.55rem;
+}
+
+.rpg-reward-builder__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.rpg-reward-builder__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.rpg-reward-builder__text {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.rpg-reward-builder__pct {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.rpg-reward-builder__pct-label {
+  white-space: nowrap;
+}
+
+.rpg-reward-builder__num {
+  width: 3.75rem;
+}
+
+.rpg-reward-builder__pct-suffix {
+  white-space: nowrap;
+}
+
+.rpg-reward-builder__del {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.rpg-reward-builder__del:hover {
+  background: rgba(180, 80, 80, 0.25);
+  color: #ffb4b4;
+}
+
+.rpg-reward-builder__add {
+  margin-top: 0.35rem;
+}
+
+/* Schritt-Liste: Zeile mit Zieh-Griff */
+.rpg-step-builder__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.rpg-step-builder__row--draggable .rpg-step-builder__drag-handle {
+  cursor: grab;
+}
+
+.rpg-step-builder__row--draggable:active .rpg-step-builder__drag-handle {
+  cursor: grabbing;
+}
+
+.rpg-step-builder__drag-handle {
+  flex: 0 0 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0.35rem;
+  color: rgba(255, 255, 255, 0.38);
+  align-self: flex-start;
+}
+
+.rpg-step-builder__grip-svg {
+  display: block;
+  opacity: 0.85;
+}
+
+.rpg-step-builder__drag-placeholder {
+  flex: 0 0 1.5rem;
+  min-height: 1rem;
+}
+
+.rpg-step-builder__card-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.rpg-step-card__order-block {
+  margin-bottom: 0.65rem;
+}
+
+.rpg-step-card__order-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.rpg-step-card__order-hint strong {
+  color: rgba(255, 255, 255, 0.58);
+  font-weight: 600;
+}
+
+.rpg-step-order-switch {
+  display: flex;
+  border-radius: 10px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 2px;
+}
+
+.rpg-step-order-switch__btn {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 0.48rem 0.55rem;
+  font: inherit;
+  font-size: 0.8rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rpg-step-order-switch__btn--on {
+  background: rgba(126, 184, 218, 0.2);
+  color: #d0e8f7;
+  box-shadow: 0 0 0 1px rgba(126, 184, 218, 0.35);
+}
+
+.rpg-step-order-switch__btn:hover:not(.rpg-step-order-switch__btn--on) {
+  color: rgba(255, 255, 255, 0.72);
+}

@@ -14,6 +14,7 @@
  *   dependsOn?: string[];
  *   reward?: string;
  *   done?: boolean;
+ *   orderLinked?: boolean;
  * }} RpgQuestStepNode
  */
 
@@ -36,6 +37,7 @@ function normalizeOneStep(raw, next) {
   let out = { id, label, optional };
   if (dependsOn.length) out = { ...out, dependsOn };
   if (reward) out = { ...out, reward };
+  if (o.orderLinked === true) out = { ...out, orderLinked: true };
   if (Array.isArray(subsRaw) && subsRaw.length > 0) {
     return { ...out, substeps: normalizeStepsArray(subsRaw, next) };
   }
@@ -151,11 +153,24 @@ export function isStepNodeComplete(quest, stepId, stepDone, visiting) {
   const qm = stepDone[quest.id] || {};
 
   if (!stepIsLeaf(node)) {
+    const vis = visiting ?? new Set();
+    if (vis.has(stepId)) return false;
+    vis.add(stepId);
+    for (const d of node.dependsOn || []) {
+      if (!isStepNodeComplete(quest, d, stepDone, vis)) {
+        vis.delete(stepId);
+        return false;
+      }
+    }
     const subs = node.substeps || [];
     for (const ch of subs) {
       if (ch.optional) continue;
-      if (!isStepNodeComplete(quest, ch.id, stepDone)) return false;
+      if (!isStepNodeComplete(quest, ch.id, stepDone, vis)) {
+        vis.delete(stepId);
+        return false;
+      }
     }
+    vis.delete(stepId);
     return true;
   }
 

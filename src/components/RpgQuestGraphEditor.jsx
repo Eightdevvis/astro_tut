@@ -5,12 +5,19 @@ import {
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
 import {
-  parseStepsFromEditorText,
-  parseQuestRewardsFromEditorText,
-  serializeStepsToEditorText,
-  serializeQuestRewardsToEditorText,
-  normalizeQuestId,
-} from '../lib/rpg-quest-form-helpers.js';
+  getQuestRewardEntries,
+  distributeQuestRewardPercents,
+  normalizeQuestRewards,
+} from '../lib/rpg-quest-steps.js';
+import {
+  questStepsToDrafts,
+  draftStepsToQuestNodes,
+  aiLabelsToDraftSteps,
+  questRewardsToDraftRows,
+  draftRewardRowsToQuestRewards,
+} from '../lib/rpg-quest-editor-draft.js';
+import { RpgQuestStepsBuilder, RpgQuestRewardsBuilder } from './RpgQuestStepsBuilder.jsx';
+import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
 export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
@@ -29,8 +36,10 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
   const [kind, setKind] = useState(/** @type {'main' | 'side'} */ ('side'));
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [stepsText, setStepsText] = useState('');
-  const [rewardsText, setRewardsText] = useState('');
+  /** @type {import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[]} */
+  const [stepDrafts, setStepDrafts] = useState([]);
+  /** @type {import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[]} */
+  const [rewardRows, setRewardRows] = useState([]);
   const [orderInLayer, setOrderInLayer] = useState(0);
   const [prereqIds, setPrereqIds] = useState(() => new Set());
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
@@ -47,8 +56,8 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setKind(q.kind === 'main' ? 'main' : 'side');
       setTitle(q.title || '');
       setDescription(q.description || '');
-      setStepsText(serializeStepsToEditorText(q.steps || []));
-      setRewardsText(serializeQuestRewardsToEditorText(q));
+      setStepDrafts(questStepsToDrafts(q.steps || []));
+      setRewardRows(questRewardsToDraftRows(getQuestRewardEntries(q)));
       setOrderInLayer(typeof q.orderInLayer === 'number' ? q.orderInLayer : 0);
       const preds = new Set();
       for (const e of graph.edges || []) {
@@ -60,8 +69,8 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setKind('side');
       setTitle('');
       setDescription('');
-      setStepsText('');
-      setRewardsText('');
+      setStepDrafts([]);
+      setRewardRows([]);
       setOrderInLayer(0);
       setPrereqIds(new Set());
       setCreateMode('manual');
@@ -100,24 +109,12 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     if (mode === 'create' && graph.quests.some((q) => q.id === nid)) {
       return;
     }
-    let steps;
-    try {
-      steps = parseStepsFromEditorText(stepsText);
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Schritte: ungültiges Format.');
-      return;
-    }
+    const steps = draftStepsToQuestNodes(stepDrafts);
     if (steps.length === 0) {
-      window.alert('Mindestens einen Schritt angeben (Zeile oder JSON-Array).');
+      window.alert('Bitte mindestens einen Schritt anlegen und speichern.');
       return;
     }
-    let questRewards;
-    try {
-      questRewards = parseQuestRewardsFromEditorText(rewardsText);
-    } catch {
-      window.alert('Rewards: ungültiges JSON oder leer.');
-      return;
-    }
+    const questRewards = draftRewardRowsToQuestRewards(rewardRows);
     const quest = {
       id: nid,
       kind,
@@ -182,12 +179,14 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setKind(data.kind === 'main' ? 'main' : 'side');
       setTitle(typeof data.title === 'string' ? data.title : '');
       setDescription(typeof data.description === 'string' ? data.description : '');
-      setStepsText(Array.isArray(data.stepLabels) ? data.stepLabels.join('\n') : '');
-      if (Array.isArray(data.questRewards) && data.questRewards.length > 0) {
-        setRewardsText(JSON.stringify(data.questRewards, null, 2));
-      } else {
-        setRewardsText(Array.isArray(data.rewards) ? data.rewards.join('\n') : '');
-      }
+      const labels = Array.isArray(data.stepLabels) ? data.stepLabels : [];
+      setStepDrafts(labels.length ? aiLabelsToDraftSteps(labels) : []);
+      const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
+      const entries =
+        Array.isArray(data.questRewards) && data.questRewards.length > 0
+          ? normalizeQuestRewards(data.questRewards)
+          : distributeQuestRewardPercents(rewardLines);
+      setRewardRows(questRewardsToDraftRows(entries));
     } catch {
       setAiError('Netzwerkfehler');
     } finally {
@@ -197,7 +196,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
 
   return (
     <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
-      <div class="rpg-graph-editor">
+      <div class="rpg-graph-editor rpg-graph-editor--wide">
         <div class="rpg-graph-editor__head">
           <h2 id="rpg-graph-editor-title" class="rpg-graph-editor__title">
             {mode === 'create' ? 'Neue Quest' : 'Quest bearbeiten'}
@@ -262,7 +261,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
                     </button>
                   </div>
                   <p class="rpg-graph-editor__hint">
-                    Nach dem Generieren kannst du alle Felder anpassen oder erneut generieren.
+                    Nach dem Generieren kannst du Schritte und Belohnungen hier anpassen.
                   </p>
                 </div>
               )}
@@ -306,24 +305,10 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
             <span class="rpg-graph-editor__label">Beschreibung</span>
             <textarea class="rpg-graph-editor__textarea" rows={3} value={description} onInput={(ev) => setDescription(ev.currentTarget.value)} />
           </label>
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Schritte</span>
-            <span class="rpg-graph-editor__hint">
-              Eine Zeile pro einfachem Schritt, oder JSON-Array <code class="rpg-graph-editor__code">[...]</code>{' '}
-              für Gruppen, <code class="rpg-graph-editor__code">substeps</code>, <code class="rpg-graph-editor__code">optional</code>,{' '}
-              <code class="rpg-graph-editor__code">dependsOn</code>, <code class="rpg-graph-editor__code">reward</code>.
-            </span>
-            <textarea class="rpg-graph-editor__textarea" rows={8} value={stepsText} onInput={(ev) => setStepsText(ev.currentTarget.value)} />
-          </label>
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Quest-Rewards (Fortschritt)</span>
-            <span class="rpg-graph-editor__hint">
-              Zeilen: gleichmäßige Freischaltung nach Quest-%. Oder JSON-Array mit{' '}
-              <code class="rpg-graph-editor__code">text</code> und{' '}
-              <code class="rpg-graph-editor__code">unlockAtPercent</code> (0–100).
-            </span>
-            <textarea class="rpg-graph-editor__textarea" rows={4} value={rewardsText} onInput={(ev) => setRewardsText(ev.currentTarget.value)} />
-          </label>
+
+          <RpgQuestStepsBuilder steps={stepDrafts} onStepsChange={setStepDrafts} />
+          <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
+
           <label class="rpg-graph-editor__field">
             <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
             <input
