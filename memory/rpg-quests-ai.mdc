@@ -21,7 +21,7 @@ Kurz: **Semantik** = System-Prompt, **JSON-Shape** = Schema-Zwang, **App-interne
 | `OPENAI_API_KEY` | Ja für KI | API-Key des Anbieters (nur Server; nie im Client). Ohne Key: `POST` liefert **503** mit Hinweis. |
 | `OPENAI_BASE_URL` | Nein | Basis-URL der **OpenAI-kompatiblen** Chat-API, ohne Pfad (Default: `https://api.openai.com/v1`). Ergänzt wird `/chat/completions`. Wenn `api.openai.com` nicht erreichbar (z. B. Festlandchina): eigenes Relay oder einen Anbieter mit erreichbarem Endpunkt setzen. |
 | `RPG_OPENAI_MODEL` | Nein | Chat-Modell (Default: `gpt-4o-mini`). Z. B. DeepSeek: `deepseek-chat`. |
-| `RPG_OPENAI_USE_JSON_SCHEMA` | Nein | `1`/unset = OpenAI **Structured Outputs** (`json_schema`). `0`/`false` = nur `json_object` (Kompatibilität mit APIs ohne Schema-Zwang, z. B. DeepSeek). |
+| `RPG_OPENAI_USE_JSON_SCHEMA` | Nein | Explizit `1`/`true` → `json_schema`; `0`/`false` → `json_object`. **Ohne Wert:** nur bei Host `api.openai.com` bzw. leerer `OPENAI_BASE_URL` → `json_schema`; sonst (z. B. DeepSeek) automatisch `json_object`, damit Vercel ohne Extra-Variable funktioniert. |
 
 Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production (z. B. Vercel): **Environment Variables** wie bei `JWT_SECRET` / Turso — nach dem Anlegen **neu deployen**. Die API-Route liest die Werte wie der Rest der App über **`import.meta.env`** (nicht `process.env`), damit Vercel/Astro sie zuverlässig an die Server-Function durchreichen.
 

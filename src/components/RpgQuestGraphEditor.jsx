@@ -149,10 +149,13 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         data = {};
       }
       if (!res.ok) {
-        const msg =
+        let msg =
           typeof data.error === 'string'
             ? data.error
             : `Generierung fehlgeschlagen (${res.status})`;
+        if (typeof data.detail === 'string' && data.detail.trim()) {
+          msg += `: ${data.detail.trim().slice(0, 400)}`;
+        }
         setAiError(msg);
         return;
       }

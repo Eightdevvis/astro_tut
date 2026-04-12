@@ -11,6 +11,19 @@ function chatCompletionsUrl(raw) {
   return `${base}/chat/completions`;
 }
 
+/**
+ * `json_schema` nur für echtes OpenAI-API; DeepSeek u. a. nur `json_object`.
+ * Wenn `RPG_OPENAI_USE_JSON_SCHEMA` fehlt: bei Base-URL ≠ api.openai.com → json_object (sonst 400 auf Vercel).
+ */
+function resolveUseJsonSchema(env) {
+  const f = String(env.RPG_OPENAI_USE_JSON_SCHEMA ?? '').toLowerCase();
+  if (f === '0' || f === 'false') return false;
+  if (f === '1' || f === 'true') return true;
+  const base = String(env.OPENAI_BASE_URL ?? '').trim();
+  if (!base || base.includes('api.openai.com')) return true;
+  return false;
+}
+
 /** Wenn kein json_schema (z. B. DeepSeek): nur json_object — Prompt ergänzt das Format. */
 const JSON_OBJECT_PROMPT_SUFFIX = `
 
@@ -129,9 +142,7 @@ export async function POST({ request, cookies }) {
 
   const model = String(env.RPG_OPENAI_MODEL ?? '').trim() || DEFAULT_MODEL;
   const baseUrl = env.OPENAI_BASE_URL;
-  const useJsonSchema =
-    env.RPG_OPENAI_USE_JSON_SCHEMA !== '0' &&
-    String(env.RPG_OPENAI_USE_JSON_SCHEMA ?? '').toLowerCase() !== 'false';
+  const useJsonSchema = resolveUseJsonSchema(env);
 
   const systemContent = useJsonSchema ? SYSTEM_PROMPT : SYSTEM_PROMPT + JSON_OBJECT_PROMPT_SUFFIX;
   const responseFormat = useJsonSchema
