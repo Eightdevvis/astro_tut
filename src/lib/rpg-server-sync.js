@@ -11,6 +11,7 @@ import {
   buildInitialStepMapFromGraph,
 } from './rpg-quest-graph.js';
 import { migrateRpgGraphToV2 } from './rpg-quest-steps.js';
+import { questmakerCatalogToDisplayMap } from './rpg-questmaker-sync.js';
 
 export { isValidGraphShape };
 
@@ -30,13 +31,17 @@ export function loadSessionCachedPayload() {
     const addedIds = Array.isArray(parsed.addedIds) ? parsed.addedIds : [];
     const stepDone =
       parsed.stepDone && typeof parsed.stepDone === 'object' ? parsed.stepDone : {};
-    return { graph: parsed.graph, addedIds, stepDone };
+    const itemCatalog =
+      parsed.itemCatalog && typeof parsed.itemCatalog === 'object' && !Array.isArray(parsed.itemCatalog)
+        ? parsed.itemCatalog
+        : {};
+    return { graph: parsed.graph, addedIds, stepDone, itemCatalog };
   } catch {
     return null;
   }
 }
 
-/** @param {{ graph: object; addedIds: string[]; stepDone: object }} payload */
+/** @param {{ graph: object; addedIds: string[]; stepDone: object; itemCatalog?: Record<string, unknown> }} payload */
 export function saveSessionCachedPayload(payload) {
   if (typeof sessionStorage === 'undefined') return;
   try {
@@ -46,6 +51,7 @@ export function saveSessionCachedPayload(payload) {
         graph: payload.graph,
         addedIds: payload.addedIds,
         stepDone: payload.stepDone,
+        itemCatalog: payload.itemCatalog && typeof payload.itemCatalog === 'object' ? payload.itemCatalog : {},
       })
     );
   } catch {
@@ -60,6 +66,10 @@ export async function fetchRpgBootstrap() {
 }
 
 /** @param {{ graph: object; addedIds: string[]; stepDone: object }} payload */
+/**
+ * @param {{ graph: object; addedIds: string[]; stepDone: object }} payload
+ * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }> }>}
+ */
 export async function persistRpgState(payload) {
   const res = await fetch('/api/rpg/quests', {
     method: 'PUT',
@@ -73,8 +83,19 @@ export async function persistRpgState(payload) {
     } catch {
       console.warn('[rpg] persist failed', res.status);
     }
+    return { ok: false };
   }
-  return res.ok;
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    /* */
+  }
+  const itemCatalog =
+    data.questmakerItems && Array.isArray(data.questmakerItems)
+      ? questmakerCatalogToDisplayMap(data.questmakerItems)
+      : undefined;
+  return itemCatalog ? { ok: true, itemCatalog } : { ok: true };
 }
 
 export async function resetRpgToDefaultOnServer() {
@@ -100,13 +121,15 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
   if (!hasLocal) return data;
   const graph = (g?.quests?.length ?? 0) > 0 ? { quests: g.quests, edges: g.edges || [] } : data.graph;
   if (!isValidGraphShape(graph)) return data;
-  const ok = await persistRpgState({
+  const result = await persistRpgState({
     graph,
     addedIds: added,
     stepDone: steps,
   });
-  if (ok) {
+  if (result.ok) {
     clearAllRpgLocalStorage();
+    const fresh = await fetchRpgBootstrap();
+    if (fresh) return fresh;
     return {
       ...data,
       persisted: true,
@@ -124,15 +147,26 @@ export function pickRpgPayloadFromResponse(data) {
   const graph = migrateRpgGraphToV2(raw);
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
-  return { graph, addedIds, stepDone, persisted: !!data?.persisted };
+  /** @type {Record<string, { title: string; category: string; description: string }>} */
+  let itemCatalog = {};
+  if (data?.questmakerItems && Array.isArray(data.questmakerItems)) {
+    itemCatalog = questmakerCatalogToDisplayMap(data.questmakerItems);
+  } else if (
+    data?.itemCatalog &&
+    typeof data.itemCatalog === 'object' &&
+    !Array.isArray(data.itemCatalog)
+  ) {
+    itemCatalog = /** @type {typeof itemCatalog} */ (data.itemCatalog);
+  }
+  return { graph, addedIds, stepDone, persisted: !!data?.persisted, itemCatalog };
 }
 
 /**
  * @param {any} data GET-Antwort oder null (Sample-Fallback)
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>> }}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
  */
 export function deriveRpgUiStateFromPayload(data) {
-  const { graph, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
+  const { graph, addedIds, stepDone: sd, itemCatalog } = pickRpgPayloadFromResponse(data);
   const stepDone = mergeStepDoneBase(buildInitialStepMapFromGraph(graph), sd);
-  return { graph, added: new Set(addedIds), stepDone };
+  return { graph, added: new Set(addedIds), stepDone, itemCatalog };
 }

@@ -2,7 +2,7 @@
  * Entwurfs-Modell für den Quest-Schritt-Editor (UI) ↔ API-Bäume (`rpg-quest-steps`).
  */
 
-import { normalizeQuestStepsTree } from './rpg-quest-steps.js';
+import { normalizeQuestStepsTree, normalizeRewardEntry } from './rpg-quest-steps.js';
 
 /**
  * @typedef {{
@@ -11,7 +11,10 @@ import { normalizeQuestStepsTree } from './rpg-quest-steps.js';
  *   title: string;
  *   optional: boolean;
  *   rewardOn: boolean;
+ *   rewardKind: 'text' | 'item';
  *   rewardText: string;
+ *   itemId: string;
+ *   itemDisplayName: string;
  *   substepsOn: boolean;
  *   children: QuestStepDraft[];
  *   saved: boolean;
@@ -37,7 +40,10 @@ export function createEmptyStepDraft(saved = false) {
     title: '',
     optional: false,
     rewardOn: false,
+    rewardKind: 'text',
     rewardText: '',
+    itemId: '',
+    itemDisplayName: '',
     substepsOn: false,
     children: [],
     saved,
@@ -61,13 +67,22 @@ export function questNodeToDraft(node) {
         ? [...node.dependsOn]
         : undefined;
   const due = typeof node.timeDueAt === 'string' && node.timeDueAt.trim() ? node.timeDueAt.trim().slice(0, 10) : '';
+  const rent = normalizeRewardEntry(node.reward);
+  const rewardOn = !!rent;
+  const rewardKind = rent && rent.type === 'item' ? 'item' : 'text';
+  const rewardText = rent && rent.type === 'text' ? rent.text : '';
+  const itemId = rent && rent.type === 'item' ? rent.itemId : '';
+  const itemDisplayName = rent && rent.type === 'item' && rent.displayName ? rent.displayName : '';
   return {
     key: node.id || newDraftKey(),
     stableId: typeof node.id === 'string' ? node.id : undefined,
     title: typeof node.label === 'string' ? node.label : '',
     optional: !!node.optional,
-    rewardOn: !!(typeof node.reward === 'string' && node.reward.trim()),
-    rewardText: typeof node.reward === 'string' ? node.reward : '',
+    rewardOn,
+    rewardKind,
+    rewardText,
+    itemId,
+    itemDisplayName,
     substepsOn: subs,
     children: subs ? node.substeps.map(questNodeToDraft) : [],
     saved: true,
@@ -125,8 +140,17 @@ export function reorderDraftSteps(arr, fromIdx, toIdx) {
 function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
   const label = (d.title || '').trim() || 'Schritt';
   const optional = !!d.optional;
-  const reward =
-    d.rewardOn && (d.rewardText || '').trim() ? (d.rewardText || '').trim() : undefined;
+  /** @type {import('./rpg-quest-steps.js').RpgQuestRewardEntry | undefined} */
+  let reward;
+  if (d.rewardOn) {
+    if (d.rewardKind === 'item' && (d.itemId || '').trim()) {
+      const itemId = (d.itemId || '').trim();
+      const dn = (d.itemDisplayName || '').trim();
+      reward = dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
+    } else if ((d.rewardText || '').trim()) {
+      reward = { type: 'text', text: (d.rewardText || '').trim() };
+    }
+  }
   const due =
     d.timeLimitOn && (d.timeDueAt || '').trim()
       ? (d.timeDueAt || '').trim().slice(0, 10)
@@ -216,12 +240,58 @@ export function aiQuestNodesToDraftSteps(nodes) {
 }
 
 /**
- * @typedef {{ key: string; text: string }} QuestRewardDraftRow
+ * @typedef {{ key: string; kind: 'text' | 'item'; text: string; itemId: string; displayName: string }} QuestRewardDraftRow
  */
 
 /** @returns {QuestRewardDraftRow} */
 export function createEmptyRewardRow() {
-  return { key: newDraftKey(), text: '' };
+  return { key: newDraftKey(), kind: 'text', text: '', itemId: '', displayName: '' };
+}
+
+/**
+ * Ältere localStorage-Entwürfe ohne `kind` / Item-Felder.
+ * @param {unknown} raw
+ * @returns {QuestRewardDraftRow}
+ */
+export function ensureRewardRowFields(raw) {
+  if (!raw || typeof raw !== 'object') return createEmptyRewardRow();
+  const r = /** @type {Record<string, unknown>} */ (raw);
+  const key = typeof r.key === 'string' && r.key ? r.key : newDraftKey();
+  if (r.kind === 'item') {
+    return {
+      key,
+      kind: 'item',
+      text: '',
+      itemId: typeof r.itemId === 'string' ? r.itemId : '',
+      displayName: typeof r.displayName === 'string' ? r.displayName : '',
+    };
+  }
+  return {
+    key,
+    kind: 'text',
+    text: typeof r.text === 'string' ? r.text : '',
+    itemId: '',
+    displayName: '',
+  };
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {QuestStepDraft}
+ */
+export function ensureStepDraftFields(raw) {
+  if (!raw || typeof raw !== 'object') return createEmptyStepDraft(false);
+  const d = /** @type {QuestStepDraft} */ ({ ...createEmptyStepDraft(!!/** @type {any} */ (raw).saved), ...raw });
+  if (d.rewardKind !== 'text' && d.rewardKind !== 'item') {
+    d.rewardKind = (d.itemId || '').trim() ? 'item' : 'text';
+  }
+  if (typeof d.itemId !== 'string') d.itemId = '';
+  if (typeof d.itemDisplayName !== 'string') d.itemDisplayName = '';
+  if (typeof d.rewardText !== 'string') d.rewardText = '';
+  if (Array.isArray(d.children) && d.children.length > 0) {
+    d.children = d.children.map((c) => ensureStepDraftFields(c));
+  }
+  return d;
 }
 
 /**
@@ -230,10 +300,24 @@ export function createEmptyRewardRow() {
  */
 export function questRewardsToDraftRows(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return [];
-  return entries.map((e) => ({
-    key: newDraftKey(),
-    text: typeof e.text === 'string' ? e.text : '',
-  }));
+  return entries.map((e) => {
+    if (e.type === 'item') {
+      return {
+        key: newDraftKey(),
+        kind: 'item',
+        text: '',
+        itemId: e.itemId,
+        displayName: e.displayName || '',
+      };
+    }
+    return {
+      key: newDraftKey(),
+      kind: 'text',
+      text: e.text,
+      itemId: '',
+      displayName: '',
+    };
+  });
 }
 
 /**
@@ -241,5 +325,16 @@ export function questRewardsToDraftRows(entries) {
  * @returns {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]}
  */
 export function draftRewardRowsToQuestRewards(rows) {
-  return rows.map((r) => ({ text: (r.text || '').trim() })).filter((r) => r.text.length > 0);
+  /** @type {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]} */
+  const out = [];
+  for (const r of rows) {
+    if (r.kind === 'item' && (r.itemId || '').trim()) {
+      const itemId = (r.itemId || '').trim();
+      const dn = (r.displayName || '').trim();
+      out.push(dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId });
+    } else if (r.kind === 'text' && (r.text || '').trim()) {
+      out.push({ type: 'text', text: (r.text || '').trim() });
+    }
+  }
+  return out;
 }

@@ -1,7 +1,9 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { SUPERUSER } from '../../../lib/permissions.js';
+import { ensureDbSchema } from '../../../lib/db.js';
+import { listQuestmakerCatalogRows } from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
-import { normalizeQuestStepsTree } from '../../../lib/rpg-quest-steps.js';
+import { normalizeQuestStepsTree, normalizeQuestRewards } from '../../../lib/rpg-quest-steps.js';
 
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -28,7 +30,8 @@ Wenn "responseType":"quest":
 - "title": sachlicher Titel (kein Fantasy-Flair)
 - "description": 1–3 Sätze Alltag / echtes Leben
 - "kind": "main" oder "side"
-- "rewards": 0–8 kurze Belohnungen als Motivation (keine Fantasy-Items; z. B. kleine Meilensteine, Gewohnheiten)
+- "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
+- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } (itemId nur aus ITEM_KATALOG wenn es passt, sonst Text-Reward)
 - "steps": Array aus Schritt-Objekten (siehe unten)
 
 Schritt-Objekt (rekursiv, "substeps" optional):
@@ -36,11 +39,30 @@ Schritt-Objekt (rekursiv, "substeps" optional):
 - "label": konkrete Handlung im echten Leben
 - "optional": boolean
 - "dependsOn": Array von ids anderer Schritte (gleiche Quest), die zuerst erledigt sein müssen; leer [] wenn keine Abhängigkeit
-- "reward": optional string, Belohnung nur für diesen Schritt
+- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } (item nur mit passender ITEM_KATALOG-Zeile)
 - "timeDueAt": optional ISO-Datum "YYYY-MM-DD" nur wenn eine echte Frist sinnvoll ist (z. B. Bewerbungsende)
 - "substeps": optional Array weiterer Schritt-Objekte für Gruppen (Unterschritte)
 
-Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Keine Fantasy-Begriffe (keine Elfen, Mana, Questgeber im Sinne von RPG).`;
+Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Keine Fantasy-Begriffe (keine Elfen, Mana, Questgeber im Sinne von RPG).
+
+Wenn ITEM_KATALOG leer ist oder kein Item passt: nutze nur Text-Rewards (type "text" oder kurze Strings in "rewards").`;
+
+/** @param {{ id: string; category: string; title: string; description: string }[]} rows */
+function formatCatalogInstruction(rows) {
+  if (!rows.length) {
+    return `
+
+ITEM_KATALOG: (noch leer — nutze nur Text-Belohnungen in "rewards" / type "text".)`;
+  }
+  const lines = rows.map(
+    (r) =>
+      `- ${r.category} | ${r.id} | ${r.title}${r.description ? ` — ${String(r.description).slice(0, 160)}` : ''}`
+  );
+  return `
+
+ITEM_KATALOG (bestehend — für type "item" nur itemId verwenden, wenn Titel/Beschreibung zur Quest passen; sonst Text-Reward):
+${lines.join('\n')}`;
+}
 
 const SYSTEM_PROMPT = `Du hilfst beim Erstellen von Quests für ein persönliches Fortschritts-System — Inhalt = echtes Leben (Studium, Arbeit, Gesundheit, Behörden, Beziehungen), keine Fantasy-Welt.
 
@@ -164,8 +186,10 @@ export async function POST({ request, cookies }) {
   const model = String(env.RPG_OPENAI_MODEL ?? '').trim() || DEFAULT_MODEL;
   const baseUrl = env.OPENAI_BASE_URL;
 
+  await ensureDbSchema();
+  const catalogRows = await listQuestmakerCatalogRows();
   const userContent = buildUserMessage(prompt, body?.clarification);
-  const systemContent = SYSTEM_PROMPT + JSON_OBJECT_INSTRUCTION;
+  const systemContent = SYSTEM_PROMPT + JSON_OBJECT_INSTRUCTION + formatCatalogInstruction(catalogRows);
 
   let upstream;
   try {
@@ -277,9 +301,15 @@ export async function POST({ request, cookies }) {
 
   const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
   const description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
-  const rewards = Array.isArray(parsed.rewards)
+  const rewardStrings = Array.isArray(parsed.rewards)
     ? parsed.rewards.map((r) => String(r).trim()).filter(Boolean)
     : [];
+  let questRewards;
+  if (Array.isArray(parsed.questRewards) && parsed.questRewards.length > 0) {
+    questRewards = normalizeQuestRewards(parsed.questRewards);
+  } else {
+    questRewards = rewardStrings.map((text) => ({ type: 'text', text }));
+  }
   const kind = parsed.kind === 'main' ? 'main' : 'side';
 
   let nid;
@@ -292,8 +322,6 @@ export async function POST({ request, cookies }) {
     nid = fromAi;
   }
 
-  const questRewards = rewards.map((text) => ({ text }));
-
   return new Response(
     JSON.stringify({
       responseType: 'quest',
@@ -303,7 +331,7 @@ export async function POST({ request, cookies }) {
       kind,
       stepLabels: steps.map((s) => s.label),
       steps,
-      rewards,
+      rewards: rewardStrings,
       questRewards,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }

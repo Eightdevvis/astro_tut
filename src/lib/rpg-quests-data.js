@@ -3,8 +3,8 @@
  * Später: gleiche Struktur von KI oder DB liefern lassen.
  */
 
-/** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string }} RpgQuestStep */
-/** @typedef {{ text: string }} RpgQuestRewardEntry */
+/** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
+/** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
 /** @typedef {{ id: string; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
 /** @typedef {{ main: RpgQuest[]; side: RpgQuest[] }} RpgQuestPayloadLegacy */
 /** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[] }} RpgGraphQuest */
@@ -41,7 +41,7 @@ export const SAMPLE_RPG_GRAPH = {
         { id: 'b1', label: 'Eine ehrliche Bilanz: was bleibt, was fliegt' },
         { id: 'b2', label: 'Ein Gespräch, das du seit Monaten vermeidest' },
       ],
-      questRewards: [{ text: 'Item: Werkzeugkasten' }],
+      questRewards: [{ type: 'item', itemId: 'sample-toolbox', displayName: 'Werkzeugkasten' }],
     },
     {
       id: 'side-read',

@@ -3,8 +3,12 @@
  * Quest-Rewards mit Freischalt-Prozent. Fortschritt nur über nicht-optionale Blätter.
  */
 
-/** Gespeichert: nur Text. Freischalt-Schwelle wird pro Quest-ID deterministisch „zufällig“ vergeben. */
-/** @typedef {{ text: string }} RpgQuestRewardEntry */
+/**
+ * Einheitliches Reward-Modell für Step- und Quest-Belohnungen.
+ * @typedef {{ type: 'text'; text: string }} RpgQuestRewardText
+ * @typedef {{ type: 'item'; itemId: string; displayName?: string }} RpgQuestRewardItem
+ * @typedef {RpgQuestRewardText | RpgQuestRewardItem} RpgQuestRewardEntry
+ */
 
 /**
  * @typedef {{
@@ -13,12 +17,68 @@
  *   optional?: boolean;
  *   substeps?: RpgQuestStepNode[];
  *   dependsOn?: string[];
- *   reward?: string;
+ *   reward?: RpgQuestRewardEntry;
  *   timeDueAt?: string;
  *   done?: boolean;
  *   orderLinked?: boolean;
  * }} RpgQuestStepNode
  */
+
+/**
+ * Rohdaten (API/Legacy): Step-Reward war früher ein String; Quest-Rewards `{ text }` ohne `type`.
+ * @param {unknown} raw
+ * @returns {RpgQuestRewardEntry | null}
+ */
+export function normalizeRewardEntry(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    return text ? { type: 'text', text } : null;
+  }
+  if (typeof raw !== 'object') return null;
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  const typRaw = typeof o.type === 'string' ? o.type.trim().toLowerCase() : '';
+
+  if (typRaw === 'text' || (!typRaw && typeof o.text === 'string')) {
+    const text = String(o.text ?? '').trim();
+    if (!text) return null;
+    return { type: 'text', text };
+  }
+
+  if (typRaw === 'item' || (!typRaw && (o.itemId || o.id))) {
+    const itemId = String(o.itemId ?? o.id ?? '').trim();
+    if (!itemId) return null;
+    const dn = typeof o.displayName === 'string' ? o.displayName.trim() : '';
+    /** @type {RpgQuestRewardItem} */
+    const out = { type: 'item', itemId };
+    if (dn) out.displayName = dn;
+    return out;
+  }
+
+  return null;
+}
+
+/**
+ * Kurzer Anzeigename für Pills (Katalog später; bis dahin displayName oder itemId).
+ * @param {RpgQuestRewardEntry} e
+ */
+export function displayLabelForRewardEntry(e) {
+  if (e.type === 'text') return e.text;
+  const dn = e.displayName?.trim();
+  return dn || e.itemId;
+}
+
+/**
+ * Item: Titel aus Katalog falls vorhanden, sonst wie {@link displayLabelForRewardEntry}.
+ * @param {RpgQuestRewardEntry} entry
+ * @param {Record<string, { title?: string }> | undefined} catalogById
+ */
+export function rewardEntryDisplayLabel(entry, catalogById) {
+  if (entry.type === 'text') return entry.text;
+  const t = catalogById?.[entry.itemId]?.title?.trim();
+  if (t) return t;
+  return displayLabelForRewardEntry(entry);
+}
 
 /**
  * @param {unknown} raw
@@ -33,7 +93,9 @@ function normalizeOneStep(raw, next) {
   const dependsOn = Array.isArray(o.dependsOn)
     ? o.dependsOn.map((x) => String(x).trim()).filter(Boolean)
     : [];
-  const reward = typeof o.reward === 'string' && o.reward.trim() ? o.reward.trim() : undefined;
+  const rewardRaw = o.reward;
+  const rewardNorm = normalizeRewardEntry(rewardRaw);
+  const reward = rewardNorm ?? undefined;
   let timeDueAt;
   const rawDue = typeof o.timeDueAt === 'string' ? o.timeDueAt.trim() : '';
   if (rawDue) {
@@ -92,7 +154,7 @@ export function flatLegacyStepsToNormalized(flat) {
 export function distributeQuestRewardPercents(lines) {
   const n = lines.length;
   if (n === 0) return [];
-  return lines.map((text) => ({ text }));
+  return lines.map((text) => ({ type: 'text', text }));
 }
 
 /**
@@ -139,7 +201,7 @@ function shuffleInPlace(arr, rand) {
  * Standard-Stufen (wie früher gleichmäßig), zufällig den Belohnungszeilen zugeordnet — stabil pro Quest-ID.
  * @param {string} questId
  * @param {RpgQuestRewardEntry[]} entries
- * @returns {{ text: string; unlockAtPercent: number }[]}
+ * @returns {{ entry: RpgQuestRewardEntry; unlockAtPercent: number }[]}
  */
 export function resolveQuestRewardUnlockSchedule(questId, entries) {
   const n = entries.length;
@@ -153,7 +215,7 @@ export function resolveQuestRewardUnlockSchedule(questId, entries) {
   const rand = mulberry32(hashQuestStringToSeed(`rpg-quest-rewards:${questId}`));
   shuffleInPlace(copy, rand);
   return entries.map((e, i) => ({
-    text: (e.text || '').trim(),
+    entry: e,
     unlockAtPercent: copy[i],
   }));
 }
@@ -167,10 +229,8 @@ export function normalizeQuestRewards(raw) {
   /** @type {RpgQuestRewardEntry[]} */
   const out = [];
   for (const x of raw) {
-    if (!x || typeof x !== 'object') continue;
-    const text = typeof /** @type {any} */ (x).text === 'string' ? String(/** @type {any} */ (x).text).trim() : '';
-    if (!text) continue;
-    out.push({ text });
+    const e = normalizeRewardEntry(x);
+    if (e) out.push(e);
   }
   return out;
 }
@@ -413,24 +473,42 @@ export function questHasUrgentTimeBoundLeaves(quest, stepDone, nowMs = Date.now(
  * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
  * @param {Record<string, Record<string, boolean>>} stepDone
  * @param {number} [progressPercentOverride] — z. B. aus questProgress(..., graph): Vorgänger + Folgequests
+ * @param {Record<string, { title?: string }> | undefined} [itemCatalogById] — Questmaker-Katalog (id → Anzeigename)
  */
-export function buildRewardDisplayList(quest, stepDone, progressPercentOverride) {
+export function buildRewardDisplayList(quest, stepDone, progressPercentOverride, itemCatalogById) {
   const pct =
     typeof progressPercentOverride === 'number' && Number.isFinite(progressPercentOverride)
       ? progressPercentOverride
       : questLeafProgressRatio(quest, stepDone).percent;
-  /** @type {{ text: string; unlocked: boolean; source: 'step' | 'quest' }[]} */
+  /** @type {{ label: string; kind: 'text' | 'item'; unlocked: boolean; source: 'step' | 'quest'; itemId?: string }[]} */
   const rows = [];
   walkStepsPreOrder(quest.steps || [], (s) => {
-    if (typeof s.reward === 'string' && s.reward.trim()) {
-      const unlocked = isStepNodeComplete(quest, s.id, stepDone);
-      rows.push({ text: s.reward.trim(), unlocked, source: 'step' });
-    }
+    const entry = normalizeRewardEntry(s.reward);
+    if (!entry) return;
+    const unlocked = isStepNodeComplete(quest, s.id, stepDone);
+    const label = rewardEntryDisplayLabel(entry, itemCatalogById);
+    const kind = entry.type === 'item' ? 'item' : 'text';
+    rows.push({
+      label,
+      kind,
+      unlocked,
+      source: 'step',
+      ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
+    });
   });
   const qr = resolveQuestRewardUnlockSchedule(quest.id, getQuestRewardEntries(quest));
   for (const r of qr) {
     const unlocked = pct >= r.unlockAtPercent;
-    rows.push({ text: r.text, unlocked, source: 'quest' });
+    const entry = r.entry;
+    const label = rewardEntryDisplayLabel(entry, itemCatalogById);
+    const kind = entry.type === 'item' ? 'item' : 'text';
+    rows.push({
+      label,
+      kind,
+      unlocked,
+      source: 'quest',
+      ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
+    });
   }
   return rows;
 }

@@ -4,6 +4,11 @@ Ziel: **Gruppen mit Substeps**, **Reihenfolge** (frei vs. abhängig), **optional
 
 Diese Datei beschreibt **Datenmodell und Verhalten**; Umsetzung: `rpg-quest-steps.js`, Editor-Drafts, UI.
 
+### Entwicklungsprinzip (Strukturwechsel wie Rewards)
+
+- **Stabilität vor Tempo:** Breaking Changes lieber in **Stufen** mit vielen kleinen, testbaren Schritten als ein großer Knall.
+- **Zügig zur neuen Struktur** ist gewollt — Umwege (Normalize-on-read, später optional Bulk) sind **absichtlich**, solange sie Risiko senken.
+
 ---
 
 ## 1. Gruppen-Step (Substeps)
@@ -54,6 +59,18 @@ Zwei sinnvolle Modellierungen:
 ## 5. Migration (Bestand)
 
 - Bestehende flache Steps `{ id, label }` werden als **normale Leaf-Steps** interpretiert: **`optional: false`**, **keine** `substeps`, **keine** `reward`, **keine** `dependsOn`, **keine** `timeDueAt` (also **unabhängig** untereinander), sofern nicht manuell nachbearbeitet.
+
+### 5a. Reihenfolge: Legacy-Strings → einheitliches `RewardEntry` (**least risk, trotzdem zügig**)
+
+1. **Lesen / Anzeige / Logik:** Überall nur noch über **Normalisierung**: alte Strings (`rewards[]`, `reward`-String am Step, `{ text }` ohne `type`) werden **im Speicher** zu `RewardEntry`; bestehende gespeicherte JSON-Daten **bleiben** zunächst unverändert — **kein** Pflicht-Bulk-Rewrite am Anfang.
+2. **Schreiben:** Beim Speichern (Editor, API) wird **nur noch** das neue Format persistiert — dadurch wandelt sich der Bestand **natürlich** mit, sobald eine Quest gespeichert wird (sanfte, verteilte Migration).
+3. **KI:** Antwort der Generierung bleibt schlank; **neue Katalog-Items** (wenn umgesetzt) **erst beim Speichern** der Quest in den Katalog schreiben — schnelle Vorschau, keine DB-/Sync-Last bei jedem Generate, keine „Waisen“-Items wenn die Quest verworfen wird.
+4. **Optional später:** Einmal-Bulk oder Hintergrund-Job, der **alle** noch alten Payloads umschreibt, wenn ihr **100 %** einheitliche DB ohne Altform wollt (niedrige Priorität, nachdem 2–3 stabil laufen).
+
+### 5b. Item-Katalog (geplant)
+
+- **Kategorie:** **hardcodierte Enum-Liste** im Code (KI und UI filtern damit; token-effizient).
+- **Superuser:** Katalog in **Super-Einstellungen**, Bereich **Questmaker-System** (eigene Kategorie/Seite).
 
 ---
 

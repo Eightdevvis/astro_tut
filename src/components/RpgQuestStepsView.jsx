@@ -1,6 +1,25 @@
 import { canSetStepDone, buildRewardDisplayList } from '../lib/rpg-quest-steps.js';
 import { questProgress } from '../lib/rpg-quest-graph.js';
 
+function RewardCubeIcon() {
+  return (
+    <svg
+      class="rpg-reward-pill__cube"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        fillOpacity="0.35"
+        d="M8 1 2 4v6l6 3 6-3V4L8 1zm0 1.2 4.2 2.1L8 6.4 3.8 4.4 8 2.2zM3 5.2l4 2v4.5l-4-2V5.2zm10 0v4.5l-4 2V7.2l4-2z"
+      />
+    </svg>
+  );
+}
+
 /**
  * @param {{
  *   quest: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
@@ -10,6 +29,7 @@ import { questProgress } from '../lib/rpg-quest-graph.js';
  *   stepsClass?: string;
  *   rewardsClass?: string;
  *   graph?: import('../lib/rpg-quest-graph.js').RpgGraph | null;
+ *   itemCatalog?: Record<string, { title?: string }>;
  * }} props
  */
 export default function RpgQuestStepsView({
@@ -20,6 +40,7 @@ export default function RpgQuestStepsView({
   stepsClass = 'rpg-steps',
   rewardsClass = 'rpg-rewards',
   graph = null,
+  itemCatalog = {},
 }) {
   const doneFor = stepDone[quest.id] || {};
   const rewardProgressPct = graph ? questProgress(quest, stepDone, graph) : undefined;
@@ -42,12 +63,21 @@ export default function RpgQuestStepsView({
       </ul>
       <p class="rpg-section-label">Rewards</p>
       <div class={rewardsClass}>
-        {buildRewardDisplayList(quest, stepDone, rewardProgressPct).map((row, i) => (
+        {buildRewardDisplayList(quest, stepDone, rewardProgressPct, itemCatalog).map((row, i) => (
           <span
-            key={`${row.source}-${i}-${row.text.slice(0, 24)}`}
-            class={`rpg-reward-pill${row.unlocked ? '' : ' rpg-reward-pill--locked'}`}
+            key={`${row.source}-${i}-${row.label.slice(0, 24)}`}
+            class={`rpg-reward-pill${row.kind === 'item' ? ' rpg-reward-pill--item' : ''}${
+              row.unlocked ? '' : ' rpg-reward-pill--locked'
+            }`}
           >
-            {row.text}
+            {row.kind === 'item' ? (
+              <>
+                <RewardCubeIcon />
+                <span class="rpg-reward-pill__label">{row.label}</span>
+              </>
+            ) : (
+              row.label
+            )}
           </span>
         ))}
       </div>

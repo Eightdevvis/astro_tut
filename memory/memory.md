@@ -2,6 +2,12 @@
 
 Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öffnen, die zum Thema passen.
 
+## Dokumentation (Pflicht, knapp)
+
+- **Ort:** Sachverhalt unter `memory/` ablegen — bestehende `.mdc` erweitern oder **neue** Datei + **eine Zeile** in der Tabelle unten.
+- **Inhalt:** Verhalten, **Pfade/Dateien**; API, Keys, Migration nur wenn betroffen — **kein** Code abschreiben.
+- **Form:** Stichpunkte, möglichst **eine Zeile** pro Fakt; ausufernde Specs in eigene Datei auslagern und verlinken.
+
 | Thema | Details |
 |--------|---------|
 | Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |

@@ -5,6 +5,7 @@ import {
   FONT_WEIGHT_KEYS,
 } from '../constants/font-settings.js';
 import { previewFamilyForValue } from '../constants/font-preview-helpers.js';
+import { RPG_ITEM_CATEGORY_IDS } from '../lib/rpg-item-categories.js';
 
 const box = {
   maxWidth: 720,
@@ -110,6 +111,9 @@ export default function SuperSettings() {
   const [uploadLabel, setUploadLabel] = useState('');
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
+  const [qmItems, setQmItems] = useState([]);
+  const [qmMsg, setQmMsg] = useState('');
+  const [qmBusy, setQmBusy] = useState(false);
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -138,6 +142,36 @@ export default function SuperSettings() {
       .catch((e) => setError(e.message || String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    fetch('/api/rpg/questmaker-items', { credentials: 'same-origin' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Questmaker-Katalog');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const rows = Array.isArray(data.items) ? data.items : [];
+        setQmItems(
+          rows.map((r, i) => ({
+            id: String(r.id ?? ''),
+            category: String(r.category ?? 'sonstiges'),
+            title: String(r.title ?? ''),
+            description: String(r.description ?? ''),
+            _key: `qm-${i}-${r.id}`,
+          }))
+        );
+      })
+      .catch(() => {
+        /* optional */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loading]);
 
   function setFontField(key, value) {
     setFonts((f) => ({ ...f, [key]: value }));
@@ -196,6 +230,49 @@ export default function SuperSettings() {
     } finally {
       setUploadBusy(false);
     }
+  }
+
+  async function saveQuestmakerCatalog(e) {
+    e.preventDefault();
+    setQmMsg('');
+    setError('');
+    setQmBusy(true);
+    const items = qmItems
+      .filter((r) => (r.id || '').trim() && (r.title || '').trim())
+      .map((r) => ({
+        id: r.id.trim(),
+        category: r.category || 'sonstiges',
+        title: r.title.trim(),
+        description: (r.description || '').trim(),
+      }));
+    try {
+      const res = await fetch('/api/rpg/questmaker-items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+      setQmMsg(`Katalog: ${data.items?.length ?? items.length} Einträge gespeichert.`);
+    } catch (err) {
+      setError(err?.message || String(err));
+    } finally {
+      setQmBusy(false);
+    }
+  }
+
+  function addQmRow() {
+    setQmItems((prev) => [
+      ...prev,
+      {
+        id: '',
+        category: 'sonstiges',
+        title: '',
+        description: '',
+        _key: `new-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      },
+    ]);
   }
 
   async function togglePermission(username, permission, currentlyHas) {
@@ -295,6 +372,107 @@ export default function SuperSettings() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section style={section}>
+        <h2 style={h2}>Questmaker — Item-Katalog</h2>
+        <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1rem' }}>
+          Belohnungen vom Typ „Item“ beziehen Anzeigenamen hierher. Beim Speichern von Quests werden fehlende
+          IDs automatisch mit Platzhalter angelegt — hier pflegen und korrigieren.
+        </p>
+        <form onSubmit={saveQuestmakerCatalog}>
+          {qmItems.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Noch keine Einträge.</p>
+          ) : (
+            <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thtd}>ID (Slug)</th>
+                    <th style={thtd}>Kategorie</th>
+                    <th style={thtd}>Titel</th>
+                    <th style={thtd}>Kurzbeschreibung</th>
+                    <th style={thtd} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {qmItems.map((row, idx) => (
+                    <tr key={row._key || row.id || idx}>
+                      <td style={thtd}>
+                        <input
+                          style={{ ...selectStyle, fontSize: '0.88rem' }}
+                          value={row.id}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setQmItems((p) => p.map((x, j) => (j === idx ? { ...x, id: v } : x)));
+                          }}
+                          placeholder="z. B. sample-toolbox"
+                          autoComplete="off"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <select
+                          style={selectStyle}
+                          value={row.category}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value;
+                            setQmItems((p) => p.map((x, j) => (j === idx ? { ...x, category: v } : x)));
+                          }}
+                        >
+                          {RPG_ITEM_CATEGORY_IDS.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          style={selectStyle}
+                          value={row.title}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setQmItems((p) => p.map((x, j) => (j === idx ? { ...x, title: v } : x)));
+                          }}
+                          placeholder="Anzeigename"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          style={selectStyle}
+                          value={row.description}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setQmItems((p) => p.map((x, j) => (j === idx ? { ...x, description: v } : x)));
+                          }}
+                          placeholder="optional"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <button
+                          type="button"
+                          style={{ ...btnPrimary, padding: '6px 10px', fontSize: '0.75rem' }}
+                          onClick={() => setQmItems((p) => p.filter((_, j) => j !== idx))}
+                        >
+                          Entf.
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <button type="button" style={btnPrimary} onClick={addQmRow}>
+              Zeile hinzufügen
+            </button>
+            <button type="submit" style={btnPrimary} disabled={qmBusy}>
+              {qmBusy ? 'Speichern…' : 'Katalog speichern'}
+            </button>
+            {qmMsg ? <span style={okStyle}>{qmMsg}</span> : null}
+          </div>
+        </form>
       </section>
 
       <section style={section}>

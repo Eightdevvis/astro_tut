@@ -367,6 +367,21 @@
   border-color: rgba(126, 184, 218, 0.35);
 }
 
+.rpg-tree-panel__steps-wrap .rpg-reward-pill--item {
+  gap: 0.3rem;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill__cube {
+  flex-shrink: 0;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill__label {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rpg-tree-panel__inline-label {
   font-size: 0.65rem;
   letter-spacing: 0.12em;
@@ -578,6 +593,113 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.rpg-graph-editor__head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.rpg-graph-editor__drafts-wrap {
+  position: relative;
+}
+
+.rpg-graph-editor__drafts-btn {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  line-height: 1.2;
+  touch-action: manipulation;
+}
+
+.rpg-graph-editor__drafts-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.rpg-graph-editor__drafts-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 5;
+  min-width: min(260px, calc(100vw - 2rem));
+  max-width: min(320px, calc(100vw - 2rem));
+  max-height: min(260px, 40vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(28, 32, 40, 0.98);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.rpg-graph-editor__drafts-empty {
+  margin: 0;
+  padding: 0.35rem 0.15rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.rpg-graph-editor__drafts-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rpg-graph-editor__drafts-item {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rpg-graph-editor__drafts-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rpg-graph-editor__drafts-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.4rem;
+}
+
+.rpg-graph-editor__drafts-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  word-break: break-word;
+}
+
+.rpg-graph-editor__drafts-when {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.rpg-graph-editor__drafts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rpg-graph-editor__btn--tiny {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  min-height: auto;
 }
 
 .rpg-graph-editor__close {
@@ -910,6 +1032,17 @@
 .rpg-graph-editor__qm-preview .rpg-reward-pill:not(.rpg-reward-pill--locked) {
   color: rgba(255, 255, 255, 0.88);
   border-color: rgba(126, 184, 218, 0.35);
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill--item {
+  gap: 0.35rem;
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill__label {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rpg-graph-editor__ai-block {
@@ -1471,4 +1604,61 @@
 
 .rpg-step-order-switch__btn:hover:not(.rpg-step-order-switch__btn--on) {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.rpg-reward-kind-switch {
+  display: flex;
+  border-radius: 10px;
+  padding: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 2px;
+  width: 100%;
+  max-width: 16rem;
+  margin-bottom: 0.35rem;
+}
+
+.rpg-reward-kind-switch__btn {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rpg-reward-kind-switch__btn--on {
+  background: rgba(126, 184, 218, 0.2);
+  color: #d0e8f7;
+  box-shadow: 0 0 0 1px rgba(126, 184, 218, 0.35);
+}
+
+.rpg-reward-kind-switch__btn:hover:not(.rpg-reward-kind-switch__btn--on) {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.rpg-reward-builder__kind {
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.rpg-reward-builder__kind .rpg-reward-kind-switch {
+  margin-bottom: 0;
+  max-width: 11rem;
+}
+
+.rpg-reward-builder__item-fields {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.rpg-step-card__reward-block .rpg-reward-kind-switch {
+  margin-bottom: 0.5rem;
 }

@@ -261,6 +261,22 @@
   border-color: rgba(126, 184, 218, 0.35);
 }
 
+.rpg-reward-pill--item {
+  gap: 0.35rem;
+}
+
+.rpg-reward-pill__cube {
+  flex-shrink: 0;
+  opacity: 0.95;
+}
+
+.rpg-reward-pill__label {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rpg-step--group {
   display: block;
   cursor: default;

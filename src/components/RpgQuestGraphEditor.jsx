@@ -12,7 +12,15 @@ import {
   aiQuestNodesToDraftSteps,
   questRewardsToDraftRows,
   draftRewardRowsToQuestRewards,
+  isDraftStepMeaningful,
+  ensureStepDraftFields,
+  ensureRewardRowFields,
 } from '../lib/rpg-quest-editor-draft.js';
+import {
+  addManualQuestDraft,
+  removeManualQuestDraft,
+  loadManualQuestDrafts,
+} from '../lib/rpg-quest-manual-drafts.js';
 import { RpgQuestStepsBuilder, RpgQuestRewardsBuilder } from './RpgQuestStepsBuilder.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
@@ -29,6 +37,7 @@ export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
  *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph) => void;
  *   createEntry?: 'manual' | 'questmaker';
  *   editEntry?: 'form' | 'ai';
+ *   itemCatalog?: Record<string, { title?: string }>;
  * }} props
  */
 export default function RpgQuestGraphEditor({
@@ -40,6 +49,7 @@ export default function RpgQuestGraphEditor({
   onApply,
   createEntry,
   editEntry,
+  itemCatalog = {},
 }) {
   const [id, setId] = useState('');
   const [kind, setKind] = useState(/** @type {'main' | 'side'} */ ('side'));
@@ -74,6 +84,8 @@ export default function RpgQuestGraphEditor({
   /** @type {string[] | null} */
   const [clarifyPendingQs, setClarifyPendingQs] = useState(null);
   const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftListTick, setDraftListTick] = useState(0);
 
   const resetAiSession = () => {
     aiSeedRef.current = '';
@@ -144,6 +156,91 @@ export default function RpgQuestGraphEditor({
     }
   }, [open, mode, questId, graph, createEntry, editEntry]);
 
+  useEffect(() => {
+    if (open) setDraftListTick((t) => t + 1);
+  }, [open]);
+
+  const storedManualDrafts = useMemo(() => loadManualQuestDrafts(), [draftListTick, open]);
+
+  const showManualCreateDrafts =
+    mode === 'create' && (createEntry ?? 'manual') !== 'questmaker';
+
+  const manualAbortDraftHasContent = () => {
+    if ((id || '').trim().length > 0) return true;
+    if ((title || '').trim().length > 0) return true;
+    if ((description || '').trim().length > 0) return true;
+    if (prereqIds.size > 0) return true;
+    const o = Number(orderInLayer);
+    if (Number.isFinite(o) && o !== 0) return true;
+    if (stepDrafts.some((s) => isDraftStepMeaningful(s))) return true;
+    if (
+      rewardRows.some((r) =>
+        r.kind === 'item' ? (r.itemId || '').trim().length > 0 : (r.text || '').trim().length > 0
+      )
+    )
+      return true;
+    return false;
+  };
+
+  const handleRequestClose = () => {
+    const legacyManual =
+      createEntry === undefined && createMode === 'manual';
+    const explicitManual = createEntry === 'manual';
+    if (
+      mode === 'create' &&
+      (createEntry ?? 'manual') !== 'questmaker' &&
+      (explicitManual || legacyManual) &&
+      manualAbortDraftHasContent()
+    ) {
+      addManualQuestDraft({
+        id,
+        kind,
+        title,
+        description,
+        stepDrafts: JSON.parse(JSON.stringify(stepDrafts)),
+        rewardRows: JSON.parse(JSON.stringify(rewardRows)),
+        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+        prereqIds: [...prereqIds],
+      });
+      setDraftListTick((t) => t + 1);
+    }
+    setDraftsOpen(false);
+    onClose();
+  };
+
+  /**
+   * @param {import('../lib/rpg-quest-manual-drafts.js').StoredManualQuestDraft} entry
+   */
+  const handleLoadManualDraft = (entry) => {
+    const p = entry.payload;
+    setId(typeof p.id === 'string' ? p.id : '');
+    setKind(p.kind === 'main' ? 'main' : 'side');
+    setTitle(typeof p.title === 'string' ? p.title : '');
+    setDescription(typeof p.description === 'string' ? p.description : '');
+    setStepDrafts(
+      Array.isArray(p.stepDrafts)
+        ? JSON.parse(JSON.stringify(p.stepDrafts)).map((d) => ensureStepDraftFields(d))
+        : []
+    );
+    setRewardRows(
+      Array.isArray(p.rewardRows)
+        ? JSON.parse(JSON.stringify(p.rewardRows)).map((r) => ensureRewardRowFields(r))
+        : []
+    );
+    setOrderInLayer(typeof p.orderInLayer === 'number' ? p.orderInLayer : 0);
+    setPrereqIds(new Set(Array.isArray(p.prereqIds) ? p.prereqIds.map(String) : []));
+    if (createEntry === undefined) setCreateMode('manual');
+    setDraftsOpen(false);
+  };
+
+  /**
+   * @param {string} key
+   */
+  const handleDeleteManualDraft = (key) => {
+    removeManualQuestDraft(key);
+    setDraftListTick((t) => t + 1);
+  };
+
   if (!open) return null;
 
   const normalizedCreateId = mode === 'create' ? normalizeQuestId(id) : '';
@@ -210,6 +307,7 @@ export default function RpgQuestGraphEditor({
       return;
     }
     onApply(next);
+    setDraftsOpen(false);
     onClose();
   };
 
@@ -217,6 +315,7 @@ export default function RpgQuestGraphEditor({
     if (mode !== 'edit' || !questId) return;
     if (!window.confirm('Quest wirklich löschen? Alle Kanten zu dieser Quest entfallen.')) return;
     onApply(removeQuestFromGraph(graph, questId));
+    setDraftsOpen(false);
     onClose();
   };
 
@@ -240,7 +339,7 @@ export default function RpgQuestGraphEditor({
     const entries =
       Array.isArray(data.questRewards) && data.questRewards.length > 0
         ? normalizeQuestRewards(data.questRewards)
-        : rewardLines.map((text) => ({ text }));
+        : rewardLines.map((text) => ({ type: 'text', text }));
     setRewardRows(questRewardsToDraftRows(entries));
   };
 
@@ -434,9 +533,81 @@ export default function RpgQuestGraphEditor({
           <h2 id="rpg-graph-editor-title" class="rpg-graph-editor__title">
             {dialogTitle}
           </h2>
-          <button type="button" class="rpg-graph-editor__close" onClick={onClose} aria-label="Schließen">
-            ×
-          </button>
+          <div class="rpg-graph-editor__head-right">
+            {showManualCreateDrafts ? (
+              <div class="rpg-graph-editor__drafts-wrap">
+                <button
+                  type="button"
+                  class="rpg-graph-editor__drafts-btn"
+                  onClick={() => setDraftsOpen((o) => !o)}
+                  aria-expanded={draftsOpen}
+                  aria-controls="rpg-graph-editor-drafts-panel"
+                >
+                  drafts
+                  {storedManualDrafts.length > 0 ? ` (${storedManualDrafts.length})` : ''}
+                </button>
+                {draftsOpen ? (
+                  <div
+                    id="rpg-graph-editor-drafts-panel"
+                    class="rpg-graph-editor__drafts-panel"
+                    role="listbox"
+                    aria-label="Gespeicherte Entwürfe"
+                  >
+                    {storedManualDrafts.length === 0 ? (
+                      <p class="rpg-graph-editor__drafts-empty">Noch keine Entwürfe.</p>
+                    ) : (
+                      <ul class="rpg-graph-editor__drafts-list">
+                        {storedManualDrafts.map((d) => {
+                          const label =
+                            (d.payload.title || '').trim() ||
+                            (d.payload.id || '').trim() ||
+                            'Ohne Titel';
+                          let when = '';
+                          try {
+                            when = new Date(d.savedAt).toLocaleString('de-DE', {
+                              dateStyle: 'short',
+                              timeStyle: 'short',
+                            });
+                          } catch {
+                            when = '';
+                          }
+                          return (
+                            <li key={d.key} class="rpg-graph-editor__drafts-item">
+                              <div class="rpg-graph-editor__drafts-meta">
+                                <span class="rpg-graph-editor__drafts-label">{label}</span>
+                                {when ? (
+                                  <span class="rpg-graph-editor__drafts-when">{when}</span>
+                                ) : null}
+                              </div>
+                              <div class="rpg-graph-editor__drafts-actions">
+                                <button
+                                  type="button"
+                                  class="rpg-graph-editor__btn rpg-graph-editor__btn--primary rpg-graph-editor__btn--tiny"
+                                  onClick={() => handleLoadManualDraft(d)}
+                                >
+                                  Laden
+                                </button>
+                                <button
+                                  type="button"
+                                  class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost rpg-graph-editor__btn--tiny"
+                                  onClick={() => handleDeleteManualDraft(d.key)}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <button type="button" class="rpg-graph-editor__close" onClick={handleRequestClose} aria-label="Schließen">
+              ×
+            </button>
+          </div>
         </div>
 
         {showQmPrompt ? <div class="rpg-graph-editor__form rpg-graph-editor__qm-only">{aiBlock}</div> : null}
@@ -458,6 +629,7 @@ export default function RpgQuestGraphEditor({
                 stepsClass="rpg-graph-editor__qm-steps"
                 rewardsClass="rpg-graph-editor__qm-rewards"
                 graph={null}
+                itemCatalog={itemCatalog}
               />
             </div>
 
@@ -519,7 +691,7 @@ export default function RpgQuestGraphEditor({
                   Löschen
                 </button>
               ) : null}
-              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
+              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleRequestClose}>
                 Abbrechen
               </button>
               <button
@@ -641,7 +813,7 @@ export default function RpgQuestGraphEditor({
                   Löschen
                 </button>
               )}
-              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
+              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleRequestClose}>
                 Abbrechen
               </button>
               <button

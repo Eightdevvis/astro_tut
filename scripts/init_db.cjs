@@ -101,6 +101,17 @@ db.serialize(() => {
   `);
   console.log('✓ rpg_user_state-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rpg_questmaker_items (
+      id          TEXT PRIMARY KEY,
+      category    TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ rpg_questmaker_items-Tabelle bereit.');
+
 });
 
 db.close();

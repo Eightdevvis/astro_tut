@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'preact/hooks';
 import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
@@ -53,7 +53,7 @@ function RpgTreeDeepLink({ questId }) {
   );
 }
 
-function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero', graph }) {
+function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero', graph, itemCatalog }) {
   const TitleTag = variant === 'hero' ? 'h2' : 'h3';
   const wrapClass =
     variant === 'hero' ? 'rpg-quest-block rpg-quest-block--hero' : 'rpg-quest-block rpg-quest-block--embedded';
@@ -72,6 +72,7 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
         stepsClass="rpg-steps"
         rewardsClass="rpg-rewards"
         graph={graph}
+        itemCatalog={itemCatalog}
       />
     </div>
   );
@@ -86,6 +87,10 @@ export default function RpgQuestHub() {
   const [stepDone, setStepDone] = useState(() =>
     mergeStepDoneBase(buildInitialStepMapFromGraph(EMPTY_RPG_GRAPH), {})
   );
+  const itemCatalogRef = useRef(
+    /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
+  );
+  const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
 
@@ -96,9 +101,15 @@ export default function RpgQuestHub() {
     setGraph(d.graph);
     setAdded(d.added);
     setStepDone(d.stepDone);
+    setItemCatalog(d.itemCatalog);
+    itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
     setCanPersist(false);
   }, []);
+
+  useEffect(() => {
+    itemCatalogRef.current = itemCatalog;
+  }, [itemCatalog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +123,8 @@ export default function RpgQuestHub() {
           setGraph(d.graph);
           setAdded(d.added);
           setStepDone(d.stepDone);
+          setItemCatalog(d.itemCatalog);
+          itemCatalogRef.current = d.itemCatalog;
         }
         setBootstrapped(true);
         setCanPersist(true);
@@ -123,10 +136,13 @@ export default function RpgQuestHub() {
       setGraph(d.graph);
       setAdded(d.added);
       setStepDone(d.stepDone);
+      setItemCatalog(d.itemCatalog);
+      itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
         graph: d.graph,
         addedIds: [...d.added],
         stepDone: d.stepDone,
+        itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
       setCanPersist(true);
@@ -140,8 +156,17 @@ export default function RpgQuestHub() {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
       const payload = { graph, addedIds: [...added], stepDone };
-      void persistRpgState(payload);
-      saveSessionCachedPayload(payload);
+      void (async () => {
+        const r = await persistRpgState(payload);
+        if (r.ok && r.itemCatalog) {
+          setItemCatalog(r.itemCatalog);
+          itemCatalogRef.current = r.itemCatalog;
+        }
+        saveSessionCachedPayload({
+          ...payload,
+          itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
+        });
+      })();
     }, 450);
     return () => clearTimeout(t);
   }, [bootstrapped, canPersist, graph, added, stepDone]);
@@ -261,6 +286,7 @@ export default function RpgQuestHub() {
                 showFocusBadge
                 variant="hero"
                 graph={graph}
+                itemCatalog={itemCatalog}
               />
               <RpgTreeDeepLink questId={focusedQuest.id} />
             </div>
@@ -306,6 +332,7 @@ export default function RpgQuestHub() {
                               showFocusBadge={false}
                               variant="embedded"
                               graph={graph}
+                              itemCatalog={itemCatalog}
                             />
                             <RpgTreeDeepLink questId={q.id} />
                           </div>

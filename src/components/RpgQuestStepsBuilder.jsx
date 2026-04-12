@@ -90,7 +90,10 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 bis {draft.timeDueAt}
               </span>
             ) : null}
-            {draft.rewardOn && (draft.rewardText || '').trim() ? (
+            {draft.rewardOn &&
+            (draft.rewardKind === 'item'
+              ? (draft.itemId || '').trim()
+              : (draft.rewardText || '').trim()) ? (
               <span class="rpg-step-card__badge" title="Mit Belohnung">
                 Belohnung
               </span>
@@ -158,20 +161,73 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         <input
           type="checkbox"
           checked={draft.rewardOn}
-          onChange={(ev) => update({ rewardOn: ev.currentTarget.checked })}
+          onChange={(ev) => {
+            const on = ev.currentTarget.checked;
+            update({
+              rewardOn: on,
+              ...(on
+                ? {}
+                : {
+                    rewardKind: 'text',
+                    rewardText: '',
+                    itemId: '',
+                    itemDisplayName: '',
+                  }),
+            });
+          }}
         />
         <span>Belohnung für diesen Schritt</span>
       </label>
       {draft.rewardOn ? (
-        <div class="rpg-step-card__field rpg-step-card__field--indented">
-          <span class="rpg-step-card__field-label">Belohnung</span>
-          <input
-            type="text"
-            class="rpg-graph-editor__input"
-            value={draft.rewardText}
-            placeholder="z. B. Fundstück, kleiner Bonus …"
-            onInput={(ev) => update({ rewardText: ev.currentTarget.value })}
-          />
+        <div class="rpg-step-card__field rpg-step-card__field--indented rpg-step-card__reward-block">
+          <span class="rpg-step-card__field-label">Art</span>
+          <div class="rpg-reward-kind-switch" role="group" aria-label="Belohnungsart">
+            <button
+              type="button"
+              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'text' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+              onClick={() => update({ rewardKind: 'text' })}
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'item' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+              onClick={() => update({ rewardKind: 'item' })}
+            >
+              Item
+            </button>
+          </div>
+          {draft.rewardKind === 'text' ? (
+            <>
+              <span class="rpg-step-card__field-label">Text</span>
+              <input
+                type="text"
+                class="rpg-graph-editor__input"
+                value={draft.rewardText}
+                placeholder="z. B. Fundstück, kleiner Bonus …"
+                onInput={(ev) => update({ rewardText: ev.currentTarget.value })}
+              />
+            </>
+          ) : (
+            <>
+              <span class="rpg-step-card__field-label">Item-ID</span>
+              <input
+                type="text"
+                class="rpg-graph-editor__input"
+                value={draft.itemId}
+                placeholder="technische Id (Katalog)"
+                onInput={(ev) => update({ itemId: ev.currentTarget.value })}
+              />
+              <span class="rpg-step-card__field-label">Anzeigename</span>
+              <input
+                type="text"
+                class="rpg-graph-editor__input"
+                value={draft.itemDisplayName}
+                placeholder="Name in der Reward-Pill"
+                onInput={(ev) => update({ itemDisplayName: ev.currentTarget.value })}
+              />
+            </>
+          )}
         </div>
       ) : null}
 
@@ -409,17 +465,68 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
         <ul class="rpg-reward-builder__list">
           {rows.map((row, i) => (
             <li key={row.key} class="rpg-reward-builder__row">
-              <input
-                type="text"
-                class="rpg-graph-editor__input rpg-reward-builder__text"
-                value={row.text}
-                placeholder="Kurzbeschreibung der Belohnung"
-                onInput={(ev) => {
-                  const copy = [...rows];
-                  copy[i] = { ...row, text: ev.currentTarget.value };
-                  onRowsChange(copy);
-                }}
-              />
+              <div class="rpg-reward-builder__kind">
+                <button
+                  type="button"
+                  class={`rpg-reward-kind-switch__btn${row.kind === 'text' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+                  onClick={() => {
+                    const copy = [...rows];
+                    copy[i] = { ...row, kind: 'text' };
+                    onRowsChange(copy);
+                  }}
+                >
+                  Text
+                </button>
+                <button
+                  type="button"
+                  class={`rpg-reward-kind-switch__btn${row.kind === 'item' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+                  onClick={() => {
+                    const copy = [...rows];
+                    copy[i] = { ...row, kind: 'item' };
+                    onRowsChange(copy);
+                  }}
+                >
+                  Item
+                </button>
+              </div>
+              {row.kind === 'text' ? (
+                <input
+                  type="text"
+                  class="rpg-graph-editor__input rpg-reward-builder__text"
+                  value={row.text}
+                  placeholder="Kurzbeschreibung der Belohnung"
+                  onInput={(ev) => {
+                    const copy = [...rows];
+                    copy[i] = { ...row, text: ev.currentTarget.value };
+                    onRowsChange(copy);
+                  }}
+                />
+              ) : (
+                <div class="rpg-reward-builder__item-fields">
+                  <input
+                    type="text"
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={row.itemId}
+                    placeholder="Item-ID"
+                    onInput={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = { ...row, itemId: ev.currentTarget.value };
+                      onRowsChange(copy);
+                    }}
+                  />
+                  <input
+                    type="text"
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={row.displayName}
+                    placeholder="Anzeigename"
+                    onInput={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = { ...row, displayName: ev.currentTarget.value };
+                      onRowsChange(copy);
+                    }}
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 class="rpg-reward-builder__del"

@@ -9,6 +9,11 @@ import {
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
 import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
+import { collectItemRewardRefsFromGraph } from '../../../lib/rpg-questmaker-sync.js';
+import {
+  insertMissingQuestmakerItems,
+  listQuestmakerCatalogRows,
+} from '../../../lib/rpg-questmaker-catalog-db.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -45,6 +50,8 @@ export async function GET({ cookies }) {
   graph = migrateRpgGraphToV2(graph);
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
 
+  const questmakerItems = await listQuestmakerCatalogRows();
+
   return new Response(
     JSON.stringify({
       ...SAMPLE_RPG_QUESTS,
@@ -53,6 +60,7 @@ export async function GET({ cookies }) {
       stepDone,
       persisted,
       schemaVersion,
+      questmakerItems,
     }),
     {
       status: 200,
@@ -132,7 +140,11 @@ export async function PUT({ request, cookies }) {
 
   await saveRpgState(username, payload);
 
-  return new Response(JSON.stringify({ ok: true }), {
+  const refs = collectItemRewardRefsFromGraph(body.graph);
+  await insertMissingQuestmakerItems(refs);
+  const questmakerItems = await listQuestmakerCatalogRows();
+
+  return new Response(JSON.stringify({ ok: true, questmakerItems }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });

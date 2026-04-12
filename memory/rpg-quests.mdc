@@ -75,6 +75,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 ## Quest-Baum (UI)
 
 - **Oben rechts (Verwalten):** **„Verwalten“** schaltet den Bearbeitungsmodus ein. Im aktiven Modus: **„Fertig“** beendet ihn; **manuell+** und **questmaker+** starten **getrennte** Dialoge (manuelles Formular nur Schritt-/Texteditor; Questmaker nur Prompt, danach Vorschau — ohne Umschalten). Im **Detail-Panel** (Quest gewählt, Verwalten an): dieselbe Trennung **manuell+** / **questmaker+**.
+- **Manuelle Neuanlage — Entwürfe (nur Browser):** Schließen/ **Abbrechen** mit relevantem Formularinhalt → automatischer Entwurf in **localStorage** `rpg-quest-manual-drafts-v1`. Im Dialogkopf **drafts** (Liste, Laden, Löschen). Kein Auto-Entwurf bei **questmaker+**-Einstieg oder Legacy-Dialog mit aktivem Tab **questmaker+**; kein Entwurf nach erfolgreichem Speichern.
 - **Canvas:** Pan (Pointer auf Hintergrund, nicht auf Nodes), Zoom (Rad). **Nodes sind nicht verschiebbar**; Layout kommt aus `computeLayeredLayout` in `src/lib/rpg-quest-graph.js`.
 - **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look. **Roter Punkt** am Knoten: offene **Pflicht-Schritte mit Frist**, die in **&lt; 7 Tagen** fällig oder **überfällig** sind (siehe [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) Abschnitt Zeitbegrenzung).
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
@@ -95,6 +96,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 | Server-Sync (Client) | `src/lib/rpg-server-sync.js` |
 | Hub | `src/components/RpgQuestHub.jsx`, `rpg-quest-hub.css` |
 | Baum + Editor-Modal | `RpgQuestTree.jsx`, `RpgQuestGraphEditor.jsx`, `rpg-quest-tree.css` |
+| Manuelle Quest-Entwürfe (localStorage) | `src/lib/rpg-quest-manual-drafts.js` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
 | API | `src/pages/api/rpg/quests.js` (GET + PUT), `src/pages/api/rpg/quests-generate.js` (POST, KI-Entwurf), `rpg-state-db.js`, `rpg-payload-schema.js` |
 | Quest-Form-Helfer (ID, Schritte, Rewards) | `src/lib/rpg-quest-form-helpers.js` (von Editor + KI-API genutzt) |

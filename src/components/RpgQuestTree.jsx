@@ -71,6 +71,10 @@ export default function RpgQuestTree() {
   const [stepDone, setStepDone] = useState(() =>
     mergeStepDoneBase(buildInitialStepMapFromGraph(EMPTY_RPG_GRAPH), {})
   );
+  const itemCatalogRef = useRef(
+    /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
+  );
+  const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [bootstrapped, setBootstrapped] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
   const [canPersist, setCanPersist] = useState(true);
@@ -82,6 +86,8 @@ export default function RpgQuestTree() {
     setGraph(d.graph);
     setAdded(d.added);
     setStepDone(d.stepDone);
+    setItemCatalog(d.itemCatalog);
+    itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
     setCanPersist(false);
   }, []);
@@ -111,6 +117,10 @@ export default function RpgQuestTree() {
   const pinchRef = useRef(
     /** @type {{ d0: number; s0: number; px0: number; py0: number; wx: number; wy: number } | null} */ (null)
   );
+
+  useEffect(() => {
+    itemCatalogRef.current = itemCatalog;
+  }, [itemCatalog]);
 
   useEffect(() => {
     panRef.current = pan;
@@ -147,6 +157,8 @@ export default function RpgQuestTree() {
           setGraph(d.graph);
           setAdded(d.added);
           setStepDone(d.stepDone);
+          setItemCatalog(d.itemCatalog);
+          itemCatalogRef.current = d.itemCatalog;
         }
         setBootstrapped(true);
         setCanPersist(true);
@@ -158,10 +170,13 @@ export default function RpgQuestTree() {
       setGraph(d.graph);
       setAdded(d.added);
       setStepDone(d.stepDone);
+      setItemCatalog(d.itemCatalog);
+      itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
         graph: d.graph,
         addedIds: [...d.added],
         stepDone: d.stepDone,
+        itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
       setCanPersist(true);
@@ -175,8 +190,17 @@ export default function RpgQuestTree() {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
       const payload = { graph, addedIds: [...added], stepDone };
-      void persistRpgState(payload);
-      saveSessionCachedPayload(payload);
+      void (async () => {
+        const r = await persistRpgState(payload);
+        if (r.ok && r.itemCatalog) {
+          setItemCatalog(r.itemCatalog);
+          itemCatalogRef.current = r.itemCatalog;
+        }
+        saveSessionCachedPayload({
+          ...payload,
+          itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
+        });
+      })();
     }, 450);
     return () => clearTimeout(t);
   }, [bootstrapped, canPersist, graph, added, stepDone]);
@@ -494,6 +518,7 @@ export default function RpgQuestTree() {
       editEntry={editorMode === 'edit' ? editorEditEntry : undefined}
       onClose={closeEditor}
       onApply={applyGraph}
+      itemCatalog={itemCatalog}
     />
   );
 
@@ -701,6 +726,7 @@ export default function RpgQuestTree() {
                     stepsClass="rpg-tree-panel__steps"
                     rewardsClass="rpg-tree-panel__rewards"
                     graph={graph}
+                    itemCatalog={itemCatalog}
                   />
                 </div>
               </details>
