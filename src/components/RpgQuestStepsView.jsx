@@ -69,6 +69,15 @@ export default function RpgQuestStepsView({
             class={`rpg-reward-pill${row.kind === 'item' ? ' rpg-reward-pill--item' : ''}${
               row.unlocked ? '' : ' rpg-reward-pill--locked'
             }`}
+            title={
+              row.source === 'quest' && typeof row.unlockAtPercent === 'number'
+                ? `Ab ${row.unlockAtPercent} % Quest-Fortschritt (inkl. Subgraph)`
+                : row.source === 'step'
+                  ? row.unlocked
+                    ? 'Schritt erledigt'
+                    : 'Nach Erledigung des Schritts'
+                  : undefined
+            }
           >
             {row.kind === 'item' ? (
               <>

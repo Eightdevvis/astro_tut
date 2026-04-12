@@ -493,8 +493,8 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
       <div class="rpg-step-builder__section-head">
         <span class="rpg-step-builder__section-title">Belohnungen der Quest</span>
         <p class="rpg-step-builder__section-intro">
-          Optional. Sichtbarkeit ab einem Fortschritts-Prozent wird pro Quest automatisch und fest (pseudo-zufällig aus der Quest-ID)
-          vergeben — inklusive verbundener Subquests im Baum (Vorgänger und Folgequests).
+          Optional. Pro Zeile kannst du ein Freischalt‑Prozent (0–100) setzen; leer = automatische Verteilung (fest pro Quest-ID
+          pseudo‑zufällig gemischt). Fortschritt zählt inkl. Vorgänger- und Folgequests im Baum.
         </p>
       </div>
       {rows.length === 0 ? (
@@ -509,7 +509,7 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                   class={`rpg-reward-kind-switch__btn${row.kind === 'text' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
                   onClick={() => {
                     const copy = [...rows];
-                    copy[i] = { ...row, kind: 'text' };
+                    copy[i] = { ...row, kind: 'text', unlockAtPercent: row.unlockAtPercent ?? '' };
                     onRowsChange(copy);
                   }}
                 >
@@ -520,7 +520,7 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                   class={`rpg-reward-kind-switch__btn${row.kind === 'item' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
                   onClick={() => {
                     const copy = [...rows];
-                    copy[i] = { ...row, kind: 'item' };
+                    copy[i] = { ...row, kind: 'item', unlockAtPercent: row.unlockAtPercent ?? '' };
                     onRowsChange(copy);
                   }}
                 >
@@ -595,6 +595,25 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                   />
                 </div>
               )}
+              <div class="rpg-reward-builder__unlock-field">
+                <span class="rpg-reward-builder__unlock-label" title="Quest-Fortschritt inkl. Subgraph im Baum">
+                  Ab %
+                </span>
+                <input
+                  type="text"
+                  inputmode="numeric"
+                  class="rpg-graph-editor__input rpg-reward-builder__unlock-input"
+                  value={row.unlockAtPercent ?? ''}
+                  placeholder="auto"
+                  maxLength={3}
+                  aria-label="Freischaltung ab Quest-Prozent, leer für automatisch"
+                  onInput={(ev) => {
+                    const copy = [...rows];
+                    copy[i] = { ...row, unlockAtPercent: ev.currentTarget.value };
+                    onRowsChange(copy);
+                  }}
+                />
+              </div>
               <button
                 type="button"
                 class="rpg-reward-builder__del"

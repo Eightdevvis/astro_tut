@@ -43,6 +43,11 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 - **`{ "resetToDefault": true }`** — löscht den gespeicherten State; nächstes GET liefert wieder den Sample-Graph. *(Derzeit nur API; UI-Button „Standard“ bewusst entfernt — Wiederverwendung siehe [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc).)*
 - **`{ "graph", "addedIds", "stepDone" }`** — Client-Snapshot; serverseitig **Merge** mit vorherigem JSON (siehe unten). `schemaVersion` wird beim Speichern gesetzt (nicht vom Client abhängig).
 
+### POST `/api/rpg/quests-normalize-payload` (Superuser)
+
+- **Einmal-Bulk:** für jede Zeile in **`rpg_user_state`** wird `graph` mit **`migrateRpgGraphToV2`** normalisiert und nur bei Änderung zurückgeschrieben (kanonisches v2-Format, `questRewards`, keine Legacy-`rewards` auf Quests).
+- **UI:** Super-Einstellungen → Abschnitt Questmaker, Button **„RPG-Payloads in DB normalisieren“**.
+
 **GraphQuest** erweitert die bisherige Quest um **`kind`:** `"main"` | `"side"`.
 
 | Feld | Typ | Hinweis |
@@ -50,7 +55,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 | `id` | string | stabil |
 | `kind` | `"main"` \| `"side"` | Main = Sechseck im Baum, Side = Kreis |
 | `title`, `description`, `steps` | … | `steps` rekursiv (Gruppen, `dependsOn`, `optional`, `reward`, `timeDueAt` auf Blättern, …): [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
-| `questRewards` | `{ text, unlockAtPercent }[]` | Quest-Rewards; Legacy-Feld `rewards` wird beim Laden migriert |
+| `questRewards` | gespeicherte Reward-Objekte + optional `unlockAtPercent` | Quest-Rewards (`RewardEntry`); Legacy `rewards[]` wird beim Laden migriert |
 
 **Kanten:** gerichtet von **Voraussetzung** (`from`) zu **abhängiger** Quest (`to`). Der Baum wächst **von unten nach oben** (Roots = keine eingehenden Kanten, gelten als **freigeschaltet**).
 

@@ -3,7 +3,11 @@ import { SUPERUSER } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { listQuestmakerCatalogRows } from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
-import { normalizeQuestStepsTree, normalizeQuestRewards } from '../../../lib/rpg-quest-steps.js';
+import {
+  normalizeQuestStepsTree,
+  normalizeQuestRewardRows,
+  questRewardRowToStored,
+} from '../../../lib/rpg-quest-steps.js';
 import {
   collectItemIdsFromStepsAndQuestRewards,
   normalizeQuestmakerCatalogPayloadItem,
@@ -36,7 +40,7 @@ Wenn "responseType":"quest":
 - "description": 1–3 Sätze Alltag / echtes Leben
 - "kind": "main" oder "side"
 - "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
-- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" }
+- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" }; optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
 - "questmakerItems": Pflicht sobald du irgendwo eine **neue** itemId verwendest (nicht in ITEM_KATALOG): Array von { "id", "category", "title", "description" } — category eine von: alltag, studium, arbeit, gesundheit, beziehungen, organisation, sonstiges; title und description jeweils nicht leer (Kurzbeschreibung des Items).
 - "steps": Array aus Schritt-Objekten (siehe unten)
 
@@ -325,12 +329,14 @@ export async function POST({ request, cookies }) {
   const rewardStrings = Array.isArray(parsed.rewards)
     ? parsed.rewards.map((r) => String(r).trim()).filter(Boolean)
     : [];
-  let questRewards;
+  let questRewardRows;
   if (Array.isArray(parsed.questRewards) && parsed.questRewards.length > 0) {
-    questRewards = normalizeQuestRewards(parsed.questRewards);
+    questRewardRows = normalizeQuestRewardRows(parsed.questRewards);
   } else {
-    questRewards = rewardStrings.map((text) => ({ type: 'text', text }));
+    questRewardRows = rewardStrings.map((text) => ({ entry: { type: 'text', text } }));
   }
+  const questRewards = questRewardRows.map(questRewardRowToStored);
+  const questRewardEntries = questRewardRows.map((r) => r.entry);
   const kind = parsed.kind === 'main' ? 'main' : 'side';
 
   let nid;
@@ -344,7 +350,7 @@ export async function POST({ request, cookies }) {
   }
 
   const catalogIds = new Set(catalogRows.map((r) => r.id));
-  const neededItemIds = collectItemIdsFromStepsAndQuestRewards(steps, questRewards);
+  const neededItemIds = collectItemIdsFromStepsAndQuestRewards(steps, questRewardEntries);
   const needsNewDefinition = [...neededItemIds].filter((id) => !catalogIds.has(id));
   /** @type {{ id: string; category: string; title: string; description: string }[]} */
   let questmakerItemsOut = [];

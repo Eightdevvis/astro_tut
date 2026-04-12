@@ -256,6 +256,7 @@ export function aiQuestNodesToDraftSteps(nodes) {
  *   displayName: string;
  *   itemCategory: string;
  *   itemDescription: string;
+ *   unlockAtPercent: string;
  * }} QuestRewardDraftRow
  */
 
@@ -269,6 +270,7 @@ export function createEmptyRewardRow() {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    unlockAtPercent: '',
   };
 }
 
@@ -290,6 +292,7 @@ export function ensureRewardRowFields(raw) {
       displayName: typeof r.displayName === 'string' ? r.displayName : '',
       itemCategory: typeof r.itemCategory === 'string' ? r.itemCategory : '',
       itemDescription: typeof r.itemDescription === 'string' ? r.itemDescription : '',
+      unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
     };
   }
   return {
@@ -300,6 +303,7 @@ export function ensureRewardRowFields(raw) {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
   };
 }
 
@@ -325,12 +329,17 @@ export function ensureStepDraftFields(raw) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestRewardEntry[] | undefined} entries
+ * @param {import('./rpg-quest-steps.js').RpgQuestRewardRow[]} rows
  * @returns {QuestRewardDraftRow[]}
  */
-export function questRewardsToDraftRows(entries) {
-  if (!Array.isArray(entries) || entries.length === 0) return [];
-  return entries.map((e) => {
+export function questRewardRowsToDraftRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.map((row) => {
+    const up =
+      typeof row.unlockAtPercent === 'number' && Number.isFinite(row.unlockAtPercent)
+        ? String(Math.round(row.unlockAtPercent))
+        : '';
+    const e = row.entry;
     if (e.type === 'item') {
       return {
         key: newDraftKey(),
@@ -340,6 +349,7 @@ export function questRewardsToDraftRows(entries) {
         displayName: e.displayName || '',
         itemCategory: '',
         itemDescription: '',
+        unlockAtPercent: up,
       };
     }
     return {
@@ -350,8 +360,18 @@ export function questRewardsToDraftRows(entries) {
       displayName: '',
       itemCategory: '',
       itemDescription: '',
+      unlockAtPercent: up,
     };
   });
+}
+
+/**
+ * @param {import('./rpg-quest-steps.js').RpgQuestRewardEntry[] | undefined} entries
+ * @returns {QuestRewardDraftRow[]}
+ */
+export function questRewardsToDraftRows(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+  return questRewardRowsToDraftRows(entries.map((e) => ({ entry: e })));
 }
 
 /**
@@ -359,18 +379,80 @@ export function questRewardsToDraftRows(entries) {
  * @returns {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]}
  */
 export function draftRewardRowsToQuestRewards(rows) {
-  /** @type {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]} */
+  return draftRewardRowsToStoredQuestRewards(rows).map((o) => {
+    const e = /** @type {Record<string, unknown>} */ (o);
+    if (e.type === 'item') {
+      const itemId = String(e.itemId ?? '');
+      const dn = typeof e.displayName === 'string' ? e.displayName.trim() : '';
+      return dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
+    }
+    return { type: 'text', text: String(e.text ?? '') };
+  });
+}
+
+/**
+ * Persistenz-Form inkl. optionalem unlockAtPercent (leeres Feld = automatische Verteilung).
+ * @param {QuestRewardDraftRow[]} rows
+ * @returns {Record<string, unknown>[]}
+ */
+export function draftRewardRowsToStoredQuestRewards(rows) {
+  /** @type {Record<string, unknown>[]} */
   const out = [];
   for (const r of rows) {
+    const upRaw = (r.unlockAtPercent || '').trim();
+    const upNum = upRaw === '' ? NaN : Number(upRaw);
+    const hasExplicit =
+      upRaw !== '' && Number.isFinite(upNum) && upNum >= 0 && upNum <= 100;
+    const unlockAtPercent = hasExplicit ? Math.round(upNum) : undefined;
+
     if (r.kind === 'item' && (r.itemId || '').trim()) {
       const itemId = (r.itemId || '').trim();
       const dn = (r.displayName || '').trim();
-      out.push(dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId });
+      /** @type {Record<string, unknown>} */
+      const o = { type: 'item', itemId };
+      if (dn) o.displayName = dn;
+      if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
+      out.push(o);
     } else if (r.kind === 'text' && (r.text || '').trim()) {
-      out.push({ type: 'text', text: (r.text || '').trim() });
+      /** @type {Record<string, unknown>} */
+      const o = { type: 'text', text: (r.text || '').trim() };
+      if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
+      out.push(o);
     }
   }
   return out;
+}
+
+/**
+ * Katalog-Daten in Item-Felder übernehmen, wenn Nutzer sie leer gelassen hat.
+ * @param {QuestStepDraft[]} stepDrafts
+ * @param {QuestRewardDraftRow[]} rewardRows
+ * @param {Record<string, { title?: string; category?: string; description?: string }>} catalog
+ */
+export function hydrateItemFieldsFromCatalog(stepDrafts, rewardRows, catalog) {
+  /** @param {QuestStepDraft} d */
+  function walk(d) {
+    if ((d.itemId || '').trim()) {
+      const id = d.itemId.trim();
+      const row = catalog[id];
+      if (row) {
+        if (!(d.itemDisplayName || '').trim() && row.title) d.itemDisplayName = row.title;
+        if (!(d.itemCategory || '').trim() && row.category) d.itemCategory = row.category;
+        if (!(d.itemDescription || '').trim() && row.description) d.itemDescription = row.description;
+      }
+    }
+    for (const c of d.children || []) walk(c);
+  }
+  for (const d of stepDrafts) walk(d);
+  for (const r of rewardRows) {
+    if (r.kind !== 'item' || !(r.itemId || '').trim()) continue;
+    const row = catalog[(r.itemId || '').trim()];
+    if (row) {
+      if (!(r.displayName || '').trim() && row.title) r.displayName = row.title;
+      if (!(r.itemCategory || '').trim() && row.category) r.itemCategory = row.category;
+      if (!(r.itemDescription || '').trim() && row.description) r.itemDescription = row.description;
+    }
+  }
 }
 
 /**

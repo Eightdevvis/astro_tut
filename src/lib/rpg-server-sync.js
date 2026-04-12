@@ -67,7 +67,7 @@ export async function fetchRpgBootstrap() {
 
 /**
  * @param {{ graph: object; addedIds: string[]; stepDone: object; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
- * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }> }>}
+ * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; status?: number; error?: string; missing?: string[] }>}
  */
 export async function persistRpgState(payload) {
   const res = await fetch('/api/rpg/quests', {
@@ -79,10 +79,13 @@ export async function persistRpgState(payload) {
     try {
       const err = await res.json();
       console.warn('[rpg] persist failed', res.status, err);
+      const msg = typeof err?.error === 'string' ? err.error : undefined;
+      const missing = Array.isArray(err?.missing) ? err.missing.filter((x) => typeof x === 'string') : undefined;
+      return { ok: false, status: res.status, error: msg, missing };
     } catch {
       console.warn('[rpg] persist failed', res.status);
     }
-    return { ok: false };
+    return { ok: false, status: res.status };
   }
   let data = {};
   try {

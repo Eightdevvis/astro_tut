@@ -117,6 +117,8 @@ export default function SuperSettings() {
   const [qmItems, setQmItems] = useState([]);
   const [qmMsg, setQmMsg] = useState('');
   const [qmBusy, setQmBusy] = useState(false);
+  const [rpgNormMsg, setRpgNormMsg] = useState('');
+  const [rpgNormBusy, setRpgNormBusy] = useState(false);
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -271,6 +273,29 @@ export default function SuperSettings() {
     }
   }
 
+  async function normalizeRpgStoredPayloads() {
+    setRpgNormMsg('');
+    setError('');
+    setRpgNormBusy(true);
+    try {
+      const res = await fetch('/api/rpg/quests-normalize-payload', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Normalisierung fehlgeschlagen');
+      setRpgNormMsg(
+        `RPG-DB: ${data.rowsChecked ?? 0} Payload(s) geprüft, ${data.rowsUpdated ?? 0} aktualisiert.`
+      );
+    } catch (err) {
+      setError(err?.message || String(err));
+    } finally {
+      setRpgNormBusy(false);
+    }
+  }
+
   function addQmRow() {
     setQmItems((prev) => [
       ...prev,
@@ -386,8 +411,8 @@ export default function SuperSettings() {
       <section style={section}>
         <h2 style={h2}>Questmaker — Item-Katalog</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1rem' }}>
-          Belohnungen vom Typ „Item“ beziehen Anzeigenamen hierher. Beim Speichern von Quests werden fehlende
-          IDs automatisch mit Platzhalter angelegt — hier pflegen und korrigieren.
+          Belohnungen vom Typ „Item“ nutzen Titel und Kurzbeschreibung aus diesem Katalog. Neue Item-IDs müssen
+          beim Quest-Speichern vollständig mitgeliefert werden (Editor oder KI) — hier den Bestand pflegen.
         </p>
         <form onSubmit={saveQuestmakerCatalog}>
           {qmItems.length === 0 ? (
@@ -482,6 +507,22 @@ export default function SuperSettings() {
             {qmMsg ? <span style={okStyle}>{qmMsg}</span> : null}
           </div>
         </form>
+        <p style={{ fontSize: '0.85rem', opacity: 0.75, marginTop: '1.25rem', marginBottom: '0.5rem' }}>
+          <strong>RPG-Graph in der Datenbank normalisieren</strong> — einmalig oder nach größeren Format-Updates:
+          alle gespeicherten Quest-Payloads auf Schema v2 bringen (<code>questRewards</code>, Steps-Struktur).
+          Unveränderte Zeilen werden nicht geschrieben.
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <button
+            type="button"
+            style={btnPrimary}
+            disabled={rpgNormBusy}
+            onClick={() => void normalizeRpgStoredPayloads()}
+          >
+            {rpgNormBusy ? 'Normalisiere…' : 'RPG-Payloads in DB normalisieren'}
+          </button>
+          {rpgNormMsg ? <span style={okStyle}>{rpgNormMsg}</span> : null}
+        </div>
       </section>
 
       <section style={section}>

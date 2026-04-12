@@ -222,17 +222,110 @@ export function resolveQuestRewardUnlockSchedule(questId, entries) {
 
 /**
  * @param {unknown} raw
+ * @returns {number | undefined}
+ */
+export function parseQuestRewardUnlockFromRaw(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  const v = o.unlockAtPercent ?? o.unlock_at_percent;
+  if (typeof v === 'number' && Number.isFinite(v)) return clampQuestRewardUnlockPercent(v);
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number(v.trim());
+    if (Number.isFinite(n)) return clampQuestRewardUnlockPercent(n);
+  }
+  return undefined;
+}
+
+/**
+ * @param {number} n
+ * @returns {number}
+ */
+export function clampQuestRewardUnlockPercent(n) {
+  const x = Math.round(n);
+  if (x < 0) return 0;
+  if (x > 100) return 100;
+  return x;
+}
+
+/**
+ * Eine Quest-Belohnungszeile inkl. optionaler Freischalt-Schwelle (0–100).
+ * @typedef {{ entry: RpgQuestRewardEntry; unlockAtPercent?: number }} RpgQuestRewardRow
+ */
+
+/**
+ * @param {unknown} raw
+ * @returns {RpgQuestRewardRow | null}
+ */
+export function normalizeQuestRewardRow(raw) {
+  const entry = normalizeRewardEntry(raw);
+  if (!entry) return null;
+  const unlockAtPercent = parseQuestRewardUnlockFromRaw(raw);
+  if (unlockAtPercent !== undefined) return { entry, unlockAtPercent };
+  return { entry };
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {RpgQuestRewardRow[]}
+ */
+export function normalizeQuestRewardRows(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {RpgQuestRewardRow[]} */
+  const out = [];
+  for (const x of raw) {
+    const row = normalizeQuestRewardRow(x);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Persistenz-Objekt (ein Element von `questRewards[]`).
+ * @param {RpgQuestRewardRow} row
+ * @returns {Record<string, unknown>}
+ */
+export function questRewardRowToStored(row) {
+  const e = row.entry;
+  /** @type {Record<string, unknown>} */
+  let o;
+  if (e.type === 'text') {
+    o = { type: 'text', text: e.text };
+  } else {
+    o = { type: 'item', itemId: e.itemId };
+    if (e.displayName) o.displayName = e.displayName;
+  }
+  if (typeof row.unlockAtPercent === 'number' && Number.isFinite(row.unlockAtPercent)) {
+    o.unlockAtPercent = clampQuestRewardUnlockPercent(row.unlockAtPercent);
+  }
+  return o;
+}
+
+/**
+ * Pro Zeile: explizites unlockAtPercent oder Fallback auf deterministischen Auto-Plan.
+ * @param {string} questId
+ * @param {RpgQuestRewardRow[]} rows
+ * @returns {{ entry: RpgQuestRewardEntry; unlockAtPercent: number }[]}
+ */
+export function resolveQuestRewardRowsWithUnlocks(questId, rows) {
+  const n = rows.length;
+  if (n === 0) return [];
+  const entries = rows.map((r) => r.entry);
+  const auto = resolveQuestRewardUnlockSchedule(questId, entries);
+  return rows.map((r, i) => ({
+    entry: r.entry,
+    unlockAtPercent:
+      typeof r.unlockAtPercent === 'number' && Number.isFinite(r.unlockAtPercent)
+        ? clampQuestRewardUnlockPercent(r.unlockAtPercent)
+        : auto[i].unlockAtPercent,
+  }));
+}
+
+/**
+ * @param {unknown} raw
  * @returns {RpgQuestRewardEntry[]}
  */
 export function normalizeQuestRewards(raw) {
-  if (!Array.isArray(raw)) return [];
-  /** @type {RpgQuestRewardEntry[]} */
-  const out = [];
-  for (const x of raw) {
-    const e = normalizeRewardEntry(x);
-    if (e) out.push(e);
-  }
-  return out;
+  return normalizeQuestRewardRows(raw).map((r) => r.entry);
 }
 
 /**
@@ -469,7 +562,7 @@ export function questHasUrgentTimeBoundLeaves(quest, stepDone, nowMs = Date.now(
 
 /**
  * Sammelt Step-Rewards (DFS) und Quest-Rewards mit unlocked-Flag.
- * Quest-Reward-Schwellen kommen aus resolveQuestRewardUnlockSchedule (deterministisch pro Quest-ID).
+ * Quest-Reward-Schwellen: optional gespeichertes `unlockAtPercent` pro Zeile, sonst Auto-Plan (deterministisch pro Quest-ID).
  * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
  * @param {Record<string, Record<string, boolean>>} stepDone
  * @param {number} [progressPercentOverride] — z. B. aus questProgress(..., graph): Vorgänger + Folgequests
@@ -480,7 +573,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
     typeof progressPercentOverride === 'number' && Number.isFinite(progressPercentOverride)
       ? progressPercentOverride
       : questLeafProgressRatio(quest, stepDone).percent;
-  /** @type {{ label: string; kind: 'text' | 'item'; unlocked: boolean; source: 'step' | 'quest'; itemId?: string }[]} */
+  /** @type {{ label: string; kind: 'text' | 'item'; unlocked: boolean; source: 'step' | 'quest'; itemId?: string; unlockAtPercent?: number }[]} */
   const rows = [];
   walkStepsPreOrder(quest.steps || [], (s) => {
     const entry = normalizeRewardEntry(s.reward);
@@ -496,7 +589,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
       ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
     });
   });
-  const qr = resolveQuestRewardUnlockSchedule(quest.id, getQuestRewardEntries(quest));
+  const qr = resolveQuestRewardRowsWithUnlocks(quest.id, getQuestRewardRows(quest));
   for (const r of qr) {
     const unlocked = pct >= r.unlockAtPercent;
     const entry = r.entry;
@@ -507,6 +600,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
       kind,
       unlocked,
       source: 'quest',
+      unlockAtPercent: r.unlockAtPercent,
       ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
     });
   }
@@ -515,14 +609,24 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
 
 /**
  * @param {import('./rpg-quests-data.js').RpgGraphQuest} q
+ * @returns {RpgQuestRewardRow[]}
+ */
+export function getQuestRewardRows(q) {
+  if (Array.isArray(q.questRewards) && q.questRewards.length > 0) {
+    return normalizeQuestRewardRows(q.questRewards);
+  }
+  const legacy = Array.isArray(q.rewards) ? q.rewards : [];
+  return distributeQuestRewardPercents(legacy.map((x) => String(x).trim()).filter(Boolean)).map((e) => ({
+    entry: e,
+  }));
+}
+
+/**
+ * @param {import('./rpg-quests-data.js').RpgGraphQuest} q
  * @returns {RpgQuestRewardEntry[]}
  */
 export function getQuestRewardEntries(q) {
-  if (Array.isArray(q.questRewards) && q.questRewards.length > 0) {
-    return normalizeQuestRewards(q.questRewards);
-  }
-  const legacy = Array.isArray(q.rewards) ? q.rewards : [];
-  return distributeQuestRewardPercents(legacy.map((x) => String(x).trim()).filter(Boolean));
+  return getQuestRewardRows(q).map((r) => r.entry);
 }
 
 /**
@@ -554,10 +658,14 @@ export function migrateQuestToV2Shape(q) {
     steps = normalizeQuestStepsTree(stepsIn);
   }
 
-  let questRewards = normalizeQuestRewards(q.questRewards);
-  if (questRewards.length === 0 && Array.isArray(q.rewards) && q.rewards.length > 0) {
-    questRewards = distributeQuestRewardPercents(q.rewards.map((x) => String(x).trim()).filter(Boolean));
+  let questRewardRows = normalizeQuestRewardRows(q.questRewards);
+  if (questRewardRows.length === 0 && Array.isArray(q.rewards) && q.rewards.length > 0) {
+    questRewardRows = distributeQuestRewardPercents(q.rewards.map((x) => String(x).trim()).filter(Boolean)).map(
+      (e) => ({ entry: e })
+    );
   }
+
+  const questRewards = questRewardRows.map(questRewardRowToStored);
 
   const { rewards: _drop, questRewards: _qr, steps: _st, ...rest } = q;
   return {

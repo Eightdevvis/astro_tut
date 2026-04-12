@@ -47,3 +47,27 @@ export async function deleteRpgState(username) {
   const db = getDb();
   await db.execute({ sql: 'DELETE FROM rpg_user_state WHERE username = ?', args: [username] });
 }
+
+/**
+ * Alle gespeicherten RPG-Payloads (Migration / Admin).
+ * @returns {Promise<{ username: string; payload: RpgStoredPayload }[]>}
+ */
+export async function listAllRpgStates() {
+  const db = getDb();
+  const r = await db.execute('SELECT username, payload FROM rpg_user_state');
+  /** @type {{ username: string; payload: RpgStoredPayload }[]} */
+  const out = [];
+  for (const row of r.rows) {
+    const username = typeof row.username === 'string' ? row.username : String(row.username ?? '').trim();
+    if (!username) continue;
+    const raw = row.payload;
+    if (typeof raw !== 'string') continue;
+    try {
+      const payload = /** @type {RpgStoredPayload} */ (JSON.parse(raw));
+      if (payload && typeof payload === 'object') out.push({ username, payload });
+    } catch {
+      /* Zeile überspringen */
+    }
+  }
+  return out;
+}

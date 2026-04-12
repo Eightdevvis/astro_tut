@@ -1659,6 +1659,28 @@
   min-width: 0;
 }
 
+.rpg-reward-builder__unlock-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+  min-width: 3.5rem;
+}
+
+.rpg-reward-builder__unlock-label {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rpg-reward-builder__unlock-input {
+  width: 3.75rem;
+  text-align: center;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
 .rpg-step-card__reward-block .rpg-reward-kind-switch {
   margin-bottom: 0.5rem;
 }

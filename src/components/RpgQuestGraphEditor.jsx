@@ -4,18 +4,19 @@ import {
   removeQuestFromGraph,
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
-import { getQuestRewardEntries, normalizeQuestRewards } from '../lib/rpg-quest-steps.js';
+import { getQuestRewardRows, normalizeQuestRewardRows } from '../lib/rpg-quest-steps.js';
 import {
   questStepsToDrafts,
   draftStepsToQuestNodes,
   aiLabelsToDraftSteps,
   aiQuestNodesToDraftSteps,
-  questRewardsToDraftRows,
-  draftRewardRowsToQuestRewards,
+  questRewardRowsToDraftRows,
+  draftRewardRowsToStoredQuestRewards,
   isDraftStepMeaningful,
   ensureStepDraftFields,
   ensureRewardRowFields,
   collectQuestmakerItemsFromDrafts,
+  hydrateItemFieldsFromCatalog,
 } from '../lib/rpg-quest-editor-draft.js';
 import {
   collectAllItemIdsFromGraph,
@@ -91,6 +92,10 @@ export default function RpgQuestGraphEditor({
   const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftListTick, setDraftListTick] = useState(0);
+  const itemCatalogRef = useRef(itemCatalog);
+  useEffect(() => {
+    itemCatalogRef.current = itemCatalog;
+  }, [itemCatalog]);
   /** KI-generierte Katalog-Zeilen für neue Item-IDs (Merge mit manuellen Entwürfen beim Speichern). */
   const aiQuestmakerItemsRef = useRef(
     /** @type {{ id: string; category: string; title: string; description: string }[]} */ ([])
@@ -126,8 +131,10 @@ export default function RpgQuestGraphEditor({
       setTitle(q.title || '');
       setDescription(q.description || '');
       const drafts = questStepsToDrafts(q.steps || []);
+      const rrows = questRewardRowsToDraftRows(getQuestRewardRows(q));
+      hydrateItemFieldsFromCatalog(drafts, rrows, itemCatalogRef.current);
       setStepDrafts(drafts);
-      setRewardRows(questRewardsToDraftRows(getQuestRewardEntries(q)));
+      setRewardRows(rrows);
       setOrderInLayer(typeof q.orderInLayer === 'number' ? q.orderInLayer : 0);
       const preds = new Set();
       for (const e of graph.edges || []) {
@@ -139,7 +146,7 @@ export default function RpgQuestGraphEditor({
         title: q.title || '',
         description: q.description || '',
         kind: q.kind === 'main' ? 'main' : 'side',
-        rewardRows: questRewardsToDraftRows(getQuestRewardEntries(q)),
+        rewardRows: rrows.map((r) => ({ ...r })),
         orderInLayer: typeof q.orderInLayer === 'number' ? q.orderInLayer : 0,
       };
       resetAiSession();
@@ -274,7 +281,7 @@ export default function RpgQuestGraphEditor({
       title: title.trim() || nid,
       description: description.trim(),
       steps,
-      questRewards: draftRewardRowsToQuestRewards(rewardRows),
+      questRewards: draftRewardRowsToStoredQuestRewards(rewardRows),
     };
   }, [mode, questId, normalizedCreateId, kind, title, description, stepDrafts, rewardRows]);
 
@@ -302,7 +309,7 @@ export default function RpgQuestGraphEditor({
       window.alert('Bitte mindestens einen Schritt anlegen und speichern.');
       return;
     }
-    const questRewards = draftRewardRowsToQuestRewards(rewardRows);
+    const questRewards = draftRewardRowsToStoredQuestRewards(rewardRows);
     const quest = {
       id: nid,
       kind,
@@ -368,11 +375,11 @@ export default function RpgQuestGraphEditor({
       setStepDrafts(labels.length ? aiLabelsToDraftSteps(labels.map((x) => String(x))) : []);
     }
     const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
-    const entries =
+    const qRows =
       Array.isArray(data.questRewards) && data.questRewards.length > 0
-        ? normalizeQuestRewards(data.questRewards)
-        : rewardLines.map((text) => ({ type: 'text', text }));
-    setRewardRows(questRewardsToDraftRows(entries));
+        ? normalizeQuestRewardRows(data.questRewards)
+        : rewardLines.map((text) => ({ entry: { type: 'text', text } }));
+    setRewardRows(questRewardRowsToDraftRows(qRows));
     const rawQm = Array.isArray(data.questmakerItems) ? data.questmakerItems : [];
     aiQuestmakerItemsRef.current = rawQm
       .map((x) => normalizeQuestmakerCatalogPayloadItem(x))

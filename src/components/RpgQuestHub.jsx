@@ -90,6 +90,7 @@ export default function RpgQuestHub() {
   const itemCatalogRef = useRef(
     /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
   );
+  const persistFailFingerprintRef = useRef('');
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
@@ -175,9 +176,20 @@ export default function RpgQuestHub() {
       const payload = { graph, addedIds: [...added], stepDone };
       void (async () => {
         const r = await persistRpgState(payload);
-        if (r.ok && r.itemCatalog) {
-          setItemCatalog(r.itemCatalog);
-          itemCatalogRef.current = r.itemCatalog;
+        if (r.ok) {
+          persistFailFingerprintRef.current = '';
+          if (r.itemCatalog) {
+            setItemCatalog(r.itemCatalog);
+            itemCatalogRef.current = r.itemCatalog;
+          }
+        } else if (r.error) {
+          const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
+          if (persistFailFingerprintRef.current !== fp) {
+            persistFailFingerprintRef.current = fp;
+            let msg = r.error;
+            if (r.missing?.length) msg += `\n\nFehlende Item-IDs: ${r.missing.join(', ')}`;
+            window.alert(msg);
+          }
         }
         saveSessionCachedPayload({
           ...payload,
