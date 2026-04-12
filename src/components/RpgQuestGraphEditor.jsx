@@ -426,7 +426,9 @@ export default function RpgQuestGraphEditor({
   return (
     <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
       <div
-        class={`rpg-graph-editor rpg-graph-editor--wide${showQmPrompt ? ' rpg-graph-editor--qm-prompt' : ''}`}
+        class={`rpg-graph-editor rpg-graph-editor--wide${
+          onlyQuestmaker ? ' rpg-graph-editor--questmaker' : ''
+        }${showQmPrompt ? ' rpg-graph-editor--qm-prompt' : ''}`}
       >
         <div class="rpg-graph-editor__head">
           <h2 id="rpg-graph-editor-title" class="rpg-graph-editor__title">

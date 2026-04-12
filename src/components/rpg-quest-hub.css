@@ -1,7 +1,15 @@
 .rpg-hub {
   display: flex;
   min-height: 100dvh;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(
+    --rpg-font-sans,
+    'Plus Jakarta Sans',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif
+  );
   --rpg-accent: #7eb8da;
   --rpg-accent-dim: rgba(126, 184, 218, 0.35);
   --rpg-surface: rgba(255, 255, 255, 0.04);
