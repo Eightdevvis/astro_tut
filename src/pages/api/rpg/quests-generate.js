@@ -5,6 +5,17 @@ import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-hel
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
 
+/** @param {string | undefined} raw */
+function chatCompletionsUrl(raw) {
+  const base = (raw?.trim() || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  return `${base}/chat/completions`;
+}
+
+/** Wenn kein json_schema (z. B. DeepSeek): nur json_object — Prompt ergänzt das Format. */
+const JSON_OBJECT_PROMPT_SUFFIX = `
+
+Antworte ausschließlich mit einem JSON-Objekt (kein Markdown). Pflicht-Keys exakt: "id", "title", "description", "stepLabels" (Array, mindestens ein String), "rewards" (Array von Strings), "kind" ("main" oder "side").`;
+
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
     status: 403,
@@ -74,8 +85,10 @@ export async function POST({ request, cookies }) {
     return forbidden();
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || !String(apiKey).trim()) {
+  /** Wie `db.js` / JWT: Astro+Vercel liefern Secrets zuverlässig über `import.meta.env`; `process.env` ist im Server-Bundle oft leer. */
+  const env = import.meta.env;
+  const apiKey = String(env.OPENAI_API_KEY ?? '').trim();
+  if (!apiKey) {
     return new Response(
       JSON.stringify({
         error: 'KI nicht konfiguriert',
@@ -114,11 +127,20 @@ export async function POST({ request, cookies }) {
     Array.isArray(existingRaw) ? existingRaw.filter((x) => typeof x === 'string' && x.trim()) : []
   );
 
-  const model = process.env.RPG_OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = String(env.RPG_OPENAI_MODEL ?? '').trim() || DEFAULT_MODEL;
+  const baseUrl = env.OPENAI_BASE_URL;
+  const useJsonSchema =
+    env.RPG_OPENAI_USE_JSON_SCHEMA !== '0' &&
+    String(env.RPG_OPENAI_USE_JSON_SCHEMA ?? '').toLowerCase() !== 'false';
+
+  const systemContent = useJsonSchema ? SYSTEM_PROMPT : SYSTEM_PROMPT + JSON_OBJECT_PROMPT_SUFFIX;
+  const responseFormat = useJsonSchema
+    ? { type: 'json_schema', json_schema: QUEST_JSON_SCHEMA }
+    : { type: 'json_object' };
 
   let upstream;
   try {
-    upstream = await fetch('https://api.openai.com/v1/chat/completions', {
+    upstream = await fetch(chatCompletionsUrl(baseUrl), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -128,18 +150,15 @@ export async function POST({ request, cookies }) {
         model,
         temperature: 0.65,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemContent },
           { role: 'user', content: prompt },
         ],
-        response_format: {
-          type: 'json_schema',
-          json_schema: QUEST_JSON_SCHEMA,
-        },
+        response_format: responseFormat,
       }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Netzwerkfehler';
-    return new Response(JSON.stringify({ error: 'OpenAI nicht erreichbar', detail: msg }), {
+    return new Response(JSON.stringify({ error: 'KI-Anbieter nicht erreichbar', detail: msg }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -149,7 +168,7 @@ export async function POST({ request, cookies }) {
   if (!upstream.ok) {
     return new Response(
       JSON.stringify({
-        error: 'OpenAI-Fehler',
+        error: 'KI-Anbieter-Fehler',
         detail: rawText.slice(0, 500),
         status: upstream.status,
       }),
@@ -161,7 +180,7 @@ export async function POST({ request, cookies }) {
   try {
     completion = JSON.parse(rawText);
   } catch {
-    return new Response(JSON.stringify({ error: 'Ungültige OpenAI-Antwort' }), {
+    return new Response(JSON.stringify({ error: 'Ungültige API-Antwort' }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });

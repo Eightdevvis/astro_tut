@@ -18,10 +18,14 @@ Kurz: **Semantik** = System-Prompt, **JSON-Shape** = Schema-Zwang, **App-interne
 
 | Variable | Pflicht | Beschreibung |
 |----------|---------|--------------|
-| `OPENAI_API_KEY` | Ja für KI | OpenAI-API-Key (nur Server; nie im Client). Ohne Key: `POST` liefert **503** mit Hinweis. |
-| `RPG_OPENAI_MODEL` | Nein | Chat-Modell (Default: `gpt-4o-mini`). |
+| `OPENAI_API_KEY` | Ja für KI | API-Key des Anbieters (nur Server; nie im Client). Ohne Key: `POST` liefert **503** mit Hinweis. |
+| `OPENAI_BASE_URL` | Nein | Basis-URL der **OpenAI-kompatiblen** Chat-API, ohne Pfad (Default: `https://api.openai.com/v1`). Ergänzt wird `/chat/completions`. Wenn `api.openai.com` nicht erreichbar (z. B. Festlandchina): eigenes Relay oder einen Anbieter mit erreichbarem Endpunkt setzen. |
+| `RPG_OPENAI_MODEL` | Nein | Chat-Modell (Default: `gpt-4o-mini`). Z. B. DeepSeek: `deepseek-chat`. |
+| `RPG_OPENAI_USE_JSON_SCHEMA` | Nein | `1`/unset = OpenAI **Structured Outputs** (`json_schema`). `0`/`false` = nur `json_object` (Kompatibilität mit APIs ohne Schema-Zwang, z. B. DeepSeek). |
 
-Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production (z. B. Vercel): **Environment Variables** wie bei `JWT_SECRET` / Turso.
+Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production (z. B. Vercel): **Environment Variables** wie bei `JWT_SECRET` / Turso — nach dem Anlegen **neu deployen**. Die API-Route liest die Werte wie der Rest der App über **`import.meta.env`** (nicht `process.env`), damit Vercel/Astro sie zuverlässig an die Server-Function durchreichen.
+
+**Hinweis Zugang:** Offizielles OpenAI-API-Hosting ist regional oft eingeschränkt. Dann `OPENAI_BASE_URL` + passendes Modell + ggf. `RPG_OPENAI_USE_JSON_SCHEMA=0` für einen OpenAI-kompatiblen Dienst nutzen, dessen API von deinem Netz aus erreichbar ist.
 
 ## API
 
@@ -54,7 +58,7 @@ Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production
 }
 ```
 
-**Fehler:** **400** (leerer/zu langer Prompt, ungültiger JSON-Body), **403**, **503** (kein API-Key / „KI nicht konfiguriert“), **502** (OpenAI-Netzwerk, Parsing, leere Antwort).
+**Fehler:** **400** (leerer/zu langer Prompt, ungültiger JSON-Body), **403**, **503** (kein API-Key / „KI nicht konfiguriert“), **502** (KI-Anbieter nicht erreichbar / API-Fehler, Parsing, leere Antwort).
 
 **Technik:** Siehe Abschnitt **„Woran das Format gebunden ist“** — OpenAI **Chat Completions** + JSON-Schema + System-Prompt; danach Normalisierung im Server.
 
