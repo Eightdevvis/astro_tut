@@ -112,6 +112,23 @@ export default function RpgQuestHub() {
   }, [itemCatalog]);
 
   useEffect(() => {
+    const onCatalog = (/** @type {CustomEvent} */ e) => {
+      const m = e.detail?.itemCatalog;
+      if (!m || typeof m !== 'object') return;
+      setItemCatalog(m);
+      itemCatalogRef.current = m;
+      saveSessionCachedPayload({
+        graph,
+        addedIds: [...added],
+        stepDone,
+        itemCatalog: m,
+      });
+    };
+    window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
+    return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
+  }, [graph, added, stepDone]);
+
+  useEffect(() => {
     let cancelled = false;
     const hadSessionCache = !!loadSessionCachedPayload();
     (async () => {

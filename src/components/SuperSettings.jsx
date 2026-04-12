@@ -6,6 +6,9 @@ import {
 } from '../constants/font-settings.js';
 import { previewFamilyForValue } from '../constants/font-preview-helpers.js';
 import { RPG_ITEM_CATEGORY_IDS } from '../lib/rpg-item-categories.js';
+import { questmakerCatalogToDisplayMap } from '../lib/rpg-questmaker-sync.js';
+
+const RPG_QUESTMAKER_CATALOG_EVENT = 'rpg-questmaker-catalog-updated';
 
 const box = {
   maxWidth: 720,
@@ -255,6 +258,12 @@ export default function SuperSettings() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
       setQmMsg(`Katalog: ${data.items?.length ?? items.length} Einträge gespeichert.`);
+      const map = questmakerCatalogToDisplayMap(Array.isArray(data.items) ? data.items : []);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent(RPG_QUESTMAKER_CATALOG_EVENT, { detail: { itemCatalog: map } })
+        );
+      }
     } catch (err) {
       setError(err?.message || String(err));
     } finally {

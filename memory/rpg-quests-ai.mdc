@@ -22,7 +22,9 @@ Die Route `POST /api/rpg/quests-generate` nutzt:
 
 3. **Server nach dem Call** — `normalizeQuestStepsTree` für `steps`; Fallback auf flache **`stepLabels`** → `labelsToSteps`; **`normalizeQuestId`**, **`ensureUniqueQuestId`** für neue IDs; bei **Bearbeitung** bleibt die ID über **`lockedQuestId`** fix.
 
-Kurz: **Semantik** = System- + User-Nachricht, **JSON** = freies Objekt mit Pflichtlogik pro `responseType`, **Graph-Steps** = immer normalisierte Bäume.
+4. **Item-Katalog** — Vor dem Modellaufruf: `listQuestmakerCatalogRows()` aus der DB; angehängter Block **`ITEM_KATALOG`** (Kategorie \| id \| Titel — Kurzbeschreibung). So kann die KI bestehende **`itemId`** nur nutzen, wenn es inhaltlich passt; sonst Text-Rewards.
+
+Kurz: **Semantik** = System- + User-Nachricht + optional Katalog, **JSON** = freies Objekt mit Pflichtlogik pro `responseType`, **Graph-Steps** = immer normalisierte Bäume.
 
 ## Rückfragen (Clarify)
 
@@ -80,11 +82,13 @@ Lokal: `.env`; Production: `import.meta.env` (wie bei JWT/Turso), nach Änderung
   "stepLabels": ["…"],
   "steps": [ /* normalisierte RpgQuestStepNode-Struktur */ ],
   "rewards": ["…"],
-  "questRewards": [{ "text": "…" }]
+  "questRewards": [ { "type": "text", "text": "…" } | { "type": "item", "itemId": "…", "displayName": "…" } ]
 }
 ```
 
-`questRewards` aus der API sind `{ text }[]`; die Anzeige mit **`unlockAtPercent`** kommt weiterhin über `resolveQuestRewardUnlockSchedule` in `rpg-quest-steps.js` (deterministisch pro Quest-ID).
+`questRewards` werden mit **`normalizeQuestRewards`** eingelesen (Text- und Item-Typen). **`rewards`** als String-Liste ist weiterhin möglich, wenn **`questRewards`** fehlt. Anzeige-Prozente für Quest-Rewards: **`resolveQuestRewardUnlockSchedule`** in `rpg-quest-steps.js`.
+
+**Katalog verwalten:** Super-Settings → Abschnitt Questmaker; API **`GET`/`PUT /api/rpg/questmaker-items`**. Beim **`PUT /api/rpg/quests`** werden fehlende Item-IDs aus dem Graph als Platzhalter-Zeilen angelegt (`insertMissingQuestmakerItems`).
 
 **Fehler:** **400**, **403**, **503**, **502** (u. a. leere/ungültige Schritte nach Normalisierung).
 
@@ -97,7 +101,9 @@ Lokal: `.env`; Production: `import.meta.env` (wie bei JWT/Turso), nach Änderung
 
 | Rolle | Datei |
 |--------|--------|
-| API | `src/pages/api/rpg/quests-generate.js` |
+| API | `src/pages/api/rpg/quests-generate.js` (+ DB-Katalog für `ITEM_KATALOG`) |
+| Item-Katalog API | `src/pages/api/rpg/questmaker-items.js` |
+| Katalog-DB / Sync | `src/lib/rpg-questmaker-catalog-db.js`, `src/lib/rpg-questmaker-sync.js` |
 | Labels → flache Steps | `src/lib/rpg-quest-form-helpers.js` (`labelsToSteps`, `normalizeQuestId`) |
 | Steps normalisieren | `src/lib/rpg-quest-steps.js` |
 | KI-`steps` → Editor-Drafts | `src/lib/rpg-quest-editor-draft.js` (`aiQuestNodesToDraftSteps`, `aiLabelsToDraftSteps`) |
