@@ -21,6 +21,8 @@ description: Math-Minigames — Leitlinien, Pfade, Rand-Disclaimer (Detail-Memor
 | Minigames-Übersicht | `src/pages/minigames/index.astro` |
 | Fraktale-Sandbox | `src/components/FraktaleSandbox.jsx` |
 | Seite Fraktale | `src/pages/minigames/fraktale-sandbox.astro` |
+| Flüssigkeits-Deko (Mana-Kugel + Herz, Three.js) | `src/components/LiquidVessels.jsx` |
+| Seite Mana &amp; Leben | `src/pages/minigames/liquid-vessels.astro` |
 
 ## Rand (`clampWorld`) und Simulation
 

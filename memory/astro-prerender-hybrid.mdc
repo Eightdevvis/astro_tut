@@ -1,0 +1,19 @@
+# Astro Hybrid (output: server) — Prerender & Navigation
+
+Kurz: Verhalten und bekannte Einschränkungen bei statisch vorgerenderten Routen neben SSR.
+
+## Konfiguration / Routen
+
+- **`output: "server"`** (z. B. mit Vercel-Adapter): Dynamische Seiten sind standardmäßig **on-demand**; `getStaticPaths()` wird ignoriert, solange die Seite nicht fürs Build-HTML markiert ist.
+- **Tag-Seiten:** `src/pages/tags/[tag].astro` — `export const prerender = true` nötig, damit `getStaticPaths()` beim Build läuft und `/tags/...` als statisches HTML entsteht.
+
+## Navigation / Session (`Nav2`)
+
+- **Datei:** `src/components/Nav2.astro` — wenn `Astro.isPrerendered`, wird **kein** `getUsernameFromCookies(Astro.cookies)` aufgerufen (sonst Warnung bzw. Zugriff auf `Astro.request.headers` beim Prerender).
+- **Folge:** In **prerendered** HTML ist kein eingeloggter User bekannt; der **Superuser-only RPG-Link** erscheint dort **nicht** im serverseitigen Markup (auf **SSR-Seiten** unverändert über Cookie).
+- **Optional später:** RPG-Einträge nach Login auf statischen Seiten z. B. per kleiner `client:load`-Insel und `GET /api/user` (`isSuperuser`) nachziehen — aktuell nicht umgesetzt.
+
+## Build / Deploy
+
+- **`npm run build`** räumt nur **`dist/`** (`rm -rf dist` im Script); **`.vercel/output`** bleibt.
+- **Kurzschluss:** Parallele Builds oder alter `.vercel/output`-Stand können zu **`EEXIST: ... mkdir '.vercel/output/server/'`** führen — bei Bedarf `.vercel/output` vor dem Build entfernen oder nur einen Build gleichzeitig laufen lassen.

@@ -2,6 +2,8 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import BlogPost from '../../components/BlogPost.astro';
 
+export const prerender = true;
+
 export async function getStaticPaths() {//generates a page for each unique tag under url /tags/[tag]
   const allPosts = Object.values(import.meta.glob('../posts/*.md', { eager: true }));
 

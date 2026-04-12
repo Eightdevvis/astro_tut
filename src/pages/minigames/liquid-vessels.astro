@@ -1,0 +1,146 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import LiquidVessels from '../../components/LiquidVessels.jsx';
+import '../../styles/global.css';
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Mana &amp; Leben · Minigames</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="subpage" />
+    <header class="lv-page-head">
+      <p class="lv-page-kicker"><a href="/minigames">le mathematicos rainbow</a></p>
+      <p class="lv-page-lead">
+        Zwei Gefäße, eine Szene: Mana-Kugel und Herz mit Lebenssaft — optisches Schwappen (Shader), für Desktop und Mobil gedacht.
+      </p>
+    </header>
+    <LiquidVessels client:load />
+    <p class="lv-page-back">
+      <a href="/minigames">← Alle Minigames</a>
+    </p>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+    color: rgba(255, 255, 255, 0.88);
+    overflow-x: hidden;
+    background: linear-gradient(180deg, #0f1830 0%, #070b14 48%, #03050a 100%);
+  }
+
+  .lv-page-head {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 0.5rem;
+    min-width: 0;
+  }
+
+  .lv-page-kicker {
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin: 0 0 0.35rem;
+  }
+
+  .lv-page-kicker a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .lv-page-kicker a:hover {
+    text-decoration: underline;
+  }
+
+  .lv-page-lead {
+    margin: 0;
+    max-width: 42rem;
+    line-height: 1.55;
+    font-size: 0.95rem;
+    opacity: 0.78;
+    overflow-wrap: break-word;
+  }
+
+  .lv-page-back {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem 1rem 2rem;
+    opacity: 0.5;
+  }
+
+  .lv-page-back a {
+    color: inherit;
+    font-size: 0.9rem;
+  }
+
+  :global(.lv-root) {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.5rem 1rem 1rem;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+
+  :global(.lv-hint) {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+    opacity: 0.65;
+    line-height: 1.45;
+  }
+
+  /* Nur „Kasten“-Chrome weg (Rand/Schatten); gleiche Fläche wie vorher, damit WebGL zuverlässig Größe hat */
+  :global(.lv-canvas-wrap) {
+    position: relative;
+    width: 100%;
+    height: min(72vh, 520px);
+    min-height: 280px;
+    margin: 0.35rem 0 0;
+    overflow: hidden;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+  }
+
+  :global(.lv-canvas-wrap canvas) {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  :global(.lv-gyro),
+  :global(.lv-motion) {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
+    font: inherit;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(10, 12, 24, 0.75);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+
+  :global(.lv-note) {
+    margin: 0.75rem 0 0;
+    font-size: 0.8rem;
+    opacity: 0.5;
+    line-height: 1.45;
+    max-width: 40rem;
+  }
+</style>

@@ -21,6 +21,7 @@ import {
 import { questHasUrgentTimeBoundLeaves } from '../lib/rpg-quest-steps.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
+import LiquidVessels from './LiquidVessels.jsx';
 import './rpg-quest-tree.css';
 
 const PANEL_RESERVE_DESKTOP = 280;
@@ -527,6 +528,12 @@ export default function RpgQuestTree() {
   const panelAddLabel = selectedAdded ? 'Weg' : 'Add';
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
+  const manaHeartDeko = (
+    <aside class="rpg-tree__vessels" aria-hidden="true">
+      <LiquidVessels variant="rpg-tree" />
+    </aside>
+  );
+
   const topBar = (
     <header class="rpg-tree__top">
       <p class="rpg-tree__top-title">Quest-Baum</p>
@@ -584,6 +591,7 @@ export default function RpgQuestTree() {
     return (
       <div class="rpg-tree">
         {topBar}
+        {manaHeartDeko}
         <p class="rpg-tree__empty">
           Keine Quests im Graph. „Verwalten“ aktivieren — mit manuell+ oder questmaker+ eine Quest anlegen.
         </p>
@@ -595,6 +603,7 @@ export default function RpgQuestTree() {
   return (
     <div class="rpg-tree">
       {topBar}
+      {manaHeartDeko}
 
       <div
         ref={viewportRef}

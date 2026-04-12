@@ -10,7 +10,7 @@ interface Props {
 
 const { variant = 'subpage' } = Astro.props;
 const isHome = variant === 'home';
-const username = await getUsernameFromCookies(Astro.cookies);
+const username = Astro.isPrerendered ? null : await getUsernameFromCookies(Astro.cookies);
 const showRpgNav = username === SUPERUSER;
 ---
 

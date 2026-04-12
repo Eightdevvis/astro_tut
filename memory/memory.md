@@ -18,5 +18,6 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
 | RPG — kommende Features (Backup, …) | [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc) |
 | RPG — vielleicht kommend (Default-Graph, …) | [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc) |
+| Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
 
 Weitere Themen: bei Bedarf neue Dateien unter `memory/` anlegen und in dieser Tabelle verlinken.
