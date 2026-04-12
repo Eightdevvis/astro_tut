@@ -49,7 +49,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 |------|-----|---------|
 | `id` | string | stabil |
 | `kind` | `"main"` \| `"side"` | Main = Sechseck im Baum, Side = Kreis |
-| `title`, `description`, `steps` | … | `steps` rekursiv (Gruppen, `dependsOn`, …): [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
+| `title`, `description`, `steps` | … | `steps` rekursiv (Gruppen, `dependsOn`, `optional`, `reward`, `timeDueAt` auf Blättern, …): [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
 | `questRewards` | `{ text, unlockAtPercent }[]` | Quest-Rewards; Legacy-Feld `rewards` wird beim Laden migriert |
 
 **Kanten:** gerichtet von **Voraussetzung** (`from`) zu **abhängiger** Quest (`to`). Der Baum wächst **von unten nach oben** (Roots = keine eingehenden Kanten, gelten als **freigeschaltet**).
@@ -74,10 +74,11 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 
 ## Quest-Baum (UI)
 
+- **Oben rechts (Verwalten):** **„Verwalten“** schaltet den Bearbeitungsmodus ein. Im aktiven Modus: **„Fertig“** beendet ihn; **manuell+** und **questmaker+** starten **getrennte** Dialoge (manuelles Formular nur Schritt-/Texteditor; Questmaker nur Prompt, danach Vorschau — ohne Umschalten). Im **Detail-Panel** (Quest gewählt, Verwalten an): dieselbe Trennung **manuell+** / **questmaker+**.
 - **Canvas:** Pan (Pointer auf Hintergrund, nicht auf Nodes), Zoom (Rad). **Nodes sind nicht verschiebbar**; Layout kommt aus `computeLayeredLayout` in `src/lib/rpg-quest-graph.js`.
-- **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look.
+- **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look. **Roter Punkt** am Knoten: offene **Pflicht-Schritte mit Frist**, die in **&lt; 7 Tagen** fällig oder **überfällig** sind (siehe [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) Abschnitt Zeitbegrenzung).
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
-- **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert.
+- **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert. Im **Bearbeiten-Modus** des Baums: **Quest bearbeiten** öffnet den Editor mit **manuell+** / **questmaker+** (Details: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
 
 ## Hub (UI)
 
@@ -99,7 +100,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 | Quest-Form-Helfer (ID, Schritte, Rewards) | `src/lib/rpg-quest-form-helpers.js` (von Editor + KI-API genutzt) |
 | Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
 
-**KI-Quest-Generierung:** Beim **neuen** Quest im Baum (Superuser): optional KI füllt Inhalt; Speichern wie gewohnt über `PUT` mit gleichem Payload. Details, Env-Variablen und API: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).
+**KI (Questmaker+):** Beim **neuen** Quest und beim **Bearbeiten** (nach Auswahl questmaker+) — Inhalt generieren, Kanten weiter manuell. API, Rückfragen, `lockedQuestId`: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).
 
 **Strukturierte Steps & Rewards (Gruppen, optional, Reihenfolge, Step- vs. Quest-Rewards):** Spezifikation und JSON-Beispiel: [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc).
 

@@ -25,6 +25,8 @@ import './rpg-quest-tree.css';
 
 const PANEL_RESERVE_DESKTOP = 280;
 const PANEL_RESERVE_MOBILE = 200;
+/** Ab dieser Bewegung (px) zählt die Geste als Pan — Klick auf Knoten bleibt erhalten. */
+const PAN_DRAG_THRESHOLD_PX = 5;
 
 function hexPoints(cx, cy, R) {
   const pts = [];
@@ -92,7 +94,15 @@ export default function RpgQuestTree() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
   const [editorQuestId, setEditorQuestId] = useState(/** @type {string | null} */ (null));
-  const dragRef = useRef(/** @type {{ px: number; py: number; vx: number; vy: number } | null} */ (null));
+  /** @type {'manual' | 'questmaker' | undefined} */
+  const [editorCreateEntry, setEditorCreateEntry] = useState(undefined);
+  /** @type {'choose' | 'form' | 'ai' | undefined} */
+  const [editorEditEntry, setEditorEditEntry] = useState(undefined);
+  const dragRef = useRef(
+    /** @type {{ px: number; py: number; vx: number; vy: number; moved?: boolean } | null} */ (null)
+  );
+  /** Nach echtem Pan: ein folgendes `click` auf einem Knoten ignorieren */
+  const suppressNodeClickRef = useRef(false);
   const viewportRef = useRef(/** @type {HTMLDivElement | null} */ (null));
   const didCenterFocusRef = useRef(false);
   const didCenterDefaultRef = useRef(false);
@@ -173,6 +183,35 @@ export default function RpgQuestTree() {
 
   const applyGraph = useCallback((next) => {
     setGraph(next);
+  }, []);
+
+  const closeEditor = useCallback(() => {
+    setEditorOpen(false);
+    setEditorCreateEntry(undefined);
+    setEditorEditEntry(undefined);
+  }, []);
+
+  /**
+   * @param {'manual' | 'questmaker'} entry
+   */
+  const openCreateQuest = useCallback((entry) => {
+    setEditorMode('create');
+    setEditorQuestId(null);
+    setEditorCreateEntry(entry);
+    setEditorEditEntry(undefined);
+    setEditorOpen(true);
+  }, []);
+
+  /**
+   * @param {string} qid
+   * @param {'choose' | 'form' | 'ai'} entry
+   */
+  const openEditQuest = useCallback((qid, entry) => {
+    setEditorMode('edit');
+    setEditorQuestId(qid);
+    setEditorEditEntry(entry);
+    setEditorCreateEntry(undefined);
+    setEditorOpen(true);
   }, []);
 
   const onToggleStep = useCallback((questId, stepId) => {
@@ -335,14 +374,16 @@ export default function RpgQuestTree() {
     };
   }, []);
 
-  const onPointerDownBg = useCallback(
-    (e) => {
+  const onPointerDownViewport = useCallback(
+    (/** @type {PointerEvent} */ e) => {
       if (e.button !== 0) return;
-      dragRef.current = { px: e.clientX, py: e.clientY, vx: pan.x, vy: pan.y };
+      suppressNodeClickRef.current = false;
+      dragRef.current = { px: e.clientX, py: e.clientY, vx: pan.x, vy: pan.y, moved: false };
       setDragging(true);
-      if (e.currentTarget instanceof HTMLElement) {
+      const el = viewportRef.current;
+      if (el) {
         try {
-          e.currentTarget.setPointerCapture(e.pointerId);
+          el.setPointerCapture(e.pointerId);
         } catch {
           /* ignore */
         }
@@ -351,18 +392,39 @@ export default function RpgQuestTree() {
     [pan.x, pan.y]
   );
 
-  const onPointerMove = useCallback((e) => {
+  const onPointerMove = useCallback((/** @type {PointerEvent} */ e) => {
     const d = dragRef.current;
     if (!d) return;
+    const dx = e.clientX - d.px;
+    const dy = e.clientY - d.py;
+    if (!d.moved && Math.hypot(dx, dy) >= PAN_DRAG_THRESHOLD_PX) d.moved = true;
     setPan({
-      x: d.vx + (e.clientX - d.px),
-      y: d.vy + (e.clientY - d.py),
+      x: d.vx + dx,
+      y: d.vy + dy,
     });
   }, []);
 
-  const onPointerUp = useCallback(() => {
+  const onPointerUp = useCallback((/** @type {PointerEvent} */ e) => {
+    const d = dragRef.current;
+    if (d?.moved) suppressNodeClickRef.current = true;
     dragRef.current = null;
     setDragging(false);
+    const el = viewportRef.current;
+    if (el) {
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const onQuestNodeClick = useCallback((/** @type {string} */ qid) => {
+    if (suppressNodeClickRef.current) {
+      suppressNodeClickRef.current = false;
+      return;
+    }
+    setSelectedId(qid);
   }, []);
 
   const toggleAdded = useCallback(() => {
@@ -395,25 +457,25 @@ export default function RpgQuestTree() {
     <header class="rpg-tree__top">
       <p class="rpg-tree__top-title">Quest-Baum</p>
       <div class="rpg-tree__top-actions">
-        <button
-          type="button"
-          class={editMode ? 'rpg-tree__btn rpg-tree__btn--active' : 'rpg-tree__btn'}
-          onClick={() => setEditMode((v) => !v)}
-        >
-          Bearbeiten
-        </button>
-        {editMode && (
+        {!editMode ? (
+          <button
+            type="button"
+            class="rpg-tree__btn"
+            onClick={() => setEditMode(true)}
+            title="Neue Quests anlegen und bestehende bearbeiten"
+          >
+            Verwalten
+          </button>
+        ) : (
           <>
-            <button
-              type="button"
-              class="rpg-tree__btn rpg-tree__btn--primary"
-              onClick={() => {
-                setEditorMode('create');
-                setEditorQuestId(null);
-                setEditorOpen(true);
-              }}
-            >
-              + Quest
+            <button type="button" class="rpg-tree__btn rpg-tree__btn--muted" onClick={() => setEditMode(false)} title="Verwaltungsmodus beenden">
+              Fertig
+            </button>
+            <button type="button" class="rpg-tree__btn" onClick={() => openCreateQuest('manual')} title="Neue Quest direkt im Formular">
+              manuell+
+            </button>
+            <button type="button" class="rpg-tree__btn" onClick={() => openCreateQuest('questmaker')} title="Neue Quest direkt mit Questmaker (KI)">
+              questmaker+
             </button>
           </>
         )}
@@ -428,7 +490,9 @@ export default function RpgQuestTree() {
       mode={editorMode}
       graph={graph}
       questId={editorMode === 'edit' ? editorQuestId : null}
-      onClose={() => setEditorOpen(false)}
+      createEntry={editorMode === 'create' ? editorCreateEntry : undefined}
+      editEntry={editorMode === 'edit' ? editorEditEntry : undefined}
+      onClose={closeEditor}
       onApply={applyGraph}
     />
   );
@@ -446,7 +510,7 @@ export default function RpgQuestTree() {
       <div class="rpg-tree">
         {topBar}
         <p class="rpg-tree__empty">
-          Keine Quests im Graph. „Bearbeiten“ aktivieren und mit „+ Quest“ eine Quest anlegen.
+          Keine Quests im Graph. „Verwalten“ aktivieren — mit manuell+ oder questmaker+ eine Quest anlegen.
         </p>
         {graphEditor}
       </div>
@@ -460,10 +524,10 @@ export default function RpgQuestTree() {
       <div
         ref={viewportRef}
         class={`rpg-tree__viewport${dragging ? ' rpg-tree__viewport--dragging' : ''}`}
+        onPointerDown={onPointerDownViewport}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={onPointerUp}
       >
         <div
           class="rpg-tree__canvas"
@@ -478,12 +542,7 @@ export default function RpgQuestTree() {
             aria-hidden={false}
           >
             <title>Quest-Baum</title>
-            <rect
-              class="rpg-tree__hit"
-              width={layout.width}
-              height={layout.height}
-              onPointerDown={onPointerDownBg}
-            />
+            <rect class="rpg-tree__hit" width={layout.width} height={layout.height} />
 
             <g class="rpg-tree-edges">
               {(graph.edges || []).map((e, i) => {
@@ -568,8 +627,7 @@ export default function RpgQuestTree() {
                     key={q.id}
                     class={cls}
                     transform={`translate(${p.x},${p.y})`}
-                    onPointerDown={(ev) => ev.stopPropagation()}
-                    onClick={() => setSelectedId(q.id)}
+                    onClick={() => onQuestNodeClick(q.id)}
                   >
                     {q.kind === 'main' ? (
                       <polygon
@@ -648,17 +706,23 @@ export default function RpgQuestTree() {
               </details>
               {editMode && (
                 <div class="rpg-tree-panel__edit">
-                  <button
-                    type="button"
-                    class="rpg-tree-panel__edit-btn"
-                    onClick={() => {
-                      setEditorMode('edit');
-                      setEditorQuestId(selectedQuest.id);
-                      setEditorOpen(true);
-                    }}
-                  >
-                    Quest bearbeiten …
-                  </button>
+                  <p class="rpg-tree-panel__edit-hint">Quest anpassen</p>
+                  <div class="rpg-tree-panel__edit-row">
+                    <button
+                      type="button"
+                      class="rpg-tree-panel__edit-btn"
+                      onClick={() => openEditQuest(selectedQuest.id, 'form')}
+                    >
+                      manuell+
+                    </button>
+                    <button
+                      type="button"
+                      class="rpg-tree-panel__edit-btn"
+                      onClick={() => openEditQuest(selectedQuest.id, 'ai')}
+                    >
+                      questmaker+
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

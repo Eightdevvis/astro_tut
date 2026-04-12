@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import {
   upsertQuestInGraph,
   removeQuestFromGraph,
@@ -14,6 +14,7 @@ import {
   draftRewardRowsToQuestRewards,
 } from '../lib/rpg-quest-editor-draft.js';
 import { RpgQuestStepsBuilder, RpgQuestRewardsBuilder } from './RpgQuestStepsBuilder.jsx';
+import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
 export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
@@ -26,9 +27,20 @@ export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
  *   questId: string | null;
  *   onClose: () => void;
  *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph) => void;
+ *   createEntry?: 'manual' | 'questmaker';
+ *   editEntry?: 'form' | 'ai';
  * }} props
  */
-export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClose, onApply }) {
+export default function RpgQuestGraphEditor({
+  open,
+  mode,
+  graph,
+  questId,
+  onClose,
+  onApply,
+  createEntry,
+  editEntry,
+}) {
   const [id, setId] = useState('');
   const [kind, setKind] = useState(/** @type {'main' | 'side'} */ ('side'));
   const [title, setTitle] = useState('');
@@ -39,8 +51,20 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
   const [rewardRows, setRewardRows] = useState([]);
   const [orderInLayer, setOrderInLayer] = useState(0);
   const [prereqIds, setPrereqIds] = useState(() => new Set());
+  /** Nur wenn kein createEntry gesetzt (Fallback) */
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
-  const [editSurface, setEditSurface] = useState(/** @type {'choose' | 'form' | 'ai'} */ ('form'));
+  /** @type {'prompt' | 'result'} */
+  const [qmPhase, setQmPhase] = useState('prompt');
+  const editQmBaselineRef = useRef(
+    /** @type {{
+     *   stepDrafts: import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[];
+     *   title: string;
+     *   description: string;
+     *   kind: 'main' | 'side';
+     *   rewardRows: import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[];
+     *   orderInLayer: number;
+     * } | null} */ (null)
+  );
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(/** @type {string | null} */ (null));
@@ -59,6 +83,13 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     setAiError(null);
   };
 
+  /** Baum setzt createEntry / editEntry; Defaults: neue Quest = manuell, Bearbeiten = Formular */
+  const onlyQuestmaker =
+    (mode === 'create' && createEntry === 'questmaker') ||
+    (mode === 'edit' && (editEntry ?? 'form') === 'ai');
+  /** Legacy: beide Modi im selben Dialog */
+  const showCreateModeSwitch = mode === 'create' && createEntry === undefined;
+
   useEffect(() => {
     if (!open) {
       aiSeedRef.current = '';
@@ -71,7 +102,8 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setKind(q.kind === 'main' ? 'main' : 'side');
       setTitle(q.title || '');
       setDescription(q.description || '');
-      setStepDrafts(questStepsToDrafts(q.steps || []));
+      const drafts = questStepsToDrafts(q.steps || []);
+      setStepDrafts(drafts);
       setRewardRows(questRewardsToDraftRows(getQuestRewardEntries(q)));
       setOrderInLayer(typeof q.orderInLayer === 'number' ? q.orderInLayer : 0);
       const preds = new Set();
@@ -79,11 +111,19 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         if (e.to === questId) preds.add(e.from);
       }
       setPrereqIds(preds);
-      setEditSurface('choose');
+      editQmBaselineRef.current = {
+        stepDrafts: drafts,
+        title: q.title || '',
+        description: q.description || '',
+        kind: q.kind === 'main' ? 'main' : 'side',
+        rewardRows: questRewardsToDraftRows(getQuestRewardEntries(q)),
+        orderInLayer: typeof q.orderInLayer === 'number' ? q.orderInLayer : 0,
+      };
       resetAiSession();
       setAiPrompt('');
       setCreateMode('manual');
       setAiLoading(false);
+      setQmPhase((editEntry ?? 'form') === 'ai' ? 'prompt' : 'result');
     } else {
       setId('');
       setKind('side');
@@ -93,14 +133,16 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setRewardRows([]);
       setOrderInLayer(0);
       setPrereqIds(new Set());
-      setCreateMode('manual');
-      setEditSurface('form');
+      editQmBaselineRef.current = null;
+      const ce = createEntry ?? 'manual';
+      setCreateMode(ce === 'questmaker' ? 'ai' : 'manual');
+      setQmPhase(ce === 'questmaker' ? 'prompt' : 'result');
       setAiPrompt('');
       setAiError(null);
       setAiLoading(false);
       resetAiSession();
     }
-  }, [open, mode, questId, graph]);
+  }, [open, mode, questId, graph, createEntry, editEntry]);
 
   if (!open) return null;
 
@@ -111,6 +153,22 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     graph.quests.some((q) => q.id === normalizedCreateId);
 
   const otherQuests = graph.quests.filter((q) => (mode === 'edit' ? q.id !== questId : true));
+
+  const previewQuest = useMemo(() => {
+    const steps = draftStepsToQuestNodes(stepDrafts);
+    const nid =
+      mode === 'edit' && questId
+        ? questId
+        : normalizedCreateId || 'preview';
+    return {
+      id: nid,
+      kind,
+      title: title.trim() || nid,
+      description: description.trim(),
+      steps,
+      questRewards: draftRewardRowsToQuestRewards(rewardRows),
+    };
+  }, [mode, questId, normalizedCreateId, kind, title, description, stepDrafts, rewardRows]);
 
   const togglePrereq = (pid) => {
     setPrereqIds((prev) => {
@@ -236,7 +294,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       }
       resetAiSession();
       applyGeneratedQuestPayload(data);
-      if (mode === 'edit') setEditSurface('form');
+      if (onlyQuestmaker) setQmPhase('result');
     } catch {
       setAiError('Netzwerkfehler');
     } finally {
@@ -259,11 +317,41 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     await handleAiGenerate(merged);
   };
 
-  const showEditPick = mode === 'edit' && editSurface === 'choose';
-  /** Nur Bearbeiten: questmaker+ als eigenes Fenster; bei „Neue Quest“ bleibt der Block im Formular. */
-  const showAiOnlyPanel = mode === 'edit' && editSurface === 'ai';
-  const showFullForm =
-    mode === 'create' || (mode === 'edit' && editSurface === 'form');
+  const handleQmRegenerate = () => {
+    setQmPhase('prompt');
+    resetAiSession();
+    setAiPrompt('');
+    if (mode === 'edit' && editQmBaselineRef.current) {
+      const b = editQmBaselineRef.current;
+      setStepDrafts(b.stepDrafts);
+      setTitle(b.title);
+      setDescription(b.description);
+      setKind(b.kind);
+      setRewardRows(b.rewardRows);
+      setOrderInLayer(b.orderInLayer);
+    } else {
+      setStepDrafts([]);
+      setTitle('');
+      setDescription('');
+      setId('');
+      setKind('side');
+      setRewardRows([]);
+    }
+  };
+
+  const showQmPrompt = onlyQuestmaker && qmPhase === 'prompt';
+  const showQmResult = onlyQuestmaker && qmPhase === 'result';
+  const showManualFullForm =
+    (mode === 'create' && (createEntry ?? 'manual') !== 'questmaker') ||
+    (mode === 'edit' && (editEntry ?? 'form') === 'form');
+
+  const noopToggle = () => {};
+
+  const dialogTitle = (() => {
+    if (onlyQuestmaker && qmPhase === 'prompt') return 'Questmaker';
+    if (onlyQuestmaker && qmPhase === 'result') return mode === 'create' ? 'Quest übernehmen' : 'Quest speichern';
+    return mode === 'create' ? 'Neue Quest' : 'Quest bearbeiten';
+  })();
 
   const aiBlock = (
     <div class="rpg-graph-editor__ai-block">
@@ -271,7 +359,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         <span class="rpg-graph-editor__label">Worum soll die Quest gehen?</span>
         <textarea
           class="rpg-graph-editor__textarea"
-          rows={4}
+          rows={5}
           value={aiPrompt}
           placeholder="Echtes Leben: Ziel, Rahmen, Orte, Daten — je konkreter, desto besser. Die KI kann Rückfragen stellen, wenn etwas Wesentliches fehlt."
           onInput={(ev) => setAiPrompt(ev.currentTarget.value)}
@@ -328,186 +416,241 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         </p>
       )}
       <p class="rpg-graph-editor__hint">
-        Es geht um Alltag und echte Entscheidungen — keine Fantasy-Welt. Nach der Generierung kannst du alles im Editor anpassen.
+        {onlyQuestmaker
+          ? 'Alltag und echte Entscheidungen — keine Fantasy-Welt. Nach „Generieren“ siehst du die Quest und kannst sie speichern.'
+          : 'Es geht um Alltag und echte Entscheidungen — keine Fantasy-Welt. Nach der Generierung kannst du alles im Editor anpassen.'}
       </p>
     </div>
   );
 
   return (
     <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
-      <div class="rpg-graph-editor rpg-graph-editor--wide">
+      <div
+        class={`rpg-graph-editor rpg-graph-editor--wide${showQmPrompt ? ' rpg-graph-editor--qm-prompt' : ''}`}
+      >
         <div class="rpg-graph-editor__head">
           <h2 id="rpg-graph-editor-title" class="rpg-graph-editor__title">
-            {mode === 'create' ? 'Neue Quest' : 'Quest bearbeiten'}
+            {dialogTitle}
           </h2>
           <button type="button" class="rpg-graph-editor__close" onClick={onClose} aria-label="Schließen">
             ×
           </button>
         </div>
-        {showEditPick ? (
-          <div class="rpg-graph-editor__form rpg-graph-editor__pick">
-            <p class="rpg-graph-editor__pick-intro">Wie möchtest du bearbeiten?</p>
-            <div class="rpg-graph-editor__mode rpg-graph-editor__mode--stack" role="group" aria-label="Bearbeitungsart">
-              <button type="button" class="rpg-graph-editor__mode-btn" onClick={() => setEditSurface('form')}>
-                manuell+
-              </button>
-              <button
-                type="button"
-                class="rpg-graph-editor__mode-btn"
-                onClick={() => {
-                  resetAiSession();
-                  setAiPrompt('');
-                  setEditSurface('ai');
-                }}
-              >
-                questmaker+
-              </button>
+
+        {showQmPrompt ? <div class="rpg-graph-editor__form rpg-graph-editor__qm-only">{aiBlock}</div> : null}
+
+        {showQmResult ? (
+          <form class="rpg-graph-editor__form rpg-graph-editor__qm-result" onSubmit={handleSubmit}>
+            <div class="rpg-graph-editor__qm-preview">
+              <p class="rpg-graph-editor__qm-kind">
+                {kind === 'main' ? 'Main (Sechseck)' : 'Side (Kreis)'}
+              </p>
+              <h3 class="rpg-graph-editor__qm-title">{title.trim() || '(ohne Titel)'}</h3>
+              {description.trim() ? <p class="rpg-graph-editor__qm-desc">{description}</p> : null}
+              <p class="rpg-graph-editor__label">Schritte & Rewards</p>
+              <RpgQuestStepsView
+                quest={previewQuest}
+                stepDone={{}}
+                onToggleStep={noopToggle}
+                interactive={false}
+                stepsClass="rpg-graph-editor__qm-steps"
+                rewardsClass="rpg-graph-editor__qm-rewards"
+                graph={null}
+              />
             </div>
+
+            {mode === 'create' ? (
+              <label class="rpg-graph-editor__field">
+                <span class="rpg-graph-editor__label">ID (Kurzname)</span>
+                <input
+                  class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
+                  value={id}
+                  onInput={(ev) => setId(ev.currentTarget.value)}
+                  required
+                  placeholder="z. B. meine-nebenquest"
+                  aria-invalid={duplicateQuestId ? 'true' : undefined}
+                />
+                {duplicateQuestId && (
+                  <p class="rpg-graph-editor__warning" role="alert">
+                    Diese ID ist bereits vergeben.
+                  </p>
+                )}
+              </label>
+            ) : null}
+
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
+              <input
+                class="rpg-graph-editor__input"
+                type="number"
+                step={1}
+                value={orderInLayer}
+                onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
+              />
+            </label>
+            <fieldset class="rpg-graph-editor__fieldset">
+              <legend class="rpg-graph-editor__legend">Vorgänger-Quests (müssen fertig sein)</legend>
+              {otherQuests.length === 0 ? (
+                <p class="rpg-graph-editor__hint">Noch keine anderen Quests im Graph.</p>
+              ) : (
+                <ul class="rpg-graph-editor__checks">
+                  {otherQuests.map((q) => (
+                    <li key={q.id}>
+                      <label class="rpg-graph-editor__check">
+                        <input type="checkbox" checked={prereqIds.has(q.id)} onChange={() => togglePrereq(q.id)} />
+                        <span>
+                          {q.title} <code class="rpg-graph-editor__code">{q.id}</code>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </fieldset>
+
             <div class="rpg-graph-editor__actions">
+              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleQmRegenerate}>
+                Neu generieren
+              </button>
+              {mode === 'edit' ? (
+                <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                  Löschen
+                </button>
+              ) : null}
               <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
                 Abbrechen
               </button>
-            </div>
-          </div>
-        ) : null}
-        {showAiOnlyPanel && !showEditPick ? (
-          <div class="rpg-graph-editor__form rpg-graph-editor__ai-only">
-            {mode === 'edit' ? (
               <button
-                type="button"
-                class="rpg-graph-editor__back-link"
-                onClick={() => {
-                  resetAiSession();
-                  setAiPrompt('');
-                  setEditSurface('choose');
-                }}
+                type="submit"
+                class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+                disabled={duplicateQuestId || aiLoading}
               >
-                Zurück zur Auswahl
+                Speichern
               </button>
-            ) : null}
-            {aiBlock}
-          </div>
+            </div>
+          </form>
         ) : null}
-        {showFullForm ? (
-        <form class="rpg-graph-editor__form" onSubmit={handleSubmit}>
-          {mode === 'create' && (
-            <>
-              <div class="rpg-graph-editor__mode" role="radiogroup" aria-label="Art der Quest-Erstellung">
-                <button
-                  type="button"
-                  class={`rpg-graph-editor__mode-btn${createMode === 'manual' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
-                  aria-pressed={createMode === 'manual'}
-                  onClick={() => {
-                    setCreateMode('manual');
-                    setAiError(null);
-                  }}
-                >
-                  manuell+
-                </button>
-                <button
-                  type="button"
-                  class={`rpg-graph-editor__mode-btn${createMode === 'ai' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
-                  aria-pressed={createMode === 'ai'}
-                  onClick={() => {
-                    setCreateMode('ai');
-                    setAiError(null);
-                  }}
-                >
-                  questmaker+
-                </button>
-              </div>
-              {createMode === 'ai' ? aiBlock : null}
-            </>
-          )}
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">ID (Kurzname)</span>
-            <input
-              class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
-              value={id}
-              onInput={(ev) => setId(ev.currentTarget.value)}
-              disabled={mode === 'edit'}
-              required={mode === 'create'}
-              placeholder="z. B. meine-nebenquest"
-              aria-invalid={duplicateQuestId ? 'true' : undefined}
-              aria-describedby={duplicateQuestId ? 'rpg-graph-editor-id-dup-warn' : undefined}
-            />
-            {duplicateQuestId && (
-              <p id="rpg-graph-editor-id-dup-warn" class="rpg-graph-editor__warning" role="alert">
-                Diese ID ist bereits vergeben (eindeutig pro Quest). Nach Normalisierung:{' '}
-                <code class="rpg-graph-editor__code">{normalizedCreateId}</code>
-              </p>
-            )}
-          </label>
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Typ</span>
-            <select class="rpg-graph-editor__input" value={kind} onChange={(ev) => setKind(ev.currentTarget.value)}>
-              <option value="main">Main (Sechseck)</option>
-              <option value="side">Side (Kreis)</option>
-            </select>
-          </label>
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Titel</span>
-            <input
-              class="rpg-graph-editor__input"
-              value={title}
-              onInput={(ev) => setTitle(ev.currentTarget.value)}
-            />
-          </label>
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Beschreibung</span>
-            <textarea class="rpg-graph-editor__textarea" rows={3} value={description} onInput={(ev) => setDescription(ev.currentTarget.value)} />
-          </label>
 
-          <RpgQuestStepsBuilder steps={stepDrafts} onStepsChange={setStepDrafts} />
-          <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
+        {showManualFullForm ? (
+          <form class="rpg-graph-editor__form" onSubmit={handleSubmit}>
+            {showCreateModeSwitch ? (
+              <>
+                <div class="rpg-graph-editor__mode" role="radiogroup" aria-label="Art der Quest-Erstellung">
+                  <button
+                    type="button"
+                    class={`rpg-graph-editor__mode-btn${createMode === 'manual' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
+                    aria-pressed={createMode === 'manual'}
+                    onClick={() => {
+                      setCreateMode('manual');
+                      setAiError(null);
+                    }}
+                  >
+                    manuell+
+                  </button>
+                  <button
+                    type="button"
+                    class={`rpg-graph-editor__mode-btn${createMode === 'ai' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
+                    aria-pressed={createMode === 'ai'}
+                    onClick={() => {
+                      setCreateMode('ai');
+                      setAiError(null);
+                    }}
+                  >
+                    questmaker+
+                  </button>
+                </div>
+                {createMode === 'ai' ? aiBlock : null}
+              </>
+            ) : null}
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">ID (Kurzname)</span>
+              <input
+                class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
+                value={id}
+                onInput={(ev) => setId(ev.currentTarget.value)}
+                disabled={mode === 'edit'}
+                required={mode === 'create'}
+                placeholder="z. B. meine-nebenquest"
+                aria-invalid={duplicateQuestId ? 'true' : undefined}
+                aria-describedby={duplicateQuestId ? 'rpg-graph-editor-id-dup-warn' : undefined}
+              />
+              {duplicateQuestId && (
+                <p id="rpg-graph-editor-id-dup-warn" class="rpg-graph-editor__warning" role="alert">
+                  Diese ID ist bereits vergeben (eindeutig pro Quest). Nach Normalisierung:{' '}
+                  <code class="rpg-graph-editor__code">{normalizedCreateId}</code>
+                </p>
+              )}
+            </label>
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">Typ</span>
+              <select class="rpg-graph-editor__input" value={kind} onChange={(ev) => setKind(ev.currentTarget.value)}>
+                <option value="main">Main (Sechseck)</option>
+                <option value="side">Side (Kreis)</option>
+              </select>
+            </label>
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">Titel</span>
+              <input
+                class="rpg-graph-editor__input"
+                value={title}
+                onInput={(ev) => setTitle(ev.currentTarget.value)}
+              />
+            </label>
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">Beschreibung</span>
+              <textarea class="rpg-graph-editor__textarea" rows={3} value={description} onInput={(ev) => setDescription(ev.currentTarget.value)} />
+            </label>
 
-          <label class="rpg-graph-editor__field">
-            <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
-            <input
-              class="rpg-graph-editor__input"
-              type="number"
-              step={1}
-              value={orderInLayer}
-              onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
-            />
-          </label>
-          <fieldset class="rpg-graph-editor__fieldset">
-            <legend class="rpg-graph-editor__legend">Vorgänger-Quests (müssen fertig sein)</legend>
-            {otherQuests.length === 0 ? (
-              <p class="rpg-graph-editor__hint">Noch keine anderen Quests im Graph.</p>
-            ) : (
-              <ul class="rpg-graph-editor__checks">
-                {otherQuests.map((q) => (
-                  <li key={q.id}>
-                    <label class="rpg-graph-editor__check">
-                      <input type="checkbox" checked={prereqIds.has(q.id)} onChange={() => togglePrereq(q.id)} />
-                      <span>
-                        {q.title} <code class="rpg-graph-editor__code">{q.id}</code>
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </fieldset>
-          <div class="rpg-graph-editor__actions">
-            {mode === 'edit' && (
-              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
-                Löschen
+            <RpgQuestStepsBuilder steps={stepDrafts} onStepsChange={setStepDrafts} />
+            <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
+
+            <label class="rpg-graph-editor__field">
+              <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
+              <input
+                class="rpg-graph-editor__input"
+                type="number"
+                step={1}
+                value={orderInLayer}
+                onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
+              />
+            </label>
+            <fieldset class="rpg-graph-editor__fieldset">
+              <legend class="rpg-graph-editor__legend">Vorgänger-Quests (müssen fertig sein)</legend>
+              {otherQuests.length === 0 ? (
+                <p class="rpg-graph-editor__hint">Noch keine anderen Quests im Graph.</p>
+              ) : (
+                <ul class="rpg-graph-editor__checks">
+                  {otherQuests.map((q) => (
+                    <li key={q.id}>
+                      <label class="rpg-graph-editor__check">
+                        <input type="checkbox" checked={prereqIds.has(q.id)} onChange={() => togglePrereq(q.id)} />
+                        <span>
+                          {q.title} <code class="rpg-graph-editor__code">{q.id}</code>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </fieldset>
+            <div class="rpg-graph-editor__actions">
+              {mode === 'edit' && (
+                <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                  Löschen
+                </button>
+              )}
+              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
+                Abbrechen
               </button>
-            )}
-            <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
-              Abbrechen
-            </button>
-            <button
-              type="submit"
-              class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
-              disabled={duplicateQuestId || (mode === 'create' && aiLoading)}
-            >
-              Speichern
-            </button>
-          </div>
-        </form>
+              <button
+                type="submit"
+                class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+                disabled={duplicateQuestId || (mode === 'create' && aiLoading)}
+              >
+                Speichern
+              </button>
+            </div>
+          </form>
         ) : null}
       </div>
     </div>

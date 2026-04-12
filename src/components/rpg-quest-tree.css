@@ -43,7 +43,10 @@
 }
 
 .rpg-tree__viewport {
-  flex: 1;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   min-height: 0;
@@ -77,9 +80,14 @@
   pointer-events: none;
 }
 
+/* Grab-Cursor nur auf der Fläche; Knoten zeigen Pointer (klickbar) */
 .rpg-tree-node {
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.rpg-tree-node * {
+  cursor: inherit;
 }
 
 .rpg-tree-node--locked .rpg-tree-node__shape {
@@ -459,8 +467,31 @@
   color: #7eb8da;
 }
 
+.rpg-tree__btn--muted {
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .rpg-tree-panel__edit {
   margin-top: 0.65rem;
+}
+
+.rpg-tree-panel__edit-hint {
+  margin: 0 0 0.4rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.rpg-tree-panel__edit-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.rpg-tree-panel__edit-row .rpg-tree-panel__edit-btn {
+  flex: 1;
+  width: auto;
 }
 
 .rpg-tree-panel__edit-btn {
@@ -647,6 +678,60 @@
   margin: 0 0 0.35rem;
   font-size: 0.86rem;
   color: rgba(255, 255, 255, 0.82);
+}
+
+.rpg-graph-editor--qm-prompt {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.rpg-graph-editor__qm-only {
+  padding: 0.5rem 0 1rem;
+}
+
+.rpg-graph-editor__qm-result {
+  padding-top: 0.35rem;
+}
+
+.rpg-graph-editor__qm-preview {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.rpg-graph-editor__qm-kind {
+  margin: 0 0 0.35rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.rpg-graph-editor__qm-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.35;
+}
+
+.rpg-graph-editor__qm-desc {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.rpg-graph-editor__qm-steps {
+  margin: 0.35rem 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.rpg-graph-editor__qm-rewards {
+  margin-top: 0.65rem;
 }
 
 .rpg-graph-editor__ai-block {

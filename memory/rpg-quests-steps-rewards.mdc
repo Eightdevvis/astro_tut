@@ -1,8 +1,8 @@
 # RPG — Strukturierte Steps & Reward-Anzeige (Spezifikation)
 
-Ziel: **Gruppen mit Substeps**, **Reihenfolge** (frei vs. abhängig), **optionale** Steps, **Rewards pro Step** sowie **Quest-Rewards mit Freischaltung nach Fortschritt** — kombinierbar. **Manuell**, **im Layout erkennbar**, **klappbar**, später **KI-befüllbar** (Schema/Prompt wie bei [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
+Ziel: **Gruppen mit Substeps**, **Reihenfolge** (frei vs. abhängig), **optionale** Steps, **zeitbegrenzte** Blatt-Schritte (`timeDueAt`), **Rewards pro Step** sowie **Quest-Rewards mit Freischaltung nach Fortschritt** — kombinierbar. **Manuell** und per **KI (Questmaker+)** mit strukturiertem `steps`-JSON — siehe [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).
 
-Diese Datei beschreibt das **intendierte Datenmodell und Verhalten**; die Umsetzung im Code (Schema-Version, Migration, UI) folgt in den genannten Modulen.
+Diese Datei beschreibt **Datenmodell und Verhalten**; Umsetzung: `rpg-quest-steps.js`, Editor-Drafts, UI.
 
 ---
 
@@ -53,7 +53,18 @@ Zwei sinnvolle Modellierungen:
 
 ## 5. Migration (Bestand)
 
-- Bestehende flache Steps `{ id, label }` werden als **normale Leaf-Steps** interpretiert: **`optional: false`**, **keine** `substeps`, **keine** `reward`, **keine** `dependsOn` (also **unabhängig** untereinander), sofern nicht manuell nachbearbeitet.
+- Bestehende flache Steps `{ id, label }` werden als **normale Leaf-Steps** interpretiert: **`optional: false`**, **keine** `substeps`, **keine** `reward`, **keine** `dependsOn`, **keine** `timeDueAt` (also **unabhängig** untereinander), sofern nicht manuell nachbearbeitet.
+
+---
+
+## 5b. Zeitbegrenzung (`timeDueAt`)
+
+- Nur sinnvoll auf **Blatt-Schritten** (im Editor: keine Unterschritte am gleichen Knoten). Gespeichert als **ISO-Datum** `YYYY-MM-DD` (oder normalisiert aus ISO-Datetime).
+- **Pflicht-Schritt** (`optional: false`) mit gesetzter Frist und noch nicht erledigt: die Quest gilt inhaltlich als **zeitgebunden** (solange noch solche offenen Schritte existieren).
+- **Optional** mit Frist: zählt **nicht** für die „Pflicht-Zeitlogik“ der Quest (nur nicht-optionale Blätter mit `timeDueAt` sind relevant).
+- **Baum-UI:** Wenn mindestens ein **offener Pflicht-Schritt mit Frist** weniger als **eine Woche** bis zur Frist hat **oder überfällig** ist → **roter Punkt** am Knoten (`questHasUrgentTimeBoundLeaves` in `rpg-quest-steps.js`, genutzt in `RpgQuestTree.jsx`).
+
+Hilfsfunktionen (Auswahl): `questHasIncompleteTimeBoundLeaves`, `questHasUrgentTimeBoundLeaves`.
 
 ---
 
@@ -89,7 +100,8 @@ Kein garantiert finales API-Shape — zeigt die **konzeptuellen** Felder inkl. R
           "id": "cr-hang",
           "label": "Wäsche aufhängen",
           "optional": false,
-          "dependsOn": ["cr-wash"]
+          "dependsOn": ["cr-wash"],
+          "timeDueAt": "2026-04-20"
         },
         {
           "id": "cr-bed",
@@ -133,6 +145,6 @@ Kein garantiert finales API-Shape — zeigt die **konzeptuellen** Felder inkl. R
 | Bootstrap | `src/lib/rpg-server-sync.js` — `pickRpgPayloadFromResponse` migriert ebenfalls |
 | UI | `src/components/RpgQuestStepsView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
 | Editor | `src/components/RpgQuestGraphEditor.jsx` |
-| KI | `src/pages/api/rpg/quests-generate.js` — liefert zusätzlich `questRewards` (gleichmäßige Prozent-Stufen aus `rewards`) |
+| KI | `src/pages/api/rpg/quests-generate.js` — `steps`-Baum + `rewards`; Anzeige-Prozente für Quest-Rewards weiterhin über `resolveQuestRewardUnlockSchedule` |
 
 Überblick RPG: [`rpg-quests.mdc`](rpg-quests.mdc). KI: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).
