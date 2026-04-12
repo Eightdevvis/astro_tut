@@ -49,7 +49,8 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 |------|-----|---------|
 | `id` | string | stabil |
 | `kind` | `"main"` \| `"side"` | Main = Sechseck im Baum, Side = Kreis |
-| `title`, `description`, `steps`, `rewards` | wie zuvor | |
+| `title`, `description`, `steps` | … | `steps` rekursiv (Gruppen, `dependsOn`, …): [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
+| `questRewards` | `{ text, unlockAtPercent }[]` | Quest-Rewards; Legacy-Feld `rewards` wird beim Laden migriert |
 
 **Kanten:** gerichtet von **Voraussetzung** (`from`) zu **abhängiger** Quest (`to`). Der Baum wächst **von unten nach oben** (Roots = keine eingehenden Kanten, gelten als **freigeschaltet**).
 
@@ -99,6 +100,8 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 | Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
 
 **KI-Quest-Generierung:** Beim **neuen** Quest im Baum (Superuser): optional KI füllt Inhalt; Speichern wie gewohnt über `PUT` mit gleichem Payload. Details, Env-Variablen und API: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).
+
+**Strukturierte Steps & Rewards (Gruppen, optional, Reihenfolge, Step- vs. Quest-Rewards):** Spezifikation und JSON-Beispiel: [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc).
 
 ## Datenintegrität & Ausbau (ohne stillen Datenverlust)
 

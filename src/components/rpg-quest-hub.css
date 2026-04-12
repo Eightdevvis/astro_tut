@@ -202,18 +202,21 @@
 }
 
 .rpg-step {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.55rem;
   margin-bottom: 0.45rem;
   font-size: 0.88rem;
   line-height: 1.45;
   color: rgba(255, 255, 255, 0.82);
-  cursor: pointer;
   user-select: none;
 }
 
-.rpg-step input {
+.rpg-step--leaf {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: pointer;
+}
+
+.rpg-step--leaf input {
   margin-top: 0.2rem;
   accent-color: var(--rpg-accent);
   cursor: pointer;
@@ -237,6 +240,70 @@
   color: rgba(255, 255, 255, 0.55);
   pointer-events: none;
   user-select: none;
+}
+
+.rpg-reward-pill--locked {
+  opacity: 0.42;
+  color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.rpg-reward-pill:not(.rpg-reward-pill--locked) {
+  color: rgba(255, 255, 255, 0.88);
+  border-color: rgba(126, 184, 218, 0.35);
+}
+
+.rpg-step--group {
+  display: block;
+  cursor: default;
+}
+
+.rpg-step__summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.rpg-step__summary::-webkit-details-marker {
+  display: none;
+}
+
+.rpg-steps--nested {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0 0 0 0.85rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rpg-step__label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rpg-step__label--readonly {
+  cursor: default;
+}
+
+.rpg-step-badge {
+  font-size: 0.65em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.rpg-step-hint {
+  font-size: 0.72em;
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 0.15rem;
 }
 
 .rpg-list-label {
@@ -428,13 +495,13 @@
     font-size: 1.2rem;
   }
 
-  .rpg-step {
+  .rpg-step--leaf {
     min-height: 44px;
     padding: 0.2rem 0;
     align-items: center;
   }
 
-  .rpg-step input {
+  .rpg-step--leaf input {
     width: 1.15rem;
     height: 1.15rem;
   }

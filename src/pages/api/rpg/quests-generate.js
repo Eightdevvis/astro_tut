@@ -1,6 +1,7 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { SUPERUSER } from '../../../lib/permissions.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
+import { distributeQuestRewardPercents } from '../../../lib/rpg-quest-steps.js';
 
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -238,6 +239,8 @@ export async function POST({ request, cookies }) {
     nid = ensureUniqueQuestId(nid, existingSet);
   }
 
+  const questRewards = distributeQuestRewardPercents(rewards);
+
   return new Response(
     JSON.stringify({
       id: nid,
@@ -246,6 +249,7 @@ export async function POST({ request, cookies }) {
       kind,
       stepLabels: steps.map((s) => s.label),
       rewards,
+      questRewards,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
   );

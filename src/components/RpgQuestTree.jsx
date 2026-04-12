@@ -19,6 +19,7 @@ import {
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
+import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-tree.css';
 
 const PANEL_RESERVE_DESKTOP = 280;
@@ -171,6 +172,13 @@ export default function RpgQuestTree() {
 
   const applyGraph = useCallback((next) => {
     setGraph(next);
+  }, []);
+
+  const onToggleStep = useCallback((questId, stepId) => {
+    setStepDone((prev) => ({
+      ...prev,
+      [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
+    }));
   }, []);
 
   useEffect(() => {
@@ -610,24 +618,20 @@ export default function RpgQuestTree() {
                 </button>
               </div>
               <p class="rpg-tree-panel__desc">{selectedQuest.description}</p>
-              <details class="rpg-tree-panel__details">
-                <summary>Schritte</summary>
-                <ul class="rpg-tree-panel__steps">
-                  {(selectedQuest.steps || []).map((s) => (
-                    <li key={s.id} class="rpg-tree-panel__step">
-                      {s.label}
-                    </li>
-                  ))}
-                </ul>
+              <details class="rpg-tree-panel__details" open>
+                <summary>Schritte & Rewards</summary>
+                <div class="rpg-tree-panel__steps-wrap">
+                  <p class="rpg-tree-panel__inline-label">Schritte</p>
+                  <RpgQuestStepsView
+                    quest={selectedQuest}
+                    stepDone={stepDone}
+                    onToggleStep={onToggleStep}
+                    interactive
+                    stepsClass="rpg-tree-panel__steps"
+                    rewardsClass="rpg-tree-panel__rewards"
+                  />
+                </div>
               </details>
-              <p class="rpg-tree-panel__rewards-label">Rewards</p>
-              <div class="rpg-tree-panel__rewards">
-                {(selectedQuest.rewards || []).map((r, j) => (
-                  <span key={j} class="rpg-tree-panel__reward">
-                    {r}
-                  </span>
-                ))}
-              </div>
               {editMode && (
                 <div class="rpg-tree-panel__edit">
                   <button

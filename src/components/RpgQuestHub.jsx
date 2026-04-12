@@ -17,6 +17,7 @@ import {
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
+import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
 function firstId(list) {
@@ -53,7 +54,6 @@ function RpgTreeDeepLink({ questId }) {
 }
 
 function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero' }) {
-  const doneFor = stepDone[quest.id] || {};
   const TitleTag = variant === 'hero' ? 'h2' : 'h3';
   const wrapClass =
     variant === 'hero' ? 'rpg-quest-block rpg-quest-block--hero' : 'rpg-quest-block rpg-quest-block--embedded';
@@ -64,28 +64,14 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
       <TitleTag class="rpg-quest-block__title">{quest.title}</TitleTag>
       <p class="rpg-quest-block__desc">{quest.description}</p>
       <p class="rpg-section-label">Schritte</p>
-      <ul class="rpg-steps">
-        {(quest.steps || []).map((s) => (
-          <li key={s.id} class="rpg-step">
-            <label style={{ display: 'flex', gap: '0.55rem', alignItems: 'flex-start', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={!!doneFor[s.id]}
-                onChange={() => onToggleStep(quest.id, s.id)}
-              />
-              <span>{s.label}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      <p class="rpg-section-label">Rewards</p>
-      <div class="rpg-rewards">
-        {(quest.rewards || []).map((r, i) => (
-          <span key={i} class="rpg-reward-pill" aria-hidden="true">
-            {r}
-          </span>
-        ))}
-      </div>
+      <RpgQuestStepsView
+        quest={quest}
+        stepDone={stepDone}
+        onToggleStep={onToggleStep}
+        interactive
+        stepsClass="rpg-steps"
+        rewardsClass="rpg-rewards"
+      />
     </div>
   );
 }

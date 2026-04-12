@@ -10,6 +10,7 @@ import {
   mergeStepDoneBase,
   buildInitialStepMapFromGraph,
 } from './rpg-quest-graph.js';
+import { migrateRpgGraphToV2 } from './rpg-quest-steps.js';
 
 export { isValidGraphShape };
 
@@ -119,7 +120,8 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
 
 /** @param {any} data */
 export function pickRpgPayloadFromResponse(data) {
-  const graph = isValidGraphShape(data?.graph) ? data.graph : SAMPLE_RPG_GRAPH;
+  const raw = isValidGraphShape(data?.graph) ? data.graph : SAMPLE_RPG_GRAPH;
+  const graph = migrateRpgGraphToV2(raw);
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
   return { graph, addedIds, stepDone, persisted: !!data?.persisted };

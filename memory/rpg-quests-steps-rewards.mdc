@@ -1,0 +1,138 @@
+# RPG — Strukturierte Steps & Reward-Anzeige (Spezifikation)
+
+Ziel: **Gruppen mit Substeps**, **Reihenfolge** (frei vs. abhängig), **optionale** Steps, **Rewards pro Step** sowie **Quest-Rewards mit Freischaltung nach Fortschritt** — kombinierbar. **Manuell**, **im Layout erkennbar**, **klappbar**, später **KI-befüllbar** (Schema/Prompt wie bei [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
+
+Diese Datei beschreibt das **intendierte Datenmodell und Verhalten**; die Umsetzung im Code (Schema-Version, Migration, UI) folgt in den genannten Modulen.
+
+---
+
+## 1. Gruppen-Step (Substeps)
+
+- Ein Step kann **`substeps`** haben (Liste von Steps). Substeps dürfen wieder dieselbe Struktur tragen (beliebige Verschachtelung).
+- **Erledigt-Regel für einen Gruppen-Step:** Der Gruppen-Step gilt als erledigt, sobald **alle nicht optionalen** Substeps erledigt sind. Es ist **kein** zusätzlicher eigener Zähl-„Punkt“ nötig (kein separater Fortschritt neben den Blättern).
+- Optional: Gruppen selbst können als `optional` markiert sein (Semantik analog: Pflicht-Quest braucht alle nicht optionalen Top-Level-Steps inkl. verschachtelt).
+
+---
+
+## 2. Reihenfolge: unabhängig vs. abhängig
+
+Zwei sinnvolle Modellierungen:
+
+| Ansatz | Idee | Vorteile | Nachteile |
+|--------|------|----------|-----------|
+| **Explizite Abhängigkeiten** (z. B. `dependsOn: ["step-a"]`) | Jeder Step kann 0–n andere Step-**IDs** nennen, die **vorher** erledigt sein müssen. | Flexibel: verzweigte Abläufe, optionale Zweige, **Listen in Listen** ohne globale Nummerierung. Ein „längere Kette“ = Kette von `dependsOn`. | Editor/UI muss Zyklen verhindern; etwas mehr Eingabe als eine reine Nummer. |
+| **Strikte Listen-Reihenfolge** (z. B. `sequenceIndex` oder „nur Reihenfolge der Array-Position“) | Reihenfolge = Array-Reihenfolge; Schritt *i* blockiert *i+1*. | Sehr einfach für **lineare** Listen. | Schlecht für parallele unabhängige Schritte in derselben Gruppe; Umordnen = Umdenken. |
+
+**Empfehlung:** **`dependsOn`** (oder gleichwertig: gerichtete Kanten zwischen Step-IDs **innerhalb derselben Quest**) für die meisten Fälle — damit sind lange lineare Listen (jeder hängt vom vorherigen ab) **und** gemischte „mal parallel, mal strikt“-Szenarien abbildbar. Strikte Array-Position kann als **Zucker** dienen (automatisch `dependsOn` zum vorherigen Geschwister setzen), muss aber nicht.
+
+---
+
+## 3. Optionale Steps
+
+- Feld z. B. **`optional`: `boolean`** (Default: `false`).
+- Optional-Steps zählen **nicht** für den Abschluss des übergeordneten Gruppen-Steps (siehe oben).
+- Optionale Steps **können** eigene `reward`-Einträge haben (z. B. Bonus-Reward nur bei Erledigung).
+
+---
+
+## 4. Rewards — zwei Quellen, eine Anzeige-Liste
+
+### 4a. Reward **am Step** (`reward` am Step-Objekt)
+
+- Während der Step **nicht** erledigt ist: zugehöriger Reward-Eintrag in der **Rewards-Liste** **gedimmt/dunkel** (oder gleichwertig „gesperrt“).
+- Sobald der Step erledigt ist: derselbe Eintrag **normal** sichtbar.
+- **Keine** Zuordnungs-Anzeige im UI („welcher Reward von welchem Step“) — nur eine gemeinsame Liste.
+
+### 4b. Rewards **an der Quest** (nicht an einem konkreten Step)
+
+- Quest-Rewards haben je einen **Freischalt-Schwellenwert** am **Quest-Fortschritt** in Prozent (z. B. erster Eintrag ab **25 %**, zweiter ab **40 %**, …).
+- Unterhalb der jeweiligen Schwelle: Eintrag **gedimmt**; ab Schwelle: **normal**.
+- Fortschritt der Quest ergibt sich aus **allen zählenden** Steps (Gruppen nach der Gruppen-Regel, optional ausgeschlossen, siehe oben) — exakte Formel bei Implementierung in `questProgress` / Hilfsfunktionen festziehen.
+
+---
+
+## 5. Migration (Bestand)
+
+- Bestehende flache Steps `{ id, label }` werden als **normale Leaf-Steps** interpretiert: **`optional: false`**, **keine** `substeps`, **keine** `reward`, **keine** `dependsOn` (also **unabhängig** untereinander), sofern nicht manuell nachbearbeitet.
+
+---
+
+## 6. JSON-Beispiel (Illustration)
+
+Kein garantiert finales API-Shape — zeigt die **konzeptuellen** Felder inkl. Reward-Logik.
+
+```json
+{
+  "id": "quest-clean-room",
+  "kind": "side",
+  "title": "Zimmer aufräumen",
+  "description": "Struktur-Beispiel: Gruppe, Reihenfolge, Optional, Step- vs. Quest-Rewards.",
+  "steps": [
+    {
+      "id": "cr-root",
+      "label": "Zimmer aufräumen",
+      "optional": false,
+      "substeps": [
+        {
+          "id": "cr-trash",
+          "label": "Müll einsammeln",
+          "optional": false,
+          "reward": "Fund: verlorenes Accessoire"
+        },
+        {
+          "id": "cr-wash",
+          "label": "Wäsche waschen",
+          "optional": false,
+          "dependsOn": []
+        },
+        {
+          "id": "cr-hang",
+          "label": "Wäsche aufhängen",
+          "optional": false,
+          "dependsOn": ["cr-wash"]
+        },
+        {
+          "id": "cr-bed",
+          "label": "Bett machen",
+          "optional": false
+        },
+        {
+          "id": "cr-vacuum",
+          "label": "Staubsaugen",
+          "optional": true,
+          "reward": "+3 Clean Energy"
+        }
+      ]
+    }
+  ],
+  "questRewards": [
+    { "text": "Buff: Aufgeräumt (I)", "unlockAtPercent": 25 },
+    { "text": "Buff: Aufgeräumt (II)", "unlockAtPercent": 40 },
+    { "text": "Titel: Haushaltsheld", "unlockAtPercent": 100 }
+  ]
+}
+```
+
+**Hinweise zum Beispiel:**
+
+- **`cr-root`** ist ein Gruppen-Step: erledigt, wenn alle nicht optionalen Substeps erledigt sind (`cr-vacuum` optional → nicht nötig).
+- **Reihenfolge:** `cr-hang` erst nach `cr-wash` (`dependsOn`).
+- **Rewards:** `Fund: …` und `+3 Clean Energy` sind **Step-Rewards** (dim → hell beim Abhaken des jeweiligen Steps). Die drei **`questRewards`** werden stufenweise mit dem **Quest-Prozent** freigeschaltet (25 / 40 / 100).
+- **`questRewards`** ersetzen oder ergänzen das bisherige flache `rewards: string[]` — bei Implementierung entweder Migration `rewards` → `questRewards` mit Default `unlockAtPercent` (z. B. gleichmäßig verteilt) oder ein Feld beibehalten und nur Anzeige-Logik erweitern (siehe Code-Entscheid).
+
+---
+
+## 7. Code-Pfade (Implementiert)
+
+| Rolle | Dateien |
+|--------|---------|
+| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-steps.js` |
+| Graph-Hooks | `src/lib/rpg-quest-graph.js` — delegiert Fortschritt an `rpg-quest-steps.js`; `buildInitialStepMapFromGraph` rekursiv |
+| Formular / Editor-Parsing | `src/lib/rpg-quest-form-helpers.js` — Zeilen vs. JSON, Quest-Rewards |
+| Schema-Version | `RPG_PAYLOAD_SCHEMA_VERSION = 2` in `src/lib/rpg-payload-schema.js`; GET `/api/rpg/quests` migriert Graph mit `migrateRpgGraphToV2` |
+| Bootstrap | `src/lib/rpg-server-sync.js` — `pickRpgPayloadFromResponse` migriert ebenfalls |
+| UI | `src/components/RpgQuestStepsView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
+| Editor | `src/components/RpgQuestGraphEditor.jsx` |
+| KI | `src/pages/api/rpg/quests-generate.js` — liefert zusätzlich `questRewards` (gleichmäßige Prozent-Stufen aus `rewards`) |
+
+Überblick RPG: [`rpg-quests.mdc`](rpg-quests.mdc). KI: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc).

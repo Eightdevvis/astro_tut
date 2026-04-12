@@ -298,6 +298,52 @@
   color: rgba(255, 255, 255, 0.52);
 }
 
+/* RpgQuestStepsView (gleiche Klassen wie Hub) */
+.rpg-tree-panel__steps-wrap .rpg-section-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0.65rem 0 0.4rem;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-section-label:first-of-type {
+  margin-top: 0;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  user-select: none;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill--locked {
+  opacity: 0.42;
+  color: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill:not(.rpg-reward-pill--locked) {
+  color: rgba(255, 255, 255, 0.88);
+  border-color: rgba(126, 184, 218, 0.35);
+}
+
+.rpg-tree-panel__inline-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0 0 0.35rem;
+}
+
 .rpg-tree__empty {
   padding: 2rem 1rem;
   padding-left: max(1rem, env(safe-area-inset-left, 0px));

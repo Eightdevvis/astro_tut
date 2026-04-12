@@ -8,6 +8,7 @@ import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
+import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -40,6 +41,9 @@ export async function GET({ cookies }) {
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
     if (stored.stepDone && typeof stored.stepDone === 'object') stepDone = stored.stepDone;
   }
+
+  graph = migrateRpgGraphToV2(graph);
+  schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
 
   return new Response(
     JSON.stringify({

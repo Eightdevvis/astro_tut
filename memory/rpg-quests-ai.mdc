@@ -54,9 +54,12 @@ Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production
   "description": "…",
   "kind": "main",
   "stepLabels": ["Schritt 1", "…"],
-  "rewards": ["…"]
+  "rewards": ["…"],
+  "questRewards": [{ "text": "…", "unlockAtPercent": 50 }]
 }
 ```
+
+`questRewards` wird aus `rewards` abgeleitet (gleichmäßige `unlockAtPercent`-Stufen); die UI kann direkt JSON für Quest-Rewards nutzen. Flache `stepLabels` werden wie bisher zu linearen Schritten ohne Substufen.
 
 **Fehler:** **400** (leerer/zu langer Prompt, ungültiger JSON-Body), **403**, **503** (kein API-Key / „KI nicht konfiguriert“), **502** (KI-Anbieter nicht erreichbar / API-Fehler, Parsing, leere Antwort).
 

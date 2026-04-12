@@ -1,5 +1,13 @@
-/** @typedef {{ id: string; label: string; done?: boolean }} RpgQuestStep */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards: string[]; orderInLayer?: number }} RpgGraphQuest */
+import {
+  questProgressFromSteps,
+  isQuestCompletedFromSteps,
+  walkStepsPreOrder,
+  stepIsLeaf,
+} from './rpg-quest-steps.js';
+
+/** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string }} RpgQuestStep */
+/** @typedef {{ text: string; unlockAtPercent: number }} RpgQuestRewardEntry */
+/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; orderInLayer?: number }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
@@ -21,15 +29,7 @@ export function isValidGraphShape(g) {
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
 export function questProgress(quest, stepDone) {
-  const steps = quest.steps || [];
-  if (steps.length === 0) return 100;
-  let n = 0;
-  const map = stepDone[quest.id] || {};
-  for (const s of steps) {
-    const done = map[s.id] ?? !!s.done;
-    if (done) n += 1;
-  }
-  return Math.round((n / steps.length) * 100);
+  return questProgressFromSteps(quest, stepDone);
 }
 
 /**
@@ -37,7 +37,7 @@ export function questProgress(quest, stepDone) {
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
 export function isQuestCompleted(quest, stepDone) {
-  return questProgress(quest, stepDone) >= 100;
+  return isQuestCompletedFromSteps(quest, stepDone);
 }
 
 /**
@@ -193,6 +193,9 @@ export function upsertQuestInGraph(graph, quest, prerequisiteIds) {
   const prev = (graph.quests || []).find((q) => q.id === quest.id);
   const mergedQuest =
     prev && typeof prev === 'object' ? { ...prev, ...quest } : quest;
+  if (Array.isArray(mergedQuest.questRewards)) {
+    delete mergedQuest.rewards;
+  }
   const quests = (graph.quests || []).filter((q) => q.id !== quest.id);
   quests.push(mergedQuest);
   const edges = (graph.edges || []).filter((e) => e.to !== quest.id);
@@ -216,9 +219,9 @@ export function buildInitialStepMapFromGraph(graph) {
   const m = {};
   for (const q of graph.quests || []) {
     m[q.id] = {};
-    for (const s of q.steps || []) {
-      if (s.done) m[q.id][s.id] = true;
-    }
+    walkStepsPreOrder(q.steps || [], (s) => {
+      if (stepIsLeaf(s) && s.done) m[q.id][s.id] = true;
+    });
   }
   return m;
 }
