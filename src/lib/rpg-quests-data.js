@@ -10,6 +10,9 @@
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
+/** Leerer Graph: Initialzustand bis Server-Bootstrap (kein Sample-Flash beim Laden). */
+export const EMPTY_RPG_GRAPH = /** @type {RpgGraph} */ ({ quests: [], edges: [] });
+
 /** @type {RpgGraph} */
 export const SAMPLE_RPG_GRAPH = {
   quests: [

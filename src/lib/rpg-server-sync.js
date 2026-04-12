@@ -5,9 +5,52 @@ import {
   clearAllRpgLocalStorage,
 } from './rpg-persistence.js';
 import { SAMPLE_RPG_GRAPH } from './rpg-quests-data.js';
-import { isValidGraphShape } from './rpg-quest-graph.js';
+import {
+  isValidGraphShape,
+  mergeStepDoneBase,
+  buildInitialStepMapFromGraph,
+} from './rpg-quest-graph.js';
 
 export { isValidGraphShape };
+
+const RPG_SESSION_CACHE_KEY = 'rpg-bootstrap-v1';
+
+/**
+ * Letzter bekannter Stand (Tab-Session): sofortige Anzeige ohne auf GET zu warten.
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>> } | null}
+ */
+export function loadSessionCachedPayload() {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(RPG_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !isValidGraphShape(parsed.graph)) return null;
+    const addedIds = Array.isArray(parsed.addedIds) ? parsed.addedIds : [];
+    const stepDone =
+      parsed.stepDone && typeof parsed.stepDone === 'object' ? parsed.stepDone : {};
+    return { graph: parsed.graph, addedIds, stepDone };
+  } catch {
+    return null;
+  }
+}
+
+/** @param {{ graph: object; addedIds: string[]; stepDone: object }} payload */
+export function saveSessionCachedPayload(payload) {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(
+      RPG_SESSION_CACHE_KEY,
+      JSON.stringify({
+        graph: payload.graph,
+        addedIds: payload.addedIds,
+        stepDone: payload.stepDone,
+      })
+    );
+  } catch {
+    /* quota */
+  }
+}
 
 export async function fetchRpgBootstrap() {
   const res = await fetch('/api/rpg/quests');
@@ -61,8 +104,17 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
     addedIds: added,
     stepDone: steps,
   });
-  if (ok) clearAllRpgLocalStorage();
-  return (await fetchRpgBootstrap()) || data;
+  if (ok) {
+    clearAllRpgLocalStorage();
+    return {
+      ...data,
+      persisted: true,
+      graph,
+      addedIds: added,
+      stepDone: steps,
+    };
+  }
+  return data;
 }
 
 /** @param {any} data */
@@ -71,4 +123,14 @@ export function pickRpgPayloadFromResponse(data) {
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
   return { graph, addedIds, stepDone, persisted: !!data?.persisted };
+}
+
+/**
+ * @param {any} data GET-Antwort oder null (Sample-Fallback)
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>> }}
+ */
+export function deriveRpgUiStateFromPayload(data) {
+  const { graph, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
+  const stepDone = mergeStepDoneBase(buildInitialStepMapFromGraph(graph), sd);
+  return { graph, added: new Set(addedIds), stepDone };
 }

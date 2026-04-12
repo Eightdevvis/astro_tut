@@ -1,0 +1,81 @@
+# RPG — KI-Quest-Generierung
+
+Superuser kann im **Quest-Baum** beim Anlegen einer **neuen Quest** zwischen **Manuell** und **KI-generiert** wählen. Die KI füllt nur **Quest-Inhalt**; **Graph-Kanten** (Vorgänger-Quests) bleiben wie bisher **manuell** im Editor.
+
+## Woran das Format gebunden ist
+
+Die KI bekommt unser Format nicht „implizit“, sondern über zwei fest eingebaute Mechanismen in `src/pages/api/rpg/quests-generate.js`:
+
+1. **System-Prompt (`SYSTEM_PROMPT`)** — Erklärt auf Deutsch, dass es ein RPG-Quest-System ist, und was **`id`**, **`title`**, **`description`**, **`stepLabels`**, **`rewards`**, **`kind`** (main/side) jeweils bedeuten sollen (Länge, Ton, keine Markdown-Antwort).
+
+2. **OpenAI Structured Output (`QUEST_JSON_SCHEMA`, `strict: true`)** — Der API-Request setzt **`response_format`** auf genau dieses JSON-Schema: erlaubte Keys, Typen, `kind` nur `main`/`side`, `stepLabels` mindestens ein Eintrag, keine zusätzlichen Felder. Das Modell **muss** in dieser Form antworten; abweichendes Freiform-JSON wird von der API nicht als gültige Completion durchgereicht.
+
+3. **Server nach dem Call** — Das interne Quest-Objekt im Graph (`steps` mit `s-0`, `s-1`, …) baut der Server mit **`normalizeQuestId`** und **`labelsToSteps`**; die KI liefert nur die **Entwurfsfelder** aus dem Schema, die finale Normalisierung ist immer Code.
+
+Kurz: **Semantik** = System-Prompt, **JSON-Shape** = Schema-Zwang, **App-internes Format** = Hilfsfunktionen.
+
+## Voraussetzungen
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|--------------|
+| `OPENAI_API_KEY` | Ja für KI | OpenAI-API-Key (nur Server; nie im Client). Ohne Key: `POST` liefert **503** mit Hinweis. |
+| `RPG_OPENAI_MODEL` | Nein | Chat-Modell (Default: `gpt-4o-mini`). |
+
+Lokal: in `.env` setzen (siehe [`.env.example`](../../.env.example)). Production (z. B. Vercel): **Environment Variables** wie bei `JWT_SECRET` / Turso.
+
+## API
+
+### `POST /api/rpg/quests-generate`
+
+- **Zugriff:** nur eingeloggter **Superuser** (`sash`), sonst **403**.
+- **Content-Type:** `application/json`
+
+**Body:**
+
+```json
+{
+  "prompt": "Freitext-Idee zur Quest (max. 6000 Zeichen)",
+  "existingQuestIds": ["optional", "liste", "aller", "bereits", "vergebenen", "ids"]
+}
+```
+
+`existingQuestIds` ist optional; der Server nutzt sie, damit die generierte **`id`** nicht mit bestehenden Quest-IDs kollidiert (bei Kollision wird ein Suffix wie `-2` angehängt).
+
+**Erfolg (200):**
+
+```json
+{
+  "id": "normalisierter-slug",
+  "title": "…",
+  "description": "…",
+  "kind": "main",
+  "stepLabels": ["Schritt 1", "…"],
+  "rewards": ["…"]
+}
+```
+
+**Fehler:** **400** (leerer/zu langer Prompt, ungültiger JSON-Body), **403**, **503** (kein API-Key / „KI nicht konfiguriert“), **502** (OpenAI-Netzwerk, Parsing, leere Antwort).
+
+**Technik:** Siehe Abschnitt **„Woran das Format gebunden ist“** — OpenAI **Chat Completions** + JSON-Schema + System-Prompt; danach Normalisierung im Server.
+
+## UI (Client)
+
+- **Ort:** `RpgQuestGraphEditor.jsx`, nur wenn **Neue Quest** (nicht beim Bearbeiten).
+- **Ablauf:** Modus **KI-generiert** → Prompt eingeben → **Generieren** → Felder werden gesetzt; Nutzer kann **anpassen** oder **erneut generieren** (gleicher Prompt). **Speichern** ist während laufender Anfrage deaktiviert.
+- Nach dem Speichern gilt dieselbe Logik wie bei manueller Quest: `PUT /api/rpg/quests` mit `graph` / `addedIds` / `stepDone`.
+
+## Was die KI nicht macht
+
+- **Keine Kanten / Vorgänger:** Die Checkboxen **„Vorgänger-Quests (müssen fertig sein)“** bleiben manuell — verhindert Halluzinationen bei Quest-IDs und Zyklen im DAG.
+- **Keine Persistenz der Prompts:** Prompts werden nicht in der DB abgelegt.
+
+## Code-Pfade
+
+| Rolle | Datei |
+|--------|--------|
+| API-Route | `src/pages/api/rpg/quests-generate.js` |
+| Gemeinsame Normalisierung / Schritte aus Labels | `src/lib/rpg-quest-form-helpers.js` |
+| Editor (Manuell/KI, Fetch) | `src/components/RpgQuestGraphEditor.jsx` |
+| Styles Modus/KI-Block | `src/components/rpg-quest-tree.css` |
+
+Übergeordnetes RPG-Memory: [`rpg-quests.mdc`](rpg-quests.mdc).

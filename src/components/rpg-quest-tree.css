@@ -500,6 +500,45 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.rpg-graph-editor__mode {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.15rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rpg-graph-editor__mode-btn {
+  flex: 1;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.rpg-graph-editor__mode-btn--active {
+  background: rgba(126, 184, 218, 0.18);
+  color: #7eb8da;
+  box-shadow: 0 0 0 1px rgba(126, 184, 218, 0.25);
+}
+
+.rpg-graph-editor__ai-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rpg-graph-editor__ai-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .rpg-graph-editor__field {
   display: flex;
   flex-direction: column;

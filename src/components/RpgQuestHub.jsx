@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
-import { SAMPLE_RPG_GRAPH } from '../lib/rpg-quests-data.js';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'preact/hooks';
+import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
+import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
   questMap,
   isQuestCompleted,
@@ -11,7 +12,9 @@ import {
 import {
   fetchRpgBootstrap,
   migrateLocalRpgToServerIfNeeded,
-  pickRpgPayloadFromResponse,
+  deriveRpgUiStateFromPayload,
+  loadSessionCachedPayload,
+  saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import './rpg-quest-hub.css';
@@ -88,28 +91,58 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
 }
 
 export default function RpgQuestHub() {
-  const [graph, setGraph] = useState(SAMPLE_RPG_GRAPH);
+  const [graph, setGraph] = useState(EMPTY_RPG_GRAPH);
   const [added, setAdded] = useState(() => new Set());
   const [category, setCategory] = useState(/** @type {'main' | 'side'} */ ('main'));
   const [focusedByCat, setFocusedByCat] = useState({ main: null, side: null });
   const [expanded, setExpanded] = useState(() => new Set());
   const [stepDone, setStepDone] = useState(() =>
-    mergeStepDoneBase(buildInitialStepMapFromGraph(SAMPLE_RPG_GRAPH), {})
+    mergeStepDoneBase(buildInitialStepMapFromGraph(EMPTY_RPG_GRAPH), {})
   );
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [canPersist, setCanPersist] = useState(true);
+
+  useLayoutEffect(() => {
+    const snap = loadSessionCachedPayload();
+    if (!snap) return;
+    const d = deriveRpgUiStateFromPayload({ ...snap, persisted: true });
+    setGraph(d.graph);
+    setAdded(d.added);
+    setStepDone(d.stepDone);
+    setBootstrapped(true);
+    setCanPersist(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const hadSessionCache = !!loadSessionCachedPayload();
     (async () => {
       let data = await fetchRpgBootstrap();
-      if (!data || cancelled) return;
+      if (cancelled) return;
+      if (!data) {
+        if (!hadSessionCache) {
+          const d = deriveRpgUiStateFromPayload(null);
+          setGraph(d.graph);
+          setAdded(d.added);
+          setStepDone(d.stepDone);
+        }
+        setBootstrapped(true);
+        setCanPersist(true);
+        return;
+      }
       data = await migrateLocalRpgToServerIfNeeded(data);
       if (!data || cancelled) return;
-      const { graph: g, addedIds, stepDone: sd } = pickRpgPayloadFromResponse(data);
-      setGraph(g);
-      setAdded(new Set(addedIds));
-      setStepDone(mergeStepDoneBase(buildInitialStepMapFromGraph(g), sd));
+      const d = deriveRpgUiStateFromPayload(data);
+      setGraph(d.graph);
+      setAdded(d.added);
+      setStepDone(d.stepDone);
+      saveSessionCachedPayload({
+        graph: d.graph,
+        addedIds: [...d.added],
+        stepDone: d.stepDone,
+      });
       setBootstrapped(true);
+      setCanPersist(true);
     })();
     return () => {
       cancelled = true;
@@ -117,16 +150,14 @@ export default function RpgQuestHub() {
   }, []);
 
   useEffect(() => {
-    if (!bootstrapped) return;
+    if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
-      persistRpgState({
-        graph,
-        addedIds: [...added],
-        stepDone,
-      });
+      const payload = { graph, addedIds: [...added], stepDone };
+      void persistRpgState(payload);
+      saveSessionCachedPayload(payload);
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, graph, added, stepDone]);
+  }, [bootstrapped, canPersist, graph, added, stepDone]);
 
   useEffect(() => {
     const m = questMap(graph);
@@ -196,6 +227,10 @@ export default function RpgQuestHub() {
     },
     [category]
   );
+
+  if (!bootstrapped) {
+    return <RpgBootstrapLoading />;
+  }
 
   return (
     <div class="rpg-hub">

@@ -22,7 +22,7 @@ export function isValidGraphShape(g) {
  */
 export function questProgress(quest, stepDone) {
   const steps = quest.steps || [];
-  if (steps.length === 0) return 0;
+  if (steps.length === 0) return 100;
   let n = 0;
   const map = stepDone[quest.id] || {};
   for (const s of steps) {
@@ -210,7 +210,6 @@ export function removeQuestFromGraph(graph, questId) {
   };
 }
 
-/** @param {RpgGraph} graph */
 /** @param {RpgGraph} graph */
 export function buildInitialStepMapFromGraph(graph) {
   /** @type {Record<string, Record<string, boolean>>} */

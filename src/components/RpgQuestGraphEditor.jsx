@@ -4,30 +4,9 @@ import {
   removeQuestFromGraph,
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
+import { linesToSteps, parseRewards, normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
-/** @param {string} text */
-function linesToSteps(text) {
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((label, i) => ({ id: `s-${i}`, label }));
-}
-
-/** @param {string} text */
-function parseRewards(text) {
-  return text
-    .split(/\n|,/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/** @param {string} raw */
-export function normalizeQuestId(raw) {
-  let x = raw.trim().toLowerCase().replace(/\s+/g, '-');
-  x = x.replace(/[^a-z0-9-_]/g, '');
-  return x.slice(0, 48);
-}
+export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
 /**
  * @param {{
@@ -48,6 +27,10 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
   const [rewardsText, setRewardsText] = useState('');
   const [orderInLayer, setOrderInLayer] = useState(0);
   const [prereqIds, setPrereqIds] = useState(() => new Set());
+  const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(/** @type {string | null} */ (null));
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +58,10 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setRewardsText('');
       setOrderInLayer(0);
       setPrereqIds(new Set());
+      setCreateMode('manual');
+      setAiPrompt('');
+      setAiError(null);
+      setAiLoading(false);
     }
   }, [open, mode, questId, graph]);
 
@@ -137,6 +124,51 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     onClose();
   };
 
+  const handleAiGenerate = async () => {
+    const p = aiPrompt.trim();
+    if (!p.length) {
+      setAiError('Bitte eine Beschreibung eingeben.');
+      return;
+    }
+    setAiError(null);
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/rpg/quests-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          prompt: p,
+          existingQuestIds: graph.quests.map((q) => q.id),
+        }),
+      });
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        const msg =
+          typeof data.error === 'string'
+            ? data.error
+            : `Generierung fehlgeschlagen (${res.status})`;
+        setAiError(msg);
+        return;
+      }
+      setId(typeof data.id === 'string' ? data.id : '');
+      setKind(data.kind === 'main' ? 'main' : 'side');
+      setTitle(typeof data.title === 'string' ? data.title : '');
+      setDescription(typeof data.description === 'string' ? data.description : '');
+      setStepsText(Array.isArray(data.stepLabels) ? data.stepLabels.join('\n') : '');
+      setRewardsText(Array.isArray(data.rewards) ? data.rewards.join('\n') : '');
+    } catch {
+      setAiError('Netzwerkfehler');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
       <div class="rpg-graph-editor">
@@ -149,6 +181,67 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
           </button>
         </div>
         <form class="rpg-graph-editor__form" onSubmit={handleSubmit}>
+          {mode === 'create' && (
+            <>
+              <div class="rpg-graph-editor__mode" role="radiogroup" aria-label="Art der Quest-Erstellung">
+                <button
+                  type="button"
+                  class={`rpg-graph-editor__mode-btn${createMode === 'manual' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
+                  aria-pressed={createMode === 'manual'}
+                  onClick={() => {
+                    setCreateMode('manual');
+                    setAiError(null);
+                  }}
+                >
+                  Manuell
+                </button>
+                <button
+                  type="button"
+                  class={`rpg-graph-editor__mode-btn${createMode === 'ai' ? ' rpg-graph-editor__mode-btn--active' : ''}`}
+                  aria-pressed={createMode === 'ai'}
+                  onClick={() => {
+                    setCreateMode('ai');
+                    setAiError(null);
+                  }}
+                >
+                  KI-generiert
+                </button>
+              </div>
+              {createMode === 'ai' && (
+                <div class="rpg-graph-editor__ai-block">
+                  <label class="rpg-graph-editor__field">
+                    <span class="rpg-graph-editor__label">Prompt für die KI</span>
+                    <textarea
+                      class="rpg-graph-editor__textarea"
+                      rows={4}
+                      value={aiPrompt}
+                      placeholder="Beschreibe die Quest: Setting, Ziel, Ton, Besonderheiten …"
+                      onInput={(ev) => setAiPrompt(ev.currentTarget.value)}
+                      disabled={aiLoading}
+                    />
+                  </label>
+                  {aiError && (
+                    <p class="rpg-graph-editor__warning" role="alert">
+                      {aiError}
+                    </p>
+                  )}
+                  <div class="rpg-graph-editor__ai-actions">
+                    <button
+                      type="button"
+                      class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+                      onClick={handleAiGenerate}
+                      disabled={aiLoading}
+                    >
+                      {aiLoading ? 'Generiert …' : 'Generieren'}
+                    </button>
+                  </div>
+                  <p class="rpg-graph-editor__hint">
+                    Nach dem Generieren kannst du alle Felder anpassen oder erneut generieren.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
           <label class="rpg-graph-editor__field">
             <span class="rpg-graph-editor__label">ID (Kurzname)</span>
             <input
@@ -236,7 +329,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
             <button
               type="submit"
               class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
-              disabled={duplicateQuestId}
+              disabled={duplicateQuestId || (mode === 'create' && aiLoading)}
             >
               Speichern
             </button>
