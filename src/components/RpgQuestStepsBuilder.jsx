@@ -85,6 +85,11 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 Optional
               </span>
             ) : null}
+            {draft.timeLimitOn && (draft.timeDueAt || '').trim() ? (
+              <span class="rpg-step-card__badge rpg-step-card__badge--due" title="Frist">
+                bis {draft.timeDueAt}
+              </span>
+            ) : null}
             {draft.rewardOn && (draft.rewardText || '').trim() ? (
               <span class="rpg-step-card__badge" title="Mit Belohnung">
                 Belohnung
@@ -179,6 +184,36 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         <span>Optional — zählt nicht für den Pflicht-Abschluss</span>
       </label>
 
+      {!draft.substepsOn ? (
+        <>
+          <label class="rpg-step-card__toggle">
+            <input
+              type="checkbox"
+              checked={draft.timeLimitOn}
+              onChange={(ev) => {
+                const on = ev.currentTarget.checked;
+                update({
+                  timeLimitOn: on,
+                  ...(on ? {} : { timeDueAt: '' }),
+                });
+              }}
+            />
+            <span>Zeitbegrenzt — Frist (nur bei Pflichtschritten relevant für die Quest)</span>
+          </label>
+          {draft.timeLimitOn ? (
+            <div class="rpg-step-card__field rpg-step-card__field--indented">
+              <span class="rpg-step-card__field-label">Frist (Datum)</span>
+              <input
+                type="date"
+                class="rpg-graph-editor__input"
+                value={(draft.timeDueAt || '').slice(0, 10)}
+                onInput={(ev) => update({ timeDueAt: ev.currentTarget.value })}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
       <label class="rpg-step-card__toggle">
         <input
           type="checkbox"
@@ -188,6 +223,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             update({
               substepsOn: on,
               children: on && draft.children.length === 0 ? [] : draft.children,
+              ...(on ? { timeLimitOn: false, timeDueAt: '' } : {}),
             });
           }}
         />
@@ -363,8 +399,8 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
       <div class="rpg-step-builder__section-head">
         <span class="rpg-step-builder__section-title">Belohnungen der Quest</span>
         <p class="rpg-step-builder__section-intro">
-          Optional. Diese Belohnungen werden freigeschaltet, sobald die Quest den jeweiligen Fortschritt erreicht — unabhängig von einzelnen
-          Schritten.
+          Optional. Sichtbarkeit ab einem Fortschritts-Prozent wird pro Quest automatisch und fest (pseudo-zufällig aus der Quest-ID)
+          vergeben — inklusive verbundener Subquests im Baum (Vorgänger und Folgequests).
         </p>
       </div>
       {rows.length === 0 ? (
@@ -384,25 +420,6 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                   onRowsChange(copy);
                 }}
               />
-              <label class="rpg-reward-builder__pct">
-                <span class="rpg-reward-builder__pct-label">sichtbar ab</span>
-                <input
-                  type="number"
-                  class="rpg-graph-editor__input rpg-reward-builder__num"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={row.unlockAtPercent}
-                  onInput={(ev) => {
-                    const copy = [...rows];
-                    let n = Number(ev.currentTarget.value);
-                    if (!Number.isFinite(n)) n = 0;
-                    copy[i] = { ...row, unlockAtPercent: Math.max(0, Math.min(100, Math.round(n))) };
-                    onRowsChange(copy);
-                  }}
-                />
-                <span class="rpg-reward-builder__pct-suffix">% Fortschritt</span>
-              </label>
               <button
                 type="button"
                 class="rpg-reward-builder__del"

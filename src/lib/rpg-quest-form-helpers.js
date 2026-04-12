@@ -54,6 +54,7 @@ export function isSimpleFlatStepsForEditor(steps) {
       !s?.substeps?.length &&
       !s?.optional &&
       !s?.reward &&
+      !s?.timeDueAt &&
       (!s?.dependsOn || s.dependsOn.length === 0)
   );
 }

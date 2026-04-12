@@ -53,7 +53,7 @@ function RpgTreeDeepLink({ questId }) {
   );
 }
 
-function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero' }) {
+function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero', graph }) {
   const TitleTag = variant === 'hero' ? 'h2' : 'h3';
   const wrapClass =
     variant === 'hero' ? 'rpg-quest-block rpg-quest-block--hero' : 'rpg-quest-block rpg-quest-block--embedded';
@@ -71,6 +71,7 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
         interactive
         stepsClass="rpg-steps"
         rewardsClass="rpg-rewards"
+        graph={graph}
       />
     </div>
   );
@@ -259,6 +260,7 @@ export default function RpgQuestHub() {
                 onToggleStep={onToggleStep}
                 showFocusBadge
                 variant="hero"
+                graph={graph}
               />
               <RpgTreeDeepLink questId={focusedQuest.id} />
             </div>
@@ -267,7 +269,7 @@ export default function RpgQuestHub() {
               <>
                 <p class="rpg-list-label">Weitere Quests</p>
                 {others.map((q) => {
-                  const pct = questProgress(q, stepDone);
+                  const pct = questProgress(q, stepDone, graph);
                   const open = expanded.has(q.id);
                   const teaser = (q.description || '').replace(/\s+/g, ' ').trim();
 
@@ -303,6 +305,7 @@ export default function RpgQuestHub() {
                               onToggleStep={onToggleStep}
                               showFocusBadge={false}
                               variant="embedded"
+                              graph={graph}
                             />
                             <RpgTreeDeepLink questId={q.id} />
                           </div>

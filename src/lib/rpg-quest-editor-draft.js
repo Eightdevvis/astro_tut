@@ -17,6 +17,8 @@ import { normalizeQuestStepsTree } from './rpg-quest-steps.js';
  *   saved: boolean;
  *   orderLinked: boolean;
  *   legacyDependsOn?: string[];
+ *   timeLimitOn?: boolean;
+ *   timeDueAt?: string;
  * }} QuestStepDraft
  */
 
@@ -41,6 +43,8 @@ export function createEmptyStepDraft(saved = false) {
     saved,
     orderLinked: false,
     legacyDependsOn: undefined,
+    timeLimitOn: false,
+    timeDueAt: '',
   };
 }
 
@@ -56,6 +60,7 @@ export function questNodeToDraft(node) {
       : Array.isArray(node.dependsOn) && node.dependsOn.length > 0
         ? [...node.dependsOn]
         : undefined;
+  const due = typeof node.timeDueAt === 'string' && node.timeDueAt.trim() ? node.timeDueAt.trim().slice(0, 10) : '';
   return {
     key: node.id || newDraftKey(),
     stableId: typeof node.id === 'string' ? node.id : undefined,
@@ -68,6 +73,8 @@ export function questNodeToDraft(node) {
     saved: true,
     orderLinked: node.orderLinked === true,
     legacyDependsOn: legacyDeps,
+    timeLimitOn: !!due,
+    timeDueAt: due,
   };
 }
 
@@ -120,6 +127,10 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
   const optional = !!d.optional;
   const reward =
     d.rewardOn && (d.rewardText || '').trim() ? (d.rewardText || '').trim() : undefined;
+  const due =
+    d.timeLimitOn && (d.timeDueAt || '').trim()
+      ? (d.timeDueAt || '').trim().slice(0, 10)
+      : undefined;
   const meaningfulKids = d.children.filter(isDraftStepMeaningful);
 
   if (d.substepsOn && meaningfulKids.length > 0) {
@@ -128,6 +139,7 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
     const out = { id, label, optional, substeps };
     if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
     if (reward) out.reward = reward;
+    if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) out.timeDueAt = due;
     if (d.orderLinked) out.orderLinked = true;
     return out;
   }
@@ -136,6 +148,7 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
   const leaf = { id, label, optional };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
   if (reward) leaf.reward = reward;
+  if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) leaf.timeDueAt = due;
   if (d.orderLinked) leaf.orderLinked = true;
   return leaf;
 }
@@ -188,16 +201,27 @@ export function aiLabelsToDraftSteps(labels) {
     key: newDraftKey(),
     orderLinked: false,
     legacyDependsOn: undefined,
+    timeLimitOn: false,
+    timeDueAt: '',
   }));
 }
 
 /**
- * @typedef {{ key: string; text: string; unlockAtPercent: number }} QuestRewardDraftRow
+ * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[]} nodes
+ * @returns {QuestStepDraft[]}
+ */
+export function aiQuestNodesToDraftSteps(nodes) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return [];
+  return questStepsToDrafts(normalizeQuestStepsTree(nodes));
+}
+
+/**
+ * @typedef {{ key: string; text: string }} QuestRewardDraftRow
  */
 
 /** @returns {QuestRewardDraftRow} */
 export function createEmptyRewardRow() {
-  return { key: newDraftKey(), text: '', unlockAtPercent: 50 };
+  return { key: newDraftKey(), text: '' };
 }
 
 /**
@@ -209,10 +233,6 @@ export function questRewardsToDraftRows(entries) {
   return entries.map((e) => ({
     key: newDraftKey(),
     text: typeof e.text === 'string' ? e.text : '',
-    unlockAtPercent:
-      typeof e.unlockAtPercent === 'number' && Number.isFinite(e.unlockAtPercent)
-        ? Math.max(0, Math.min(100, Math.round(e.unlockAtPercent)))
-        : 100,
   }));
 }
 
@@ -221,10 +241,5 @@ export function questRewardsToDraftRows(entries) {
  * @returns {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]}
  */
 export function draftRewardRowsToQuestRewards(rows) {
-  return rows
-    .map((r) => ({
-      text: (r.text || '').trim(),
-      unlockAtPercent: Math.max(0, Math.min(100, Math.round(Number(r.unlockAtPercent) || 0))),
-    }))
-    .filter((r) => r.text.length > 0);
+  return rows.map((r) => ({ text: (r.text || '').trim() })).filter((r) => r.text.length > 0);
 }

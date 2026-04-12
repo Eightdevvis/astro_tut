@@ -1,18 +1,15 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import {
   upsertQuestInGraph,
   removeQuestFromGraph,
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
-import {
-  getQuestRewardEntries,
-  distributeQuestRewardPercents,
-  normalizeQuestRewards,
-} from '../lib/rpg-quest-steps.js';
+import { getQuestRewardEntries, normalizeQuestRewards } from '../lib/rpg-quest-steps.js';
 import {
   questStepsToDrafts,
   draftStepsToQuestNodes,
   aiLabelsToDraftSteps,
+  aiQuestNodesToDraftSteps,
   questRewardsToDraftRows,
   draftRewardRowsToQuestRewards,
 } from '../lib/rpg-quest-editor-draft.js';
@@ -43,12 +40,30 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
   const [orderInLayer, setOrderInLayer] = useState(0);
   const [prereqIds, setPrereqIds] = useState(() => new Set());
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
+  const [editSurface, setEditSurface] = useState(/** @type {'choose' | 'form' | 'ai'} */ ('form'));
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(/** @type {string | null} */ (null));
+  const aiSeedRef = useRef('');
+  /** @type {{ question: string; answer: string }[]} */
+  const [clarifyHistoryPairs, setClarifyHistoryPairs] = useState([]);
+  /** @type {string[] | null} */
+  const [clarifyPendingQs, setClarifyPendingQs] = useState(null);
+  const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
+
+  const resetAiSession = () => {
+    aiSeedRef.current = '';
+    setClarifyHistoryPairs([]);
+    setClarifyPendingQs(null);
+    setClarifyAnswerBuf([]);
+    setAiError(null);
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      aiSeedRef.current = '';
+      return;
+    }
     if (mode === 'edit' && questId) {
       const q = graph.quests.find((x) => x.id === questId);
       if (!q) return;
@@ -64,6 +79,11 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         if (e.to === questId) preds.add(e.from);
       }
       setPrereqIds(preds);
+      setEditSurface('choose');
+      resetAiSession();
+      setAiPrompt('');
+      setCreateMode('manual');
+      setAiLoading(false);
     } else {
       setId('');
       setKind('side');
@@ -74,9 +94,11 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
       setOrderInLayer(0);
       setPrereqIds(new Set());
       setCreateMode('manual');
+      setEditSurface('form');
       setAiPrompt('');
       setAiError(null);
       setAiLoading(false);
+      resetAiSession();
     }
   }, [open, mode, questId, graph]);
 
@@ -140,22 +162,54 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
     onClose();
   };
 
-  const handleAiGenerate = async () => {
-    const p = aiPrompt.trim();
-    if (!p.length) {
+  /**
+   * @param {Record<string, unknown>} data
+   */
+  const applyGeneratedQuestPayload = (data) => {
+    if (mode === 'create') {
+      setId(typeof data.id === 'string' ? data.id : '');
+    }
+    setKind(data.kind === 'main' ? 'main' : 'side');
+    setTitle(typeof data.title === 'string' ? data.title : '');
+    setDescription(typeof data.description === 'string' ? data.description : '');
+    if (Array.isArray(data.steps) && data.steps.length > 0) {
+      setStepDrafts(aiQuestNodesToDraftSteps(/** @type {any} */ (data.steps)));
+    } else {
+      const labels = Array.isArray(data.stepLabels) ? data.stepLabels : [];
+      setStepDrafts(labels.length ? aiLabelsToDraftSteps(labels.map((x) => String(x))) : []);
+    }
+    const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
+    const entries =
+      Array.isArray(data.questRewards) && data.questRewards.length > 0
+        ? normalizeQuestRewards(data.questRewards)
+        : rewardLines.map((text) => ({ text }));
+    setRewardRows(questRewardsToDraftRows(entries));
+  };
+
+  /**
+   * @param {{ question: string; answer: string }[]} [pairsForRequest]
+   */
+  const handleAiGenerate = async (pairsForRequest) => {
+    const typed = aiPrompt.trim();
+    if (!typed.length) {
       setAiError('Bitte eine Beschreibung eingeben.');
       return;
     }
+    if (!aiSeedRef.current) aiSeedRef.current = typed;
     setAiError(null);
     setAiLoading(true);
     try {
+      /** @type {{ question: string; answer: string }[]} */
+      const pairs = pairsForRequest ?? clarifyHistoryPairs;
       const res = await fetch('/api/rpg/quests-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          prompt: p,
+          prompt: aiSeedRef.current,
           existingQuestIds: graph.quests.map((q) => q.id),
+          lockedQuestId: mode === 'edit' && questId ? questId : undefined,
+          clarification: pairs.length > 0 ? { pairs } : undefined,
         }),
       });
       let data = {};
@@ -175,24 +229,109 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
         setAiError(msg);
         return;
       }
-      setId(typeof data.id === 'string' ? data.id : '');
-      setKind(data.kind === 'main' ? 'main' : 'side');
-      setTitle(typeof data.title === 'string' ? data.title : '');
-      setDescription(typeof data.description === 'string' ? data.description : '');
-      const labels = Array.isArray(data.stepLabels) ? data.stepLabels : [];
-      setStepDrafts(labels.length ? aiLabelsToDraftSteps(labels) : []);
-      const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
-      const entries =
-        Array.isArray(data.questRewards) && data.questRewards.length > 0
-          ? normalizeQuestRewards(data.questRewards)
-          : distributeQuestRewardPercents(rewardLines);
-      setRewardRows(questRewardsToDraftRows(entries));
+      if (data.responseType === 'clarify' && Array.isArray(data.questions) && data.questions.length > 0) {
+        setClarifyPendingQs(data.questions.map((x) => String(x)));
+        setClarifyAnswerBuf(data.questions.map(() => ''));
+        return;
+      }
+      resetAiSession();
+      applyGeneratedQuestPayload(data);
+      if (mode === 'edit') setEditSurface('form');
     } catch {
       setAiError('Netzwerkfehler');
     } finally {
       setAiLoading(false);
     }
   };
+
+  const handleClarifySubmit = async () => {
+    if (!clarifyPendingQs || clarifyPendingQs.length === 0) return;
+    const merged = [...clarifyHistoryPairs];
+    for (let i = 0; i < clarifyPendingQs.length; i++) {
+      merged.push({
+        question: clarifyPendingQs[i],
+        answer: (clarifyAnswerBuf[i] || '').trim(),
+      });
+    }
+    setClarifyHistoryPairs(merged);
+    setClarifyPendingQs(null);
+    setClarifyAnswerBuf([]);
+    await handleAiGenerate(merged);
+  };
+
+  const showEditPick = mode === 'edit' && editSurface === 'choose';
+  /** Nur Bearbeiten: questmaker+ als eigenes Fenster; bei „Neue Quest“ bleibt der Block im Formular. */
+  const showAiOnlyPanel = mode === 'edit' && editSurface === 'ai';
+  const showFullForm =
+    mode === 'create' || (mode === 'edit' && editSurface === 'form');
+
+  const aiBlock = (
+    <div class="rpg-graph-editor__ai-block">
+      <label class="rpg-graph-editor__field">
+        <span class="rpg-graph-editor__label">Worum soll die Quest gehen?</span>
+        <textarea
+          class="rpg-graph-editor__textarea"
+          rows={4}
+          value={aiPrompt}
+          placeholder="Echtes Leben: Ziel, Rahmen, Orte, Daten — je konkreter, desto besser. Die KI kann Rückfragen stellen, wenn etwas Wesentliches fehlt."
+          onInput={(ev) => setAiPrompt(ev.currentTarget.value)}
+          disabled={aiLoading}
+        />
+      </label>
+      {clarifyPendingQs && clarifyPendingQs.length > 0 ? (
+        <div class="rpg-graph-editor__clarify">
+          <p class="rpg-graph-editor__label">Rückfragen — bitte kurz beantworten:</p>
+          <ul class="rpg-graph-editor__clarify-list">
+            {clarifyPendingQs.map((q, i) => (
+              <li key={`cl-${i}`}>
+                <p class="rpg-graph-editor__clarify-q">{q}</p>
+                <input
+                  type="text"
+                  class="rpg-graph-editor__input"
+                  value={clarifyAnswerBuf[i] || ''}
+                  onInput={(ev) => {
+                    const next = [...clarifyAnswerBuf];
+                    next[i] = ev.currentTarget.value;
+                    setClarifyAnswerBuf(next);
+                  }}
+                  disabled={aiLoading}
+                />
+              </li>
+            ))}
+          </ul>
+          <div class="rpg-graph-editor__ai-actions">
+            <button
+              type="button"
+              class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+              onClick={() => void handleClarifySubmit()}
+              disabled={aiLoading}
+            >
+              {aiLoading ? 'Sendet …' : 'Antworten senden & weiter'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div class="rpg-graph-editor__ai-actions">
+          <button
+            type="button"
+            class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
+            onClick={() => void handleAiGenerate()}
+            disabled={aiLoading}
+          >
+            {aiLoading ? 'Generiert …' : clarifyHistoryPairs.length ? 'Erneut anfragen' : 'Generieren'}
+          </button>
+        </div>
+      )}
+      {aiError && (
+        <p class="rpg-graph-editor__warning" role="alert">
+          {aiError}
+        </p>
+      )}
+      <p class="rpg-graph-editor__hint">
+        Es geht um Alltag und echte Entscheidungen — keine Fantasy-Welt. Nach der Generierung kannst du alles im Editor anpassen.
+      </p>
+    </div>
+  );
 
   return (
     <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
@@ -205,6 +344,51 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
             ×
           </button>
         </div>
+        {showEditPick ? (
+          <div class="rpg-graph-editor__form rpg-graph-editor__pick">
+            <p class="rpg-graph-editor__pick-intro">Wie möchtest du bearbeiten?</p>
+            <div class="rpg-graph-editor__mode rpg-graph-editor__mode--stack" role="group" aria-label="Bearbeitungsart">
+              <button type="button" class="rpg-graph-editor__mode-btn" onClick={() => setEditSurface('form')}>
+                manuell+
+              </button>
+              <button
+                type="button"
+                class="rpg-graph-editor__mode-btn"
+                onClick={() => {
+                  resetAiSession();
+                  setAiPrompt('');
+                  setEditSurface('ai');
+                }}
+              >
+                questmaker+
+              </button>
+            </div>
+            <div class="rpg-graph-editor__actions">
+              <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={onClose}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {showAiOnlyPanel && !showEditPick ? (
+          <div class="rpg-graph-editor__form rpg-graph-editor__ai-only">
+            {mode === 'edit' ? (
+              <button
+                type="button"
+                class="rpg-graph-editor__back-link"
+                onClick={() => {
+                  resetAiSession();
+                  setAiPrompt('');
+                  setEditSurface('choose');
+                }}
+              >
+                Zurück zur Auswahl
+              </button>
+            ) : null}
+            {aiBlock}
+          </div>
+        ) : null}
+        {showFullForm ? (
         <form class="rpg-graph-editor__form" onSubmit={handleSubmit}>
           {mode === 'create' && (
             <>
@@ -218,7 +402,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
                     setAiError(null);
                   }}
                 >
-                  Manuell
+                  manuell+
                 </button>
                 <button
                   type="button"
@@ -229,42 +413,10 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
                     setAiError(null);
                   }}
                 >
-                  KI-generiert
+                  questmaker+
                 </button>
               </div>
-              {createMode === 'ai' && (
-                <div class="rpg-graph-editor__ai-block">
-                  <label class="rpg-graph-editor__field">
-                    <span class="rpg-graph-editor__label">Prompt für die KI</span>
-                    <textarea
-                      class="rpg-graph-editor__textarea"
-                      rows={4}
-                      value={aiPrompt}
-                      placeholder="Beschreibe die Quest: Setting, Ziel, Ton, Besonderheiten …"
-                      onInput={(ev) => setAiPrompt(ev.currentTarget.value)}
-                      disabled={aiLoading}
-                    />
-                  </label>
-                  {aiError && (
-                    <p class="rpg-graph-editor__warning" role="alert">
-                      {aiError}
-                    </p>
-                  )}
-                  <div class="rpg-graph-editor__ai-actions">
-                    <button
-                      type="button"
-                      class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
-                      onClick={handleAiGenerate}
-                      disabled={aiLoading}
-                    >
-                      {aiLoading ? 'Generiert …' : 'Generieren'}
-                    </button>
-                  </div>
-                  <p class="rpg-graph-editor__hint">
-                    Nach dem Generieren kannst du Schritte und Belohnungen hier anpassen.
-                  </p>
-                </div>
-              )}
+              {createMode === 'ai' ? aiBlock : null}
             </>
           )}
           <label class="rpg-graph-editor__field">
@@ -356,6 +508,7 @@ export default function RpgQuestGraphEditor({ open, mode, graph, questId, onClos
             </button>
           </div>
         </form>
+        ) : null}
       </div>
     </div>
   );

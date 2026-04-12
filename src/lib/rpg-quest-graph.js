@@ -3,10 +3,11 @@ import {
   isQuestCompletedFromSteps,
   walkStepsPreOrder,
   stepIsLeaf,
+  questLeafProgressRatio,
 } from './rpg-quest-steps.js';
 
 /** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string; orderLinked?: boolean }} RpgQuestStep */
-/** @typedef {{ text: string; unlockAtPercent: number }} RpgQuestRewardEntry */
+/** @typedef {{ text: string }} RpgQuestRewardEntry */
 /** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; orderInLayer?: number }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
@@ -25,11 +26,77 @@ export function isValidGraphShape(g) {
 }
 
 /**
+ * Quest-IDs deren Schritte in den Fortschritt einfließen: alle Vorgänger (eingehende Kanten)
+ * und alle Folgequests (ausgehende Kanten), jeweils transitiv.
+ * @param {RpgGraph} graph
+ * @param {string} questId
+ * @returns {string[]}
+ */
+export function collectQuestIdsForAggregatedProgress(graph, questId) {
+  const incoming = buildIncomingMap(graph);
+  /** @type {Set<string>} */
+  const out = new Set();
+
+  const up = [questId];
+  const seenUp = new Set([questId]);
+  while (up.length) {
+    const id = up.pop();
+    if (typeof id !== 'string') continue;
+    out.add(id);
+    for (const pred of incoming.get(id) || []) {
+      if (!seenUp.has(pred)) {
+        seenUp.add(pred);
+        up.push(pred);
+      }
+    }
+  }
+
+  const down = [questId];
+  const seenDown = new Set([questId]);
+  while (down.length) {
+    const id = down.pop();
+    if (typeof id !== 'string') continue;
+    out.add(id);
+    for (const e of graph.edges || []) {
+      if (e.from === id && !seenDown.has(e.to)) {
+        seenDown.add(e.to);
+        down.push(e.to);
+      }
+    }
+  }
+
+  return [...out];
+}
+
+/**
+ * @param {RpgGraph} graph
  * @param {RpgGraphQuest} quest
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
-export function questProgress(quest, stepDone) {
-  return questProgressFromSteps(quest, stepDone);
+export function questLeafProgressRatioAggregated(graph, quest, stepDone) {
+  const ids = collectQuestIdsForAggregatedProgress(graph, quest.id);
+  const qmap = questMap(graph);
+  let total = 0;
+  let done = 0;
+  for (const qid of ids) {
+    const q = qmap.get(qid);
+    if (!q) continue;
+    const r = questLeafProgressRatio(q, stepDone);
+    total += r.total;
+    done += r.done;
+  }
+  if (total === 0) return { total: 0, done: 0, percent: 100 };
+  return { total, done, percent: Math.round((done / total) * 100) };
+}
+
+/**
+ * @param {RpgGraphQuest} quest
+ * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {RpgGraph | null | undefined} [graph] — mit Graph: Fortschritt über Vorgänger- + Folgequests (Subquests)
+ */
+export function questProgress(quest, stepDone, graph) {
+  if (!graph || !Array.isArray(graph.quests)) return questProgressFromSteps(quest, stepDone);
+  return questLeafProgressRatioAggregated(graph, quest, stepDone).percent;
 }
 
 /**

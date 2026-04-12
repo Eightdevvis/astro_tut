@@ -1,4 +1,5 @@
 import { canSetStepDone, buildRewardDisplayList } from '../lib/rpg-quest-steps.js';
+import { questProgress } from '../lib/rpg-quest-graph.js';
 
 /**
  * @param {{
@@ -8,6 +9,7 @@ import { canSetStepDone, buildRewardDisplayList } from '../lib/rpg-quest-steps.j
  *   interactive?: boolean;
  *   stepsClass?: string;
  *   rewardsClass?: string;
+ *   graph?: import('../lib/rpg-quest-graph.js').RpgGraph | null;
  * }} props
  */
 export default function RpgQuestStepsView({
@@ -17,8 +19,10 @@ export default function RpgQuestStepsView({
   interactive = true,
   stepsClass = 'rpg-steps',
   rewardsClass = 'rpg-rewards',
+  graph = null,
 }) {
   const doneFor = stepDone[quest.id] || {};
+  const rewardProgressPct = graph ? questProgress(quest, stepDone, graph) : undefined;
 
   return (
     <>
@@ -38,7 +42,7 @@ export default function RpgQuestStepsView({
       </ul>
       <p class="rpg-section-label">Rewards</p>
       <div class={rewardsClass}>
-        {buildRewardDisplayList(quest, stepDone).map((row, i) => (
+        {buildRewardDisplayList(quest, stepDone, rewardProgressPct).map((row, i) => (
           <span
             key={`${row.source}-${i}-${row.text.slice(0, 24)}`}
             class={`rpg-reward-pill${row.unlocked ? '' : ' rpg-reward-pill--locked'}`}
@@ -130,6 +134,11 @@ function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, inter
         {step.optional ? (
           <span class="rpg-step-badge" title="Optional">
             optional
+          </span>
+        ) : null}
+        {step.timeDueAt && String(step.timeDueAt).trim() ? (
+          <span class="rpg-step-badge rpg-step-badge--due" title="Frist">
+            bis {String(step.timeDueAt).trim().slice(0, 10)}
           </span>
         ) : null}
         {depBlocked ? (

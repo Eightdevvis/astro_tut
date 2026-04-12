@@ -18,6 +18,7 @@ import {
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
+import { questHasUrgentTimeBoundLeaves } from '../lib/rpg-quest-steps.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-tree.css';
@@ -495,7 +496,7 @@ export default function RpgQuestTree() {
                 const ra = nodeR(qa.kind);
                 const rb = nodeR(qb.kind);
                 const seg = edgeEndpoints(pa.x, pa.y, pb.x, pb.y, ra, rb);
-                const pct = questProgress(qa, stepDone);
+                const pct = questProgress(qa, stepDone, graph);
                 const doneU = isQuestCompleted(qa, stepDone);
                 const addedU = added.has(e.from);
                 const unlockedU = isQuestUnlocked(e.from, graph, stepDone, byId);
@@ -560,6 +561,7 @@ export default function RpgQuestTree() {
                 const r = nodeR(q.kind);
                 const label = q.title.length > 20 ? `${q.title.slice(0, 18)}…` : q.title;
                 const isFocus = focusIdFromUrl === q.id;
+                const timeUrgent = !completed && questHasUrgentTimeBoundLeaves(q, stepDone);
 
                 return (
                   <g
@@ -582,6 +584,17 @@ export default function RpgQuestTree() {
                         strokeWidth={isFocus ? 2.6 : 1.8}
                       />
                     )}
+                    {timeUrgent ? (
+                      <g class="rpg-tree-node__time-urgent" aria-hidden="true">
+                        <circle
+                          class="rpg-tree-node__time-urgent-dot"
+                          cx={r * 0.62}
+                          cy={-r * 0.72}
+                          r={compact ? 5 : 5.5}
+                        />
+                        <title>Frist in weniger als einer Woche oder überfällig</title>
+                      </g>
+                    ) : null}
                     <text class="rpg-tree-node__label" y={r + 16}>
                       {label}
                     </text>
@@ -629,6 +642,7 @@ export default function RpgQuestTree() {
                     interactive
                     stepsClass="rpg-tree-panel__steps"
                     rewardsClass="rpg-tree-panel__rewards"
+                    graph={graph}
                   />
                 </div>
               </details>

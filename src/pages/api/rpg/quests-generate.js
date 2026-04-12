@@ -1,7 +1,7 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { SUPERUSER } from '../../../lib/permissions.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
-import { distributeQuestRewardPercents } from '../../../lib/rpg-quest-steps.js';
+import { normalizeQuestStepsTree } from '../../../lib/rpg-quest-steps.js';
 
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -13,22 +13,69 @@ function chatCompletionsUrl(raw) {
 }
 
 /**
- * `json_schema` nur für echtes OpenAI-API; DeepSeek u. a. nur `json_object`.
- * Wenn `RPG_OPENAI_USE_JSON_SCHEMA` fehlt: bei Base-URL ≠ api.openai.com → json_object (sonst 400 auf Vercel).
+ * Strukturierte Quest-Antworten sind zu komplex für `json_schema`+strict bei allen Anbietern.
+ * Einheitlich `json_object` + serverseitige Prüfung.
  */
-function resolveUseJsonSchema(env) {
-  const f = String(env.RPG_OPENAI_USE_JSON_SCHEMA ?? '').toLowerCase();
-  if (f === '0' || f === 'false') return false;
-  if (f === '1' || f === 'true') return true;
-  const base = String(env.OPENAI_BASE_URL ?? '').trim();
-  if (!base || base.includes('api.openai.com')) return true;
-  return false;
+const JSON_OBJECT_INSTRUCTION = `
+
+Antworte ausschließlich mit einem JSON-Objekt (kein Markdown, kein Code-Fence). Pflicht-Top-Level-Key: "responseType" mit dem Wert "clarify" oder "quest".
+
+Wenn "responseType":"clarify":
+- "questions": Array von 1–6 kurzen Rückfragen auf Deutsch (was dir für eine realistische Quest noch fehlt: Ort, Datum, Institution, Budget, …).
+
+Wenn "responseType":"quest":
+- "id": kurzer Slug (Kleinbuchstaben, Bindestriche, max. 48 Zeichen)
+- "title": sachlicher Titel (kein Fantasy-Flair)
+- "description": 1–3 Sätze Alltag / echtes Leben
+- "kind": "main" oder "side"
+- "rewards": 0–8 kurze Belohnungen als Motivation (keine Fantasy-Items; z. B. kleine Meilensteine, Gewohnheiten)
+- "steps": Array aus Schritt-Objekten (siehe unten)
+
+Schritt-Objekt (rekursiv, "substeps" optional):
+- "id": kurzer technischer Schlüssel (ascii, eindeutig innerhalb der Quest)
+- "label": konkrete Handlung im echten Leben
+- "optional": boolean
+- "dependsOn": Array von ids anderer Schritte (gleiche Quest), die zuerst erledigt sein müssen; leer [] wenn keine Abhängigkeit
+- "reward": optional string, Belohnung nur für diesen Schritt
+- "timeDueAt": optional ISO-Datum "YYYY-MM-DD" nur wenn eine echte Frist sinnvoll ist (z. B. Bewerbungsende)
+- "substeps": optional Array weiterer Schritt-Objekte für Gruppen (Unterschritte)
+
+Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Keine Fantasy-Begriffe (keine Elfen, Mana, Questgeber im Sinne von RPG).`;
+
+const SYSTEM_PROMPT = `Du hilfst beim Erstellen von Quests für ein persönliches Fortschritts-System — Inhalt = echtes Leben (Studium, Arbeit, Gesundheit, Behörden, Beziehungen), keine Fantasy-Welt.
+
+Priorität:
+1) Wenn dir für sinnvolle, konkrete Schritte wichtige Fakten fehlen (Ort, Zeitraum, Zielinstitution, …), antworte mit responseType "clarify" und stelle gezielte Rückfragen — nicht raten, nicht halluzinieren.
+2) Wenn genug Kontext da ist oder der Nutzer Rückfragen beantwortet hat, liefere responseType "quest" mit strukturierten steps (Gruppen/Unterschritte/Abhängigkeiten wo sinnvoll).
+
+Ton: nüchtern, ermutigend, ohne Spielwelt-Metaphern in Titel und Beschreibung (kein „Held“, „Dungeon“, „NPC“).`;
+
+/**
+ * @param {string} prompt
+ * @param {unknown} clarification
+ */
+function buildUserMessage(prompt, clarification) {
+  if (!clarification || typeof clarification !== 'object') return prompt;
+  const pairs = /** @type {any} */ (clarification).pairs;
+  if (!Array.isArray(pairs) || pairs.length === 0) return prompt;
+  /** @type {string[]} */
+  const blocks = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const p = pairs[i];
+    if (!p || typeof p !== 'object') continue;
+    const q = typeof /** @type {any} */ (p).question === 'string' ? /** @type {any} */ (p).question.trim() : '';
+    const a = typeof /** @type {any} */ (p).answer === 'string' ? /** @type {any} */ (p).answer.trim() : '';
+    if (q) blocks.push(`Rückfrage: ${q}\nAntwort: ${a || '(leer)'}`);
+  }
+  if (blocks.length === 0) return prompt;
+  return `${prompt.trim()}
+
+---
+Vorherige Rückfragen und deine Antworten:
+${blocks.join('\n\n')}
+---
+Bitte jetzt entweder die fertige Quest (responseType "quest") oder weitere Rückfragen (responseType "clarify"), falls immer noch etwas Wesentliches fehlt.`;
 }
-
-/** Wenn kein json_schema (z. B. DeepSeek): nur json_object — Prompt ergänzt das Format. */
-const JSON_OBJECT_PROMPT_SUFFIX = `
-
-Antworte ausschließlich mit einem JSON-Objekt (kein Markdown). Pflicht-Keys exakt: "id", "title", "description", "stepLabels" (Array, mindestens ein String), "rewards" (Array von Strings), "kind" ("main" oder "side").`;
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -51,47 +98,18 @@ function ensureUniqueQuestId(baseId, existing) {
   return `${id}-${Date.now()}`;
 }
 
-/** OpenAI Chat Completions — strukturiertes JSON */
-const QUEST_JSON_SCHEMA = {
-  name: 'rpg_quest_draft',
-  strict: true,
-  schema: {
-    type: 'object',
-    properties: {
-      id: { type: 'string' },
-      title: { type: 'string' },
-      description: { type: 'string' },
-      stepLabels: {
-        type: 'array',
-        items: { type: 'string' },
-        minItems: 1,
-      },
-      rewards: {
-        type: 'array',
-        items: { type: 'string' },
-      },
-      kind: { type: 'string', enum: ['main', 'side'] },
-    },
-    required: ['id', 'title', 'description', 'stepLabels', 'rewards', 'kind'],
-    additionalProperties: false,
-  },
-};
-
-const SYSTEM_PROMPT = `Du bist ein Assistent für ein RPG-Quest-System. Der Nutzer beschreibt eine Quest-Idee; du erzeugst einen strukturierten Entwurf auf Deutsch.
-
-Regeln:
-- id: kurzer eindeutiger Slug (Kleinbuchstaben, Bindestriche, max. 48 Zeichen), passend zur Idee.
-- title: kurzer, spielerisch passender Titel.
-- description: 1–3 Sätze Fließtext (keine Aufzählung im Fließtext).
-- stepLabels: 1–8 konkrete Spielerschritte, je eine kurze Zeile (Verbform oder kurzer Imperativ).
-- rewards: 1–5 kurze Belohnungen (Items, XP, Titel — passend zum Ton der Seite).
-- kind: "main" für Haupthandlung / größere Story, "side" für Nebenquest.
-
-Antworte nur mit JSON gemäß Schema, ohne Markdown.`;
+/**
+ * @param {unknown} raw
+ * @returns {unknown[]}
+ */
+function coerceStepsArray(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw;
+}
 
 /**
- * POST /api/rpg/quests-generate — KI-Entwurf für eine neue Quest (nur Superuser).
- * Body: { prompt: string, existingQuestIds?: string[] }
+ * POST /api/rpg/quests-generate — KI-Entwurf für eine Quest (nur Superuser).
+ * Body: { prompt, existingQuestIds?, lockedQuestId?, clarification?: { pairs: { question, answer }[] } }
  */
 export async function POST({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
@@ -99,7 +117,6 @@ export async function POST({ request, cookies }) {
     return forbidden();
   }
 
-  /** Wie `db.js` / JWT: Astro+Vercel liefern Secrets zuverlässig über `import.meta.env`; `process.env` ist im Server-Bundle oft leer. */
   const env = import.meta.env;
   const apiKey = String(env.OPENAI_API_KEY ?? '').trim();
   if (!apiKey) {
@@ -141,14 +158,14 @@ export async function POST({ request, cookies }) {
     Array.isArray(existingRaw) ? existingRaw.filter((x) => typeof x === 'string' && x.trim()) : []
   );
 
+  const lockedRaw = typeof body?.lockedQuestId === 'string' ? body.lockedQuestId.trim() : '';
+  const lockedQuestId = lockedRaw ? normalizeQuestId(lockedRaw) : '';
+
   const model = String(env.RPG_OPENAI_MODEL ?? '').trim() || DEFAULT_MODEL;
   const baseUrl = env.OPENAI_BASE_URL;
-  const useJsonSchema = resolveUseJsonSchema(env);
 
-  const systemContent = useJsonSchema ? SYSTEM_PROMPT : SYSTEM_PROMPT + JSON_OBJECT_PROMPT_SUFFIX;
-  const responseFormat = useJsonSchema
-    ? { type: 'json_schema', json_schema: QUEST_JSON_SCHEMA }
-    : { type: 'json_object' };
+  const userContent = buildUserMessage(prompt, body?.clarification);
+  const systemContent = SYSTEM_PROMPT + JSON_OBJECT_INSTRUCTION;
 
   let upstream;
   try {
@@ -160,12 +177,12 @@ export async function POST({ request, cookies }) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.65,
+        temperature: 0.45,
         messages: [
           { role: 'system', content: systemContent },
-          { role: 'user', content: prompt },
+          { role: 'user', content: userContent },
         ],
-        response_format: responseFormat,
+        response_format: { type: 'json_object' },
       }),
     });
   } catch (e) {
@@ -217,7 +234,40 @@ export async function POST({ request, cookies }) {
   }
 
   const stepLabels = Array.isArray(parsed.stepLabels) ? parsed.stepLabels : [];
-  const steps = labelsToSteps(stepLabels);
+  /** @type {unknown[]} */
+  let stepsRaw = coerceStepsArray(parsed.steps);
+  const hasStepPayload = stepsRaw.length > 0 || stepLabels.length > 0;
+  const questionsFromAi = Array.isArray(parsed.questions)
+    ? parsed.questions.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+
+  if (!hasStepPayload) {
+    if (questionsFromAi.length > 0) {
+      return new Response(
+        JSON.stringify({
+          responseType: 'clarify',
+          questions: questionsFromAi,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    if (parsed?.responseType === 'clarify') {
+      return new Response(JSON.stringify({ error: 'KI hat keine gültigen Rückfragen geliefert.' }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  if (stepsRaw.length === 0 && stepLabels.length > 0) {
+    stepsRaw = labelsToSteps(stepLabels.map((x) => String(x)));
+  }
+
+  let steps = normalizeQuestStepsTree(stepsRaw);
+  if (steps.length === 0 && stepLabels.length > 0) {
+    steps = normalizeQuestStepsTree(labelsToSteps(stepLabels.map((x) => String(x))));
+  }
+
   if (steps.length === 0) {
     return new Response(JSON.stringify({ error: 'Die KI hat keine gültigen Schritte geliefert.' }), {
       status: 502,
@@ -232,22 +282,27 @@ export async function POST({ request, cookies }) {
     : [];
   const kind = parsed.kind === 'main' ? 'main' : 'side';
 
-  let nid = normalizeQuestId(typeof parsed.id === 'string' ? parsed.id : '');
-  if (!nid) {
-    nid = ensureUniqueQuestId('quest', existingSet);
+  let nid;
+  if (lockedQuestId.length > 0) {
+    nid = lockedQuestId;
   } else {
-    nid = ensureUniqueQuestId(nid, existingSet);
+    let fromAi = normalizeQuestId(typeof parsed.id === 'string' ? parsed.id : '');
+    if (!fromAi) fromAi = ensureUniqueQuestId('quest', existingSet);
+    else fromAi = ensureUniqueQuestId(fromAi, existingSet);
+    nid = fromAi;
   }
 
-  const questRewards = distributeQuestRewardPercents(rewards);
+  const questRewards = rewards.map((text) => ({ text }));
 
   return new Response(
     JSON.stringify({
+      responseType: 'quest',
       id: nid,
       title: title || nid,
       description,
       kind,
       stepLabels: steps.map((s) => s.label),
+      steps,
       rewards,
       questRewards,
     }),

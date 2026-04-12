@@ -72,6 +72,11 @@
   pointer-events: all;
 }
 
+/* Kanten liegen sonst über dem Hit-Rect und blockieren Pan auf der freien Fläche */
+.rpg-tree-edges {
+  pointer-events: none;
+}
+
 .rpg-tree-node {
   cursor: pointer;
   touch-action: manipulation;
@@ -110,6 +115,16 @@
 
 .rpg-tree-node--locked .rpg-tree-node__label {
   fill: rgba(255, 255, 255, 0.38);
+}
+
+.rpg-tree-node__time-urgent {
+  pointer-events: none;
+}
+
+.rpg-tree-node__time-urgent-dot {
+  fill: #e5484d;
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.85;
 }
 
 .rpg-tree-panel {
@@ -574,6 +589,66 @@
   box-shadow: 0 0 0 1px rgba(126, 184, 218, 0.25);
 }
 
+.rpg-graph-editor__mode--stack {
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.rpg-graph-editor__mode--stack .rpg-graph-editor__mode-btn {
+  flex: unset;
+  width: 100%;
+}
+
+.rpg-graph-editor__pick {
+  padding-top: 0.25rem;
+}
+
+.rpg-graph-editor__pick-intro {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.rpg-graph-editor__ai-only {
+  padding-top: 0.25rem;
+}
+
+.rpg-graph-editor__back-link {
+  align-self: flex-start;
+  margin-bottom: 0.35rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  color: #7eb8da;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rpg-graph-editor__clarify {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.rpg-graph-editor__clarify-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rpg-graph-editor__clarify-list li {
+  margin-bottom: 0.65rem;
+}
+
+.rpg-graph-editor__clarify-q {
+  margin: 0 0 0.35rem;
+  font-size: 0.86rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
 .rpg-graph-editor__ai-block {
   display: flex;
   flex-direction: column;
@@ -844,6 +919,12 @@
   background: rgba(126, 184, 218, 0.12);
   color: #9ec8e6;
   border: 1px solid rgba(126, 184, 218, 0.28);
+}
+
+.rpg-step-card__badge--due {
+  background: rgba(255, 120, 100, 0.14);
+  color: #f0a898;
+  border-color: rgba(255, 120, 100, 0.35);
 }
 
 .rpg-step-card__edit-btn {

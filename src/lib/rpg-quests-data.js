@@ -4,7 +4,7 @@
  */
 
 /** @typedef {{ id: string; label: string; done?: boolean; optional?: boolean; substeps?: RpgQuestStep[]; dependsOn?: string[]; reward?: string }} RpgQuestStep */
-/** @typedef {{ text: string; unlockAtPercent: number }} RpgQuestRewardEntry */
+/** @typedef {{ text: string }} RpgQuestRewardEntry */
 /** @typedef {{ id: string; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
 /** @typedef {{ main: RpgQuest[]; side: RpgQuest[] }} RpgQuestPayloadLegacy */
 /** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[] }} RpgGraphQuest */
@@ -29,11 +29,7 @@ export const SAMPLE_RPG_GRAPH = {
         { id: 'm3', label: 'Ein Ritual, das wöchentlich Fortschritt sichtbar macht' },
         { id: 'm4', label: 'Nein sagen zu einer großen Ablenkung' },
       ],
-      questRewards: [
-        { text: '+2 Klarheit', unlockAtPercent: 33 },
-        { text: 'Titel: Architekt', unlockAtPercent: 67 },
-        { text: 'Cutscene: Morgenlicht', unlockAtPercent: 100 },
-      ],
+      questRewards: [{ text: '+2 Klarheit' }, { text: 'Titel: Architekt' }, { text: 'Cutscene: Morgenlicht' }],
     },
     {
       id: 'main-bridge',
@@ -45,7 +41,7 @@ export const SAMPLE_RPG_GRAPH = {
         { id: 'b1', label: 'Eine ehrliche Bilanz: was bleibt, was fliegt' },
         { id: 'b2', label: 'Ein Gespräch, das du seit Monaten vermeidest' },
       ],
-      questRewards: [{ text: 'Item: Werkzeugkasten', unlockAtPercent: 100 }],
+      questRewards: [{ text: 'Item: Werkzeugkasten' }],
     },
     {
       id: 'side-read',
@@ -58,10 +54,7 @@ export const SAMPLE_RPG_GRAPH = {
         { id: 's2', label: 'Ein Kapitel zu Ende lesen' },
         { id: 's3', label: 'Eine Notiz, die du in einer Woche noch verstehst' },
       ],
-      questRewards: [
-        { text: '+XP Lesen', unlockAtPercent: 50 },
-        { text: 'Cosmetic: Lesezeichen', unlockAtPercent: 100 },
-      ],
+      questRewards: [{ text: '+XP Lesen' }, { text: 'Cosmetic: Lesezeichen' }],
     },
     {
       id: 'side-walk',
@@ -69,7 +62,7 @@ export const SAMPLE_RPG_GRAPH = {
       title: 'Draußen-Level',
       description: 'Kurz raus, Kopf leeren, Körper mitnehmen.',
       steps: [{ id: 'w1', label: '20 Minuten ohne Podcast' }],
-      questRewards: [{ text: 'Buff: Sonnenlicht', unlockAtPercent: 100 }],
+      questRewards: [{ text: 'Buff: Sonnenlicht' }],
     },
     {
       id: 'side-cook',
@@ -80,7 +73,7 @@ export const SAMPLE_RPG_GRAPH = {
         { id: 'c1', label: 'Einkaufsliste ohne Impulskauf' },
         { id: 'c2', label: 'Gericht zu Ende gebracht' },
       ],
-      questRewards: [{ text: 'Recipe drop', unlockAtPercent: 100 }],
+      questRewards: [{ text: 'Recipe drop' }],
     },
   ],
   edges: [

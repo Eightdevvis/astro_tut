@@ -3,7 +3,8 @@
  * Quest-Rewards mit Freischalt-Prozent. Fortschritt nur über nicht-optionale Blätter.
  */
 
-/** @typedef {{ text: string; unlockAtPercent: number }} RpgQuestRewardEntry */
+/** Gespeichert: nur Text. Freischalt-Schwelle wird pro Quest-ID deterministisch „zufällig“ vergeben. */
+/** @typedef {{ text: string }} RpgQuestRewardEntry */
 
 /**
  * @typedef {{
@@ -13,6 +14,7 @@
  *   substeps?: RpgQuestStepNode[];
  *   dependsOn?: string[];
  *   reward?: string;
+ *   timeDueAt?: string;
  *   done?: boolean;
  *   orderLinked?: boolean;
  * }} RpgQuestStepNode
@@ -32,11 +34,22 @@ function normalizeOneStep(raw, next) {
     ? o.dependsOn.map((x) => String(x).trim()).filter(Boolean)
     : [];
   const reward = typeof o.reward === 'string' && o.reward.trim() ? o.reward.trim() : undefined;
+  let timeDueAt;
+  const rawDue = typeof o.timeDueAt === 'string' ? o.timeDueAt.trim() : '';
+  if (rawDue) {
+    const ymd = rawDue.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) timeDueAt = ymd;
+    else {
+      const t = Date.parse(rawDue);
+      if (!Number.isNaN(t)) timeDueAt = new Date(t).toISOString().slice(0, 10);
+    }
+  }
   const subsRaw = o.substeps;
   /** @type {RpgQuestStepNode | undefined} */
   let out = { id, label, optional };
   if (dependsOn.length) out = { ...out, dependsOn };
   if (reward) out = { ...out, reward };
+  if (timeDueAt) out = { ...out, timeDueAt };
   if (o.orderLinked === true) out = { ...out, orderLinked: true };
   if (Array.isArray(subsRaw) && subsRaw.length > 0) {
     return { ...out, substeps: normalizeStepsArray(subsRaw, next) };
@@ -79,9 +92,69 @@ export function flatLegacyStepsToNormalized(flat) {
 export function distributeQuestRewardPercents(lines) {
   const n = lines.length;
   if (n === 0) return [];
-  return lines.map((text, i) => ({
-    text,
-    unlockAtPercent: Math.round((100 * (i + 1)) / n),
+  return lines.map((text) => ({ text }));
+}
+
+/**
+ * @param {string} s
+ * @returns {number}
+ */
+export function hashQuestStringToSeed(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * @param {number} seed
+ * @returns {() => number}
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function rand() {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * @param {unknown[]} arr
+ * @param {() => number} rand
+ */
+function shuffleInPlace(arr, rand) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const t = arr[i];
+    arr[i] = arr[j];
+    arr[j] = t;
+  }
+}
+
+/**
+ * Standard-Stufen (wie früher gleichmäßig), zufällig den Belohnungszeilen zugeordnet — stabil pro Quest-ID.
+ * @param {string} questId
+ * @param {RpgQuestRewardEntry[]} entries
+ * @returns {{ text: string; unlockAtPercent: number }[]}
+ */
+export function resolveQuestRewardUnlockSchedule(questId, entries) {
+  const n = entries.length;
+  if (n === 0) return [];
+  /** @type {number[]} */
+  const milestones = [];
+  for (let i = 0; i < n; i++) {
+    milestones.push(Math.round((100 * (i + 1)) / n));
+  }
+  const copy = [...milestones];
+  const rand = mulberry32(hashQuestStringToSeed(`rpg-quest-rewards:${questId}`));
+  shuffleInPlace(copy, rand);
+  return entries.map((e, i) => ({
+    text: (e.text || '').trim(),
+    unlockAtPercent: copy[i],
   }));
 }
 
@@ -97,10 +170,7 @@ export function normalizeQuestRewards(raw) {
     if (!x || typeof x !== 'object') continue;
     const text = typeof /** @type {any} */ (x).text === 'string' ? String(/** @type {any} */ (x).text).trim() : '';
     if (!text) continue;
-    let p = Number(/** @type {any} */ (x).unlockAtPercent);
-    if (!Number.isFinite(p)) p = 100;
-    p = Math.max(0, Math.min(100, Math.round(p)));
-    out.push({ text, unlockAtPercent: p });
+    out.push({ text });
   }
   return out;
 }
@@ -280,13 +350,75 @@ export function isQuestCompletedFromSteps(quest, stepDone) {
   return percent >= 100;
 }
 
+const MS_WEEK = 7 * 86400000;
+
 /**
- * Sammelt Step-Rewards (DFS) und Quest-Rewards mit unlocked-Flag.
+ * @param {string} isoYmd
+ * @returns {number}
+ */
+function endOfLocalDayMs(isoYmd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(isoYmd).trim());
+  if (!m) {
+    const t = Date.parse(isoYmd);
+    return Number.isNaN(t) ? 0 : t;
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  return new Date(y, mo - 1, d, 23, 59, 59, 999).getTime();
+}
+
+/**
+ * Noch offene Pflichtschritte mit gesetzter Frist (Quest gilt dann als zeitgebunden).
  * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
-export function buildRewardDisplayList(quest, stepDone) {
-  const pct = questLeafProgressRatio(quest, stepDone).percent;
+export function questHasIncompleteTimeBoundLeaves(quest, stepDone) {
+  let found = false;
+  walkStepsPreOrder(quest.steps || [], (s) => {
+    if (!stepIsLeaf(s)) return;
+    if (s.optional) return;
+    if (!s.timeDueAt || !String(s.timeDueAt).trim()) return;
+    if (isStepNodeComplete(quest, s.id, stepDone)) return;
+    found = true;
+  });
+  return found;
+}
+
+/**
+ * Dringend: offene Pflichtschritte mit Frist in weniger als einer Woche oder überfällig (für rotes Baum-Symbol).
+ * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
+ * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {number} [nowMs]
+ */
+export function questHasUrgentTimeBoundLeaves(quest, stepDone, nowMs = Date.now()) {
+  let found = false;
+  walkStepsPreOrder(quest.steps || [], (s) => {
+    if (!stepIsLeaf(s)) return;
+    if (s.optional) return;
+    const dueRaw = s.timeDueAt && String(s.timeDueAt).trim();
+    if (!dueRaw) return;
+    if (isStepNodeComplete(quest, s.id, stepDone)) return;
+    const dueEnd = endOfLocalDayMs(dueRaw);
+    if (!dueEnd) return;
+    const remaining = dueEnd - nowMs;
+    if (remaining < MS_WEEK) found = true;
+  });
+  return found;
+}
+
+/**
+ * Sammelt Step-Rewards (DFS) und Quest-Rewards mit unlocked-Flag.
+ * Quest-Reward-Schwellen kommen aus resolveQuestRewardUnlockSchedule (deterministisch pro Quest-ID).
+ * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
+ * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {number} [progressPercentOverride] — z. B. aus questProgress(..., graph): Vorgänger + Folgequests
+ */
+export function buildRewardDisplayList(quest, stepDone, progressPercentOverride) {
+  const pct =
+    typeof progressPercentOverride === 'number' && Number.isFinite(progressPercentOverride)
+      ? progressPercentOverride
+      : questLeafProgressRatio(quest, stepDone).percent;
   /** @type {{ text: string; unlocked: boolean; source: 'step' | 'quest' }[]} */
   const rows = [];
   walkStepsPreOrder(quest.steps || [], (s) => {
@@ -295,7 +427,7 @@ export function buildRewardDisplayList(quest, stepDone) {
       rows.push({ text: s.reward.trim(), unlocked, source: 'step' });
     }
   });
-  const qr = getQuestRewardEntries(quest);
+  const qr = resolveQuestRewardUnlockSchedule(quest.id, getQuestRewardEntries(quest));
   for (const r of qr) {
     const unlocked = pct >= r.unlockAtPercent;
     rows.push({ text: r.text, unlocked, source: 'quest' });
@@ -330,7 +462,8 @@ export function migrateQuestToV2Shape(q) {
     typeof /** @type {any} */ (s).label === 'string' &&
     !/** @type {any} */ (s).dependsOn?.length &&
     !/** @type {any} */ (s).optional &&
-    !/** @type {any} */ (s).reward;
+    !/** @type {any} */ (s).reward &&
+    !/** @type {any} */ (s).timeDueAt;
 
   const looksLegacyFlat = stepsIn.length > 0 && stepsIn.every(isLegacyFlatRow);
 
