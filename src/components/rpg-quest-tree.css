@@ -90,6 +90,136 @@
   pointer-events: none;
 }
 
+@media (max-width: 560px) {
+  .rpg-tree__vessels--desktop-only {
+    display: none;
+  }
+}
+
+/* Mobil: Dock mit Stern-im-Kreis — öffnet Vollbild-Gefäße */
+.rpg-tree__mobile-dock {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .rpg-tree__mobile-dock {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 28;
+    justify-content: center;
+    align-items: center;
+    padding: 0.45rem 1rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 0%, rgba(8, 8, 10, 0.88) 42%);
+  }
+
+  .rpg-tree__mobile-dock-btn {
+    pointer-events: auto;
+    width: 3.35rem;
+    height: 3.35rem;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 999px;
+    border: 1px solid var(--rpg-accent-dim);
+    background: rgba(14, 14, 18, 0.94);
+    color: var(--rpg-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+
+  .rpg-tree__mobile-dock-btn:hover {
+    background: rgba(126, 184, 218, 0.12);
+  }
+
+  .rpg-tree__mobile-dock-icon {
+    display: block;
+  }
+
+  .rpg-tree--detail-mobile .rpg-tree__mobile-dock {
+    display: none;
+  }
+}
+
+/* Mobil: Vollbild-Overlay, Gefäße übereinander (zentriert) */
+.rpg-tree__vessels-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+  background: radial-gradient(ellipse 120% 80% at 50% 45%, rgba(18, 22, 32, 0.97) 0%, rgba(6, 6, 8, 0.98) 70%);
+  box-sizing: border-box;
+}
+
+.rpg-tree__vessels-overlay-close {
+  position: absolute;
+  top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  right: calc(0.65rem + env(safe-area-inset-right, 0px));
+  z-index: 2;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+.rpg-tree__vessels-overlay-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.rpg-tree__vessels-overlay-inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+}
+
+.rpg-tree__vessels-overlay .lv-canvas-wrap--embed-spread {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  pointer-events: none;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.rpg-tree__vessels-overlay .lv-canvas-wrap--embed-spread canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+  pointer-events: none;
+}
+
+@media (min-width: 561px) {
+  .rpg-tree__vessels-overlay,
+  .rpg-tree__mobile-dock {
+    display: none !important;
+  }
+}
+
 .rpg-tree__viewport {
   flex: 1 1 auto;
   align-self: stretch;
@@ -199,6 +329,21 @@
   border-top: 1px solid var(--rpg-border);
   box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.55);
   -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 561px) {
+  .rpg-tree-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(36rem, calc(100vw - 3.5rem));
+    max-width: min(36rem, calc(100vw - 3.5rem));
+    border-radius: 14px 14px 0 0;
+    border-left: 1px solid var(--rpg-border);
+    border-right: 1px solid var(--rpg-border);
+    max-height: min(46vh, 520px);
+    box-shadow: 0 -16px 52px rgba(0, 0, 0, 0.5);
+  }
 }
 
 .rpg-tree-panel__inner {
@@ -467,6 +612,40 @@
 @media (max-width: 560px) {
   .rpg-tree-panel {
     max-height: min(58dvh, 58svh);
+  }
+
+  .rpg-tree--detail-mobile .rpg-tree__top {
+    display: none;
+  }
+
+  .rpg-tree--detail-mobile .rpg-tree__viewport {
+    display: none;
+  }
+
+  .rpg-tree--detail-mobile .rpg-tree-panel {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-height: none;
+    height: 100vh;
+    height: 100dvh;
+    border-top: none;
+    border-radius: 0;
+    background: #0a0a0c;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .rpg-tree--detail-mobile .rpg-tree-panel__inner {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding-top: max(0.85rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(1.1rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .rpg-tree__empty {
+    padding-bottom: max(5.5rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
   }
 
   .rpg-tree-panel__title {

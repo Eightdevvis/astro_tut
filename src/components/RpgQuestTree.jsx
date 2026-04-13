@@ -101,6 +101,8 @@ export default function RpgQuestTree() {
   const [scale, setScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [compact, setCompact] = useState(false);
+  /** Mobil: Vollbild-Overlay mit Gefäßen (Dock-Button), nicht auf dem Baum */
+  const [mobileManaOpen, setMobileManaOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
@@ -159,6 +161,23 @@ export default function RpgQuestTree() {
     mq.addEventListener('change', apply);
     return () => mq.removeEventListener('change', apply);
   }, []);
+
+  useEffect(() => {
+    if (selectedId) setMobileManaOpen(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!compact) setMobileManaOpen(false);
+  }, [compact]);
+
+  useEffect(() => {
+    if (!mobileManaOpen) return;
+    const onKey = (/** @type {KeyboardEvent} */ e) => {
+      if (e.key === 'Escape') setMobileManaOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileManaOpen]);
 
   const panelReserve = compact ? PANEL_RESERVE_MOBILE : PANEL_RESERVE_DESKTOP;
 
@@ -529,10 +548,52 @@ export default function RpgQuestTree() {
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
   const manaHeartDeko = (
-    <aside class="rpg-tree__vessels" aria-hidden="true">
+    <aside class="rpg-tree__vessels rpg-tree__vessels--desktop-only" aria-hidden="true">
       <LiquidVessels variant="rpg-tree" />
     </aside>
   );
+
+  const mobileManaDock =
+    compact && !selectedId ? (
+      <nav class="rpg-tree__mobile-dock" aria-label="Deko">
+        <button
+          type="button"
+          class="rpg-tree__mobile-dock-btn"
+          onClick={() => setMobileManaOpen(true)}
+          aria-label="Mana-Kugel und Lebens-Herz im Vollbild anzeigen"
+        >
+          <svg class="rpg-tree__mobile-dock-icon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.35" />
+            <path
+              fill="currentColor"
+              d="M12 5.2l1.62 4.07 4.38.32-3.34 2.9 1.03 4.28L12 14.77 8.31 16.77l1.03-4.28-3.34-2.9 4.38-.32z"
+            />
+          </svg>
+        </button>
+      </nav>
+    ) : null;
+
+  const mobileManaOverlay =
+    compact && mobileManaOpen ? (
+      <div
+        class="rpg-tree__vessels-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mana und Leben"
+      >
+        <button
+          type="button"
+          class="rpg-tree__vessels-overlay-close"
+          onClick={() => setMobileManaOpen(false)}
+          aria-label="Schließen"
+        >
+          ×
+        </button>
+        <div class="rpg-tree__vessels-overlay-inner">
+          <LiquidVessels variant="rpg-tree-spread" />
+        </div>
+      </div>
+    ) : null;
 
   const topBar = (
     <header class="rpg-tree__top">
@@ -592,6 +653,8 @@ export default function RpgQuestTree() {
       <div class="rpg-tree">
         {topBar}
         {manaHeartDeko}
+        {mobileManaDock}
+        {mobileManaOverlay}
         <p class="rpg-tree__empty">
           Keine Quests im Graph. „Verwalten“ aktivieren — mit manuell+ oder questmaker+ eine Quest anlegen.
         </p>
@@ -600,10 +663,15 @@ export default function RpgQuestTree() {
     );
   }
 
+  const rootTreeClass =
+    compact && selectedId ? 'rpg-tree rpg-tree--detail-mobile' : 'rpg-tree';
+
   return (
-    <div class="rpg-tree">
+    <div class={rootTreeClass}>
       {topBar}
       {manaHeartDeko}
+      {mobileManaDock}
+      {mobileManaOverlay}
 
       <div
         ref={viewportRef}

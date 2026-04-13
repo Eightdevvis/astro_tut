@@ -231,11 +231,13 @@ function disposeObject(root) {
 }
 
 /**
- * @param {{ variant?: 'page' | 'rpg-tree' }} props
+ * @param {{ variant?: 'page' | 'rpg-tree' | 'rpg-tree-spread' }} props
+ * — `rpg-tree-spread`: volle Fläche, Mobil-Overlay — Kugel oben, Herz unten (übereinander, je ~halbe Viewport-Höhe).
  */
 export default function LiquidVessels({ variant = 'page' }) {
   const wrapRef = useRef(null);
-  const embed = variant === 'rpg-tree';
+  const isEmbed = variant === 'rpg-tree' || variant === 'rpg-tree-spread';
+  const isSpread = variant === 'rpg-tree-spread';
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -244,23 +246,36 @@ export default function LiquidVessels({ variant = 'page' }) {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 
     const scene = new THREE.Scene();
-    const { texture: bgTexture, airColor: backdrop, clearColor: clearHex } = createBackdropGradient(embed);
+    const { texture: bgTexture, airColor: backdrop, clearColor: clearHex } = createBackdropGradient(isEmbed);
     scene.background = bgTexture ?? null;
 
-    const camera = new THREE.PerspectiveCamera(embed ? 38 : 42, 1, 0.1, 50);
-    camera.position.set(0, embed ? -0.02 : 0.15, embed ? 5.85 : 4.2);
+    let camFov = 42;
+    let camY = 0.15;
+    let camZ = 4.2;
+    if (isSpread) {
+      /* Hochformat: Stapel in Y, zentriert — je ~½ Viewport-Höhe, nichts seitlich abgeschnitten */
+      camFov = 36;
+      camY = 0;
+      camZ = 5.05;
+    } else if (isEmbed) {
+      camFov = 38;
+      camY = -0.02;
+      camZ = 5.85;
+    }
+    const camera = new THREE.PerspectiveCamera(camFov, 1, 0.1, 50);
+    camera.position.set(0, camY, camZ);
 
-    const maxDpr = Math.min(window.devicePixelRatio || 1, embed ? 1.5 : 1.75);
+    const maxDpr = Math.min(window.devicePixelRatio || 1, isEmbed ? (isSpread ? 1.75 : 1.5) : 1.75);
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      alpha: embed,
+      alpha: isEmbed,
       powerPreference: 'high-performance',
     });
     renderer.setPixelRatio(maxDpr);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.06;
-    if (embed) {
+    if (isEmbed) {
       renderer.setClearColor(0x000000, 0);
     } else {
       renderer.setClearColor(new THREE.Color(clearHex), 1);
@@ -295,7 +310,7 @@ export default function LiquidVessels({ variant = 'page' }) {
     scene.add(fill);
     const spot = new THREE.SpotLight(0xe4eeff, 0.48, 28, Math.PI / 5, 0.55, 1);
     spot.position.set(-3.8, 5.5, 6.2);
-    spot.target.position.set(0, 0.15, 0);
+    spot.target.position.set(0, isSpread ? 0 : 0.15, 0);
     scene.add(spot);
     scene.add(spot.target);
     const lifeLight = new THREE.PointLight(0xc4283a, 0.38, 12, 2);
@@ -303,7 +318,13 @@ export default function LiquidVessels({ variant = 'page' }) {
     scene.add(lifeLight);
     /* Kurz reichendes Licht Richtung Herz — Kugel links kaum betroffen, kein globales Aufhellen wie Directional */
     const heartNear = new THREE.PointLight(0xffe8ee, 0.72, 3.6, 2);
-    heartNear.position.set(embed ? 0.2 : 1.45, embed ? -0.75 : 0.05, 3.15);
+    if (isSpread) {
+      heartNear.position.set(0.12, -0.72, 3.12);
+    } else if (isEmbed) {
+      heartNear.position.set(0.2, -0.75, 3.15);
+    } else {
+      heartNear.position.set(1.45, 0.05, 3.15);
+    }
     scene.add(heartNear);
 
     const glassOrb = createPhysicalGlass({ kind: 'orb' });
@@ -315,7 +336,10 @@ export default function LiquidVessels({ variant = 'page' }) {
     orbGlassMesh.renderOrder = 1;
     orbGroup.add(orbLiquidMesh);
     orbGroup.add(orbGlassMesh);
-    if (embed) {
+    if (isSpread) {
+      orbGroup.position.set(0, 0.82, 0);
+      orbGroup.scale.setScalar(0.62);
+    } else if (isEmbed) {
       orbGroup.position.set(0, 0.92, 0);
       orbGroup.scale.setScalar(0.68);
     } else {
@@ -345,7 +369,10 @@ export default function LiquidVessels({ variant = 'page' }) {
     heartGlassMesh.renderOrder = 1;
     heartGroup.add(heartLiqMesh);
     heartGroup.add(heartGlassMesh);
-    if (embed) {
+    if (isSpread) {
+      heartGroup.position.set(0, -0.82, 0);
+      heartGroup.scale.setScalar(0.64);
+    } else if (isEmbed) {
       heartGroup.position.set(0, -0.88, 0);
       heartGroup.scale.setScalar(0.72);
     } else {
@@ -433,12 +460,12 @@ export default function LiquidVessels({ variant = 'page' }) {
       return !!(o || m);
     })();
 
-    /* Embed (Quest-Baum): kein Schalter-Overlay — nur die Gefäße sichtbar */
-    if (!reduceMotion && needsIOSPerm && !embed) {
+    /* Embed (Quest-Baum / Spread): kein Schalter-Overlay — nur die Gefäße sichtbar */
+    if (!reduceMotion && needsIOSPerm && variant === 'page') {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.textContent = embed ? 'Neigung' : 'Neigung & Schütteln';
-      btn.className = embed ? 'lv-motion lv-motion--embed' : 'lv-gyro';
+      btn.textContent = 'Neigung & Schütteln';
+      btn.className = 'lv-gyro';
       btn.title = 'Gerät kippen und schütteln (iOS: einmal erlauben)';
       el.appendChild(btn);
       btn.addEventListener('click', async () => {
@@ -551,8 +578,11 @@ export default function LiquidVessels({ variant = 'page' }) {
     };
   }, [variant]);
 
-  if (embed) {
-    return <div class="lv-canvas-wrap lv-canvas-wrap--embed" ref={wrapRef} />;
+  if (isEmbed) {
+    const wrapCls = isSpread
+      ? 'lv-canvas-wrap lv-canvas-wrap--embed lv-canvas-wrap--embed-spread'
+      : 'lv-canvas-wrap lv-canvas-wrap--embed';
+    return <div class={wrapCls} ref={wrapRef} />;
   }
 
   return (
