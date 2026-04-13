@@ -25,11 +25,13 @@ import {
   toRpgVitalsView,
   RPG_VITAL_MAX_POINTS,
 } from '../lib/rpg-vitals.js';
-import { normalizeRpgLocationState } from '../lib/rpg-location.js';
+import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import LiquidVessels from './LiquidVessels.jsx';
+import RpgLocationStrip from './RpgLocationStrip.jsx';
 import './rpg-quest-tree.css';
+import './rpg-location-strip.css';
 
 const PANEL_RESERVE_DESKTOP = 280;
 const PANEL_RESERVE_MOBILE = 200;
@@ -89,6 +91,8 @@ export default function RpgQuestTree() {
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
   const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
+  const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
+  const [locations, setLocations] = useState(() => []);
   const [bootstrapped, setBootstrapped] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
   const [canPersist, setCanPersist] = useState(true);
@@ -102,6 +106,8 @@ export default function RpgQuestTree() {
     setStepDone(d.stepDone);
     setVitals(d.vitals);
     setLocation(d.location);
+    setLocationCatalog(d.locationCatalog);
+    setLocations(d.locations);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -160,12 +166,14 @@ export default function RpgQuestTree() {
         stepDone,
         vitals,
         location,
+        locationCatalog,
+        locations,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone, vitals, location]);
+  }, [graph, added, stepDone, vitals, location, locationCatalog, locations]);
 
   useEffect(() => {
     panRef.current = pan;
@@ -222,6 +230,8 @@ export default function RpgQuestTree() {
           setStepDone(d.stepDone);
           setVitals(d.vitals);
           setLocation(d.location);
+          setLocationCatalog(d.locationCatalog);
+          setLocations(d.locations);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -237,6 +247,8 @@ export default function RpgQuestTree() {
       setStepDone(d.stepDone);
       setVitals(d.vitals);
       setLocation(d.location);
+      setLocationCatalog(d.locationCatalog);
+      setLocations(d.locations);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -245,6 +257,8 @@ export default function RpgQuestTree() {
         stepDone: d.stepDone,
         vitals: d.vitals,
         location: d.location,
+        locationCatalog: d.locationCatalog,
+        locations: d.locations,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -266,6 +280,7 @@ export default function RpgQuestTree() {
         stepDone,
         vitals,
         location,
+        locationCatalog,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
       void (async () => {
@@ -276,6 +291,8 @@ export default function RpgQuestTree() {
             setItemCatalog(r.itemCatalog);
             itemCatalogRef.current = r.itemCatalog;
           }
+          if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
+          if (Array.isArray(r.locations)) setLocations(r.locations);
         } else if (r.error) {
           const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
           if (persistFailFingerprintRef.current !== fp) {
@@ -287,12 +304,14 @@ export default function RpgQuestTree() {
         }
         saveSessionCachedPayload({
           ...payload,
+          locationCatalog: r.locationCatalog ?? locationCatalog,
+          locations: Array.isArray(r.locations) ? r.locations : locations,
           itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
         });
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location, locationCatalog, locations]);
 
   useEffect(() => {
     setVitals((prev) => {
@@ -594,7 +613,6 @@ export default function RpgQuestTree() {
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
   const vesselsAria = `Leben ${vitalsView.heart} von ${RPG_VITAL_MAX_POINTS} Punkten, Mana ${vitalsView.mana} von ${RPG_VITAL_MAX_POINTS}`;
-  const locationLabel = location.place ? `${location.city} / ${location.place}` : location.city;
   const manaHeartDeko = !compact ? (
     <aside class="rpg-tree__vessels rpg-tree__vessels--desktop-only" aria-label={vesselsAria}>
       <LiquidVessels
@@ -602,13 +620,29 @@ export default function RpgQuestTree() {
         heartFill={vitalsView.heartFill}
         manaFill={vitalsView.manaFill}
       />
-      <div class="rpg-tree__location-strip">Location: {locationLabel}</div>
+      <RpgLocationStrip
+        location={location}
+        onLocationChange={setLocation}
+        catalog={locationCatalog}
+        onCatalogChange={setLocationCatalog}
+        locations={locations}
+        onLocationsChange={setLocations}
+      />
     </aside>
   ) : null;
 
   const mobileManaDock =
     compact && !selectedId ? (
       <nav class="rpg-tree__mobile-dock" aria-label="Deko">
+        <RpgLocationStrip
+          className="rpg-location-strip--mobile-dock"
+          location={location}
+          onLocationChange={setLocation}
+          catalog={locationCatalog}
+          onCatalogChange={setLocationCatalog}
+          locations={locations}
+          onLocationsChange={setLocations}
+        />
         <button
           type="button"
           class="rpg-tree__mobile-dock-btn"
@@ -643,7 +677,6 @@ export default function RpgQuestTree() {
           ×
         </button>
         <div class="rpg-tree__vessels-overlay-inner">
-          <p class="rpg-tree__location-strip rpg-tree__location-strip--overlay">Location: {locationLabel}</p>
           <LiquidVessels
             variant="rpg-tree-spread"
             heartFill={vitalsView.heartFill}

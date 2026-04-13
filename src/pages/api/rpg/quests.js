@@ -10,11 +10,16 @@ import {
 } from '../../../lib/rpg-payload-schema.js';
 import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
 import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
-import { normalizeRpgLocationState } from '../../../lib/rpg-location.js';
 import {
   collectAllItemIdsFromGraph,
   normalizeQuestmakerCatalogPayloadItem,
 } from '../../../lib/rpg-questmaker-sync.js';
+import { listRpgLocations, upsertRpgLocation } from '../../../lib/rpg-location-catalog-db.js';
+import {
+  normalizeRpgLocationCatalog,
+  collectLocationEntriesFromGraph,
+  normalizeRpgLocationState,
+} from '../../../lib/rpg-location.js';
 import {
   listQuestmakerCatalogRows,
   upsertQuestmakerCatalogItems,
@@ -44,6 +49,7 @@ export async function GET({ cookies }) {
   let persisted = false;
   let vitals = normalizeRpgVitalsState(null);
   let location = normalizeRpgLocationState(null);
+  let locationCatalog = normalizeRpgLocationCatalog(null);
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
@@ -54,12 +60,14 @@ export async function GET({ cookies }) {
     if (stored.stepDone && typeof stored.stepDone === 'object') stepDone = stored.stepDone;
     vitals = normalizeRpgVitalsState(stored.vitals);
     location = normalizeRpgLocationState(stored.location);
+    locationCatalog = normalizeRpgLocationCatalog(stored.locationCatalog);
   }
 
   graph = migrateRpgGraphToV2(graph);
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
 
   const questmakerItems = await listQuestmakerCatalogRows();
+  const locations = await listRpgLocations();
 
   return new Response(
     JSON.stringify({
@@ -69,6 +77,8 @@ export async function GET({ cookies }) {
       stepDone,
       vitals,
       location,
+      locationCatalog,
+      locations,
       persisted,
       schemaVersion,
       questmakerItems,
@@ -127,6 +137,7 @@ export async function PUT({ request, cookies }) {
   }
   const vitals = normalizeRpgVitalsState(body.vitals);
   const location = normalizeRpgLocationState(body.location);
+  let locationCatalog = normalizeRpgLocationCatalog(body.locationCatalog);
 
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
@@ -147,6 +158,7 @@ export async function PUT({ request, cookies }) {
     stepDone: body.stepDone,
     vitals,
     location,
+    locationCatalog,
     schemaVersion: Math.max(
       RPG_PAYLOAD_SCHEMA_VERSION,
       coerceRpgPayloadSchemaVersion(base.schemaVersion)
@@ -183,11 +195,23 @@ export async function PUT({ request, cookies }) {
 
   const toUpsert = [...proposedMap.values()].filter((row) => needed.has(row.id));
   await upsertQuestmakerCatalogItems(toUpsert);
+
+  const graphLocations = collectLocationEntriesFromGraph(body.graph);
+  for (const loc of graphLocations) {
+    const row = await upsertRpgLocation(loc);
+    if (!row) continue;
+    if (row.kind === 'city') locationCatalog.cityIds.push(row.id);
+    else locationCatalog.placeIds.push(row.id);
+  }
+  locationCatalog = normalizeRpgLocationCatalog(locationCatalog);
+  payload.locationCatalog = locationCatalog;
+
   await saveRpgState(username, payload);
 
   const questmakerItems = await listQuestmakerCatalogRows();
+  const locations = await listRpgLocations();
 
-  return new Response(JSON.stringify({ ok: true, questmakerItems }), {
+  return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });

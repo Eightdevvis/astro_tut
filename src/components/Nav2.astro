@@ -115,16 +115,24 @@ const showRpgNav = Boolean(username) && (username === SUPERUSER || (await hasPer
             </span>
             <span>Blog</span>
           </a>
-          <div class="nav2-drawer-theme">
-            <ThemeToggle />
-          </div>
+          {
+            isHome && (
+              <div class="nav2-drawer-theme">
+                <ThemeToggle />
+              </div>
+            )
+          }
         </div>
       </details>
     </div>
     <div class="nav2-right">
-      <div class="nav2-theme-bar">
-        <ThemeToggle />
-      </div>
+      {
+        isHome && (
+          <div class="nav2-theme-bar">
+            <ThemeToggle />
+          </div>
+        )
+      }
       <div class="nav2-login-wrap">
         <LoginWidget client:load />
       </div>

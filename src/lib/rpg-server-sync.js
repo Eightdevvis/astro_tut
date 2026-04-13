@@ -13,7 +13,7 @@ import {
 import { migrateRpgGraphToV2 } from './rpg-quest-steps.js';
 import { questmakerCatalogToDisplayMap } from './rpg-questmaker-sync.js';
 import { normalizeRpgVitalsState } from './rpg-vitals.js';
-import { normalizeRpgLocationState } from './rpg-location.js';
+import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from './rpg-location.js';
 
 export { isValidGraphShape };
 
@@ -21,7 +21,7 @@ const RPG_SESSION_CACHE_KEY = 'rpg-bootstrap-v1';
 
 /**
  * Letzter bekannter Stand (Tab-Session): sofortige Anzeige ohne auf GET zu warten.
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string } } | null}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[] } | null}
  */
 export function loadSessionCachedPayload() {
   if (typeof sessionStorage === 'undefined') return null;
@@ -39,13 +39,15 @@ export function loadSessionCachedPayload() {
         : {};
     const vitals = normalizeRpgVitalsState(parsed.vitals);
     const location = normalizeRpgLocationState(parsed.location);
-    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals, location };
+    const locationCatalog = normalizeRpgLocationCatalog(parsed.locationCatalog);
+    const locations = Array.isArray(parsed.locations) ? parsed.locations : [];
+    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals, location, locationCatalog, locations };
   } catch {
     return null;
   }
 }
 
-/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; itemCatalog?: Record<string, unknown> }} payload */
+/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations?: unknown[]; itemCatalog?: Record<string, unknown> }} payload */
 export function saveSessionCachedPayload(payload) {
   if (typeof sessionStorage === 'undefined') return;
   try {
@@ -57,6 +59,8 @@ export function saveSessionCachedPayload(payload) {
         stepDone: payload.stepDone,
         vitals: payload.vitals,
         location: normalizeRpgLocationState(payload.location),
+        locationCatalog: normalizeRpgLocationCatalog(payload.locationCatalog),
+        locations: Array.isArray(payload.locations) ? payload.locations : [],
         itemCatalog: payload.itemCatalog && typeof payload.itemCatalog === 'object' ? payload.itemCatalog : {},
       })
     );
@@ -72,8 +76,8 @@ export async function fetchRpgBootstrap() {
 }
 
 /**
- * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
- * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; status?: number; error?: string; missing?: string[] }>}
+ * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
+ * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; locationCatalog?: { cityIds: string[]; placeIds: string[] }; locations?: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; status?: number; error?: string; missing?: string[] }>}
  */
 export async function persistRpgState(payload) {
   const res = await fetch('/api/rpg/quests', {
@@ -103,7 +107,13 @@ export async function persistRpgState(payload) {
     data.questmakerItems && Array.isArray(data.questmakerItems)
       ? questmakerCatalogToDisplayMap(data.questmakerItems)
       : undefined;
-  return itemCatalog ? { ok: true, itemCatalog } : { ok: true };
+  const locationCatalog = normalizeRpgLocationCatalog(data.locationCatalog);
+  const locations = Array.isArray(data.locations) ? data.locations : undefined;
+  const out = { ok: true };
+  if (itemCatalog) out.itemCatalog = itemCatalog;
+  out.locationCatalog = locationCatalog;
+  if (locations) out.locations = locations;
+  return out;
 }
 
 export async function resetRpgToDefaultOnServer() {
@@ -135,6 +145,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
     stepDone: steps,
     vitals: normalizeRpgVitalsState(data?.vitals),
     location: normalizeRpgLocationState(data?.location),
+    locationCatalog: normalizeRpgLocationCatalog(data?.locationCatalog),
   });
   if (result.ok) {
     clearAllRpgLocalStorage();
@@ -148,6 +159,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
       stepDone: steps,
       vitals: normalizeRpgVitalsState(data?.vitals),
       location: normalizeRpgLocationState(data?.location),
+      locationCatalog: normalizeRpgLocationCatalog(data?.locationCatalog),
     };
   }
   return data;
@@ -161,6 +173,8 @@ export function pickRpgPayloadFromResponse(data) {
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
   const vitals = normalizeRpgVitalsState(data?.vitals);
   const location = normalizeRpgLocationState(data?.location);
+  const locationCatalog = normalizeRpgLocationCatalog(data?.locationCatalog);
+  const locations = Array.isArray(data?.locations) ? data.locations : [];
   /** @type {Record<string, { title: string; category: string; description: string }>} */
   let itemCatalog = {};
   if (data?.questmakerItems && Array.isArray(data.questmakerItems)) {
@@ -172,15 +186,15 @@ export function pickRpgPayloadFromResponse(data) {
   ) {
     itemCatalog = /** @type {typeof itemCatalog} */ (data.itemCatalog);
   }
-  return { graph, addedIds, stepDone, vitals, location, persisted: !!data?.persisted, itemCatalog };
+  return { graph, addedIds, stepDone, vitals, location, locationCatalog, locations, persisted: !!data?.persisted, itemCatalog };
 }
 
 /**
  * @param {any} data GET-Antwort oder null (Sample-Fallback)
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
  */
 export function deriveRpgUiStateFromPayload(data) {
-  const { graph, addedIds, stepDone: sd, vitals, location, itemCatalog } = pickRpgPayloadFromResponse(data);
+  const { graph, addedIds, stepDone: sd, vitals, location, locationCatalog, locations, itemCatalog } = pickRpgPayloadFromResponse(data);
   const stepDone = mergeStepDoneBase(buildInitialStepMapFromGraph(graph), sd);
-  return { graph, added: new Set(addedIds), stepDone, vitals, location, itemCatalog };
+  return { graph, added: new Set(addedIds), stepDone, vitals, location, locationCatalog, locations, itemCatalog };
 }

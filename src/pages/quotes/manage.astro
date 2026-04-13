@@ -10,7 +10,6 @@ import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
-import ThemeToggle from '../../components/ThemeToggle.astro';
 import '../../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -285,12 +284,6 @@ if (token) {
       .quote-new-link a:hover {
         color: rgba(173, 216, 230, 0.95);
       }
-      .quote-theme-float {
-        position: fixed;
-        top: calc(0.35rem + env(safe-area-inset-top, 0px));
-        right: calc(0.5rem + env(safe-area-inset-right, 0px));
-        z-index: 50;
-      }
       html:not(.dark) .quote-stripe,
       html:not(.dark) .quote-stripe-inner {
         border-color: rgba(0, 0, 0, 0.1);
@@ -322,9 +315,6 @@ if (token) {
     </style>
   </head>
   <body>
-    <div class="quote-theme-float">
-      <ThemeToggle />
-    </div>
     {
       !username ? (
         <div class="container no-permission">

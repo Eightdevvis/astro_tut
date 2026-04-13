@@ -18,7 +18,7 @@ import {
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
-import { normalizeRpgLocationState } from '../lib/rpg-location.js';
+import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
@@ -107,6 +107,8 @@ export default function RpgQuestHub() {
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
   const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
+  const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
+  const [locations, setLocations] = useState(() => []);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
 
@@ -119,6 +121,8 @@ export default function RpgQuestHub() {
     setStepDone(d.stepDone);
     setVitals(d.vitals);
     setLocation(d.location);
+    setLocationCatalog(d.locationCatalog);
+    setLocations(d.locations);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -149,12 +153,14 @@ export default function RpgQuestHub() {
         stepDone,
         vitals,
         location,
+        locationCatalog,
+        locations,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone, vitals, location]);
+  }, [graph, added, stepDone, vitals, location, locationCatalog, locations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +176,8 @@ export default function RpgQuestHub() {
           setStepDone(d.stepDone);
           setVitals(d.vitals);
           setLocation(d.location);
+          setLocationCatalog(d.locationCatalog);
+          setLocations(d.locations);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -185,6 +193,8 @@ export default function RpgQuestHub() {
       setStepDone(d.stepDone);
       setVitals(d.vitals);
       setLocation(d.location);
+      setLocationCatalog(d.locationCatalog);
+      setLocations(d.locations);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -193,6 +203,8 @@ export default function RpgQuestHub() {
         stepDone: d.stepDone,
         vitals: d.vitals,
         location: d.location,
+        locationCatalog: d.locationCatalog,
+        locations: d.locations,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -206,7 +218,7 @@ export default function RpgQuestHub() {
   useEffect(() => {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone, vitals, location };
+      const payload = { graph, addedIds: [...added], stepDone, vitals, location, locationCatalog };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
@@ -215,6 +227,8 @@ export default function RpgQuestHub() {
             setItemCatalog(r.itemCatalog);
             itemCatalogRef.current = r.itemCatalog;
           }
+          if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
+          if (Array.isArray(r.locations)) setLocations(r.locations);
         } else if (r.error) {
           const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
           if (persistFailFingerprintRef.current !== fp) {
@@ -226,12 +240,14 @@ export default function RpgQuestHub() {
         }
         saveSessionCachedPayload({
           ...payload,
+          locationCatalog: r.locationCatalog ?? locationCatalog,
+          locations: Array.isArray(r.locations) ? r.locations : locations,
           itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
         });
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location, locationCatalog, locations]);
 
   useEffect(() => {
     setVitals((prev) => {

@@ -88,12 +88,14 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`l
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
 - **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert. Im **Bearbeiten-Modus** des Baums: **Quest bearbeiten** öffnet den Editor mit **manuell+** / **questmaker+** (Details: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
 - **Location-Status:** unter den Vessels ein kleiner Streifen `Location: <city[/place]>` aus persistentem `location`-State.
+- **Location-Editor (immer sichtbar):** fester Strip oben rechts in Hub + Baum; Klick öffnet Dropdown-Editor (City/Place wählen, Suche, `+` für neue Orte).
 
 ## Hub (UI)
 
 - Sidebar-Link **„Quest-Baum“** → `/rpg/tree`.
 - Pro Quest (Fokus + ausgeklappte Streifen): unten links **runder Link** mit Mini-Graph-SVG → `/rpg/tree?focus=<id>`.
 - Steps berücksichtigen den Location-State: Quest kann per `quest.cityLocation` komplett gesperrt werden (`Gehe zu …` / `Kehre zurück zu …`), Step kann per `step.placeLocation` beim **fokussierten Step** ein `Go to …` einblenden (nur im Hub; Tree-Panel bleibt ohne Place-Hinweis).
+- Globaler Location-Katalog in DB-Tabelle `rpg_locations`; user-relevante IDs in `payload.locationCatalog` (`cityIds[]`, `placeIds[]`). Beim Speichern werden Quest-/Step-Locations automatisch in den globalen Katalog übernommen und dem User-Katalog hinzugefügt.
 
 ## Code-Übersicht
 

@@ -80,6 +80,16 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS rpg_locations (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    city        TEXT NOT NULL DEFAULT '',
+    country     TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS ai_usage_log (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     username            TEXT NOT NULL,

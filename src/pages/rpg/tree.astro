@@ -2,7 +2,6 @@
 import RpgQuestTree from '../../components/RpgQuestTree.jsx';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
-import ThemeToggle from '../../components/ThemeToggle.astro';
 import TesterBugBar from '../../components/TesterBugBar.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission, SUPERUSER } from '../../lib/permissions.js';
@@ -32,9 +31,6 @@ if (!canUseRpg) {
     />
   </head>
   <body class="rpg-root-body">
-    <div class="rpg-theme-float">
-      <ThemeToggle />
-    </div>
     <RpgQuestTree client:load />
     <TesterBugBar client:load />
     <ThemeClient />
@@ -60,21 +56,4 @@ if (!canUseRpg) {
     font-family: var(--rpg-font-sans);
   }
 
-  .rpg-theme-float {
-    position: fixed;
-    top: calc(0.35rem + env(safe-area-inset-top, 0px));
-    right: calc(0.5rem + env(safe-area-inset-right, 0px));
-    z-index: 300;
-    pointer-events: auto;
-  }
-
-  .rpg-theme-float .theme-toggle {
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--rpg-root-fg) 8%, transparent);
-  }
-
-  .rpg-theme-float .theme-toggle:hover,
-  .rpg-theme-float .theme-toggle:focus-visible {
-    background: color-mix(in srgb, var(--rpg-root-fg) 14%, transparent);
-  }
 </style>

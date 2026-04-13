@@ -16,7 +16,6 @@ import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
-import ThemeToggle from '../../components/ThemeToggle.astro';
 import '../../styles/global.css';
 
 // Session aus Cookie lesen
@@ -153,12 +152,6 @@ if (token) {
       .quote-manage-link a:hover { color: rgba(173, 216, 230, 0.95); }
       .no-permission { text-align: center; color: rgba(173,216,230,0.8); letter-spacing: 2px; }
       .no-permission p { margin: 0 0 1rem; max-width: 100%; word-break: break-word; }
-      .quote-theme-float {
-        position: fixed;
-        top: calc(0.35rem + env(safe-area-inset-top, 0px));
-        right: calc(0.5rem + env(safe-area-inset-right, 0px));
-        z-index: 50;
-      }
       html:not(.dark) textarea,
       html:not(.dark) .author-field {
         color: #1a1a1a;
@@ -189,9 +182,6 @@ if (token) {
     </style>
   </head>
   <body>
-    <div class="quote-theme-float">
-      <ThemeToggle />
-    </div>
     {!username ? (
       <!-- Nicht eingeloggt -->
       <div class="container no-permission">

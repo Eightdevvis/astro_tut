@@ -9,6 +9,8 @@ import { getDb } from './db.js';
  *   addedIds: string[];
  *   stepDone: Record<string, Record<string, boolean>>;
  *   schemaVersion?: number;
+ *   location?: { city: string; place: string };
+ *   locationCatalog?: { cityIds: string[]; placeIds: string[] };
  *   [key: string]: unknown;
  * }} RpgStoredPayload
  */
