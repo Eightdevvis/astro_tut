@@ -1,6 +1,8 @@
 ---
 import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
 import LiquidVessels from '../../components/LiquidVessels.jsx';
 import '../../styles/global.css';
 ---
@@ -8,8 +10,10 @@ import '../../styles/global.css';
 <html lang="de">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>Mana &amp; Leben · Minigames</title>
     <SiteFontOverrides />
   </head>
@@ -25,6 +29,7 @@ import '../../styles/global.css';
     <p class="lv-page-back">
       <a href="/minigames">← Alle Minigames</a>
     </p>
+    <ThemeClient />
   </body>
 </html>
 
@@ -33,9 +38,9 @@ import '../../styles/global.css';
     margin: 0;
     padding: 0;
     padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--site-body-text);
     overflow-x: hidden;
-    background: linear-gradient(180deg, #0f1830 0%, #070b14 48%, #03050a 100%);
+    background: var(--lv-body-gradient);
   }
 
   .lv-page-head {
@@ -129,11 +134,18 @@ import '../../styles/global.css';
     font-size: 0.75rem;
     padding: 0.35rem 0.6rem;
     border-radius: 999px;
+    border: 1px solid var(--fp-canvas-border);
+    background: color-mix(in srgb, var(--site-body-bg) 82%, #000);
+    color: var(--site-body-text);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+  }
+
+  html.dark :global(.lv-gyro),
+  html.dark :global(.lv-motion) {
     border: 1px solid rgba(255, 255, 255, 0.25);
     background: rgba(10, 12, 24, 0.75);
     color: rgba(255, 255, 255, 0.9);
-    cursor: pointer;
-    backdrop-filter: blur(6px);
   }
 
   :global(.lv-note) {

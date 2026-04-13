@@ -1,14 +1,18 @@
 ---
 import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
 import '../../styles/global.css';
 ---
 
 <html lang="de">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>Minigames · SASH</title>
     <SiteFontOverrides />
   </head>
@@ -96,16 +100,17 @@ import '../../styles/global.css';
         <a href="/">← Zur Startseite</a>
       </p>
     </main>
+    <ThemeClient />
   </body>
 </html>
 
 <style>
   body {
-    background-color: #000;
+    background-color: var(--mg-page-bg);
     margin: 0;
     padding: 0;
     padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--site-body-text);
   }
 
   .mg-main {
@@ -179,13 +184,13 @@ import '../../styles/global.css';
   .mg-card-title {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #111;
+    color: var(--mg-card-fg);
   }
 
   .mg-card-desc {
     font-size: 0.9rem;
     line-height: 1.45;
-    color: rgba(0, 0, 0, 0.65);
+    color: var(--mg-card-muted);
   }
 
   .mg-back {

@@ -8,6 +8,9 @@ import { jwtVerify } from 'jose';
 import { hasPermission } from '../../lib/permissions.js';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
+import ThemeToggle from '../../components/ThemeToggle.astro';
 import '../../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -28,7 +31,9 @@ if (token) {
 <html lang="de">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>MEINE ZITATE</title>
     <SiteFontOverrides />
     <style>
@@ -36,8 +41,8 @@ if (token) {
         -webkit-text-size-adjust: 100%;
       }
       body {
-        background: #000;
-        color: #fff;
+        background: var(--site-body-bg);
+        color: var(--site-body-text);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -283,9 +288,46 @@ if (token) {
       .quote-new-link a:hover {
         color: rgba(173, 216, 230, 0.95);
       }
+      .quote-theme-float {
+        position: fixed;
+        top: calc(0.35rem + env(safe-area-inset-top, 0px));
+        right: calc(0.5rem + env(safe-area-inset-right, 0px));
+        z-index: 50;
+      }
+      html:not(.dark) .quote-stripe,
+      html:not(.dark) .quote-stripe-inner {
+        border-color: rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 255, 0.75);
+      }
+      html:not(.dark) .quote-item-text,
+      html:not(.dark) .quote-item-meta {
+        color: #1a1a1a;
+      }
+      html:not(.dark) input.edit-author,
+      html:not(.dark) textarea.edit-text {
+        color: #1a1a1a;
+        background: rgba(255, 255, 255, 0.92);
+        border-color: rgba(0, 0, 0, 0.15);
+      }
+      html:not(.dark) .edit-btn-primary {
+        color: #1a1a1a;
+        border-color: rgba(0, 0, 0, 0.2);
+        background: rgba(100, 140, 200, 0.25);
+      }
+      html:not(.dark) .edit-btn-secondary {
+        color: rgba(0, 0, 0, 0.55);
+        border-color: rgba(0, 0, 0, 0.12);
+      }
+      html:not(.dark) .back,
+      html:not(.dark) .no-permission {
+        color: rgba(40, 55, 80, 0.88);
+      }
     </style>
   </head>
   <body>
+    <div class="quote-theme-float">
+      <ThemeToggle />
+    </div>
     {
       !username ? (
         <div class="container no-permission">
@@ -586,5 +628,6 @@ if (token) {
         ← ZURÜCK
       </a>
     ) : null}
+    <ThemeClient />
   </body>
 </html>

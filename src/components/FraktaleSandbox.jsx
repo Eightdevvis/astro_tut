@@ -808,6 +808,11 @@ export default function FraktaleSandbox() {
 
       <style>{`
         .fs-root {
+          --fs-canvas-bg: #020208;
+          --fs-ui: rgba(255, 255, 255, 0.88);
+          --fs-line: rgba(255, 255, 255, 0.12);
+          --fs-gallery-bg: rgba(0, 0, 0, 0.25);
+          --fs-hint-fade: rgba(0, 0, 0, 0.55);
           display: grid;
           grid-template-columns: 1fr minmax(min(260px, 100%), 340px);
           gap: 1rem;
@@ -818,6 +823,13 @@ export default function FraktaleSandbox() {
           margin: 0 auto;
           padding: 0 min(0.5rem, 2vw) 1.5rem;
           box-sizing: border-box;
+        }
+        html:not(.dark) .fs-root {
+          --fs-canvas-bg: var(--fs-canvas-chrome);
+          --fs-ui: rgba(30, 28, 24, 0.92);
+          --fs-line: rgba(0, 0, 0, 0.12);
+          --fs-gallery-bg: rgba(255, 255, 255, 0.78);
+          --fs-hint-fade: rgba(255, 255, 255, 0.75);
         }
         .fs-visually-hidden {
           position: absolute;
@@ -835,8 +847,8 @@ export default function FraktaleSandbox() {
           margin-top: 0.5rem;
           padding: 1rem 1rem 1.15rem;
           border-radius: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: rgba(0, 0, 0, 0.25);
+          border: 1px solid var(--fs-line);
+          background: var(--fs-gallery-bg);
         }
         .fs-gallery-head {
           display: flex;
@@ -1049,8 +1061,8 @@ export default function FraktaleSandbox() {
           min-height: min(62vh, 560px);
           border-radius: 12px;
           overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          background: #020208;
+          border: 1px solid var(--fs-line);
+          background: var(--fs-canvas-bg);
         }
         .fs-canvas {
           display: block;
@@ -1073,11 +1085,14 @@ export default function FraktaleSandbox() {
           padding: 0.4rem 0.6rem;
           font-size: 0.75rem;
           color: rgba(255, 255, 255, 0.45);
-          background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+          background: linear-gradient(transparent, var(--fs-hint-fade));
           pointer-events: none;
         }
+        html:not(.dark) .fs-hint {
+          color: rgba(40, 38, 34, 0.55);
+        }
         .fs-panel {
-          color: rgba(255, 255, 255, 0.88);
+          color: var(--fs-ui);
           font-size: 0.9rem;
           line-height: 1.45;
           min-width: 0;

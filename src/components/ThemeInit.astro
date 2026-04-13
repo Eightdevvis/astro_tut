@@ -1,0 +1,22 @@
+---
+/* Synchrones Skript im <head>: verhindert Farb-Flash vor erstem Paint. */
+---
+<script is:inline>
+  (function () {
+    try {
+      var k = 'color-scheme';
+      var s = localStorage.getItem(k);
+      if (s !== 'light' && s !== 'dark') {
+        var leg = localStorage.getItem('theme');
+        if (leg === 'dark') s = 'dark';
+        else if (leg === 'ocean' || leg === 'sunset' || leg === 'forest' || leg === 'purple') s = 'light';
+        else s = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        try {
+          localStorage.setItem(k, s);
+          if (leg != null) localStorage.removeItem('theme');
+        } catch (e) {}
+      }
+      document.documentElement.classList.toggle('dark', s === 'dark');
+    } catch (e) {}
+  })();
+</script>

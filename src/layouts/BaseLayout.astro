@@ -2,6 +2,8 @@
 import Nav2 from '../components/Nav2.astro';
 import Footer from '../components/Footer.astro';
 import SiteFontOverrides from '../components/SiteFontOverrides.astro';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeClient from '../components/ThemeClient.astro';
 import '../styles/global.css';
 
 const { pageTitle } = Astro.props;
@@ -10,9 +12,11 @@ const { pageTitle } = Astro.props;
 <html lang="de" class="site-subpage">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>{pageTitle}</title>
     <SiteFontOverrides />
   </head>
@@ -22,5 +26,6 @@ const { pageTitle } = Astro.props;
       <slot />
     </main>
     <Footer />
+    <ThemeClient />
   </body>
 </html>

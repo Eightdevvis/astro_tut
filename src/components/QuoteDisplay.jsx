@@ -97,7 +97,7 @@ const containerStyle = {
 };
 
 const textStyle = {
-  color: 'rgba(255,255,255,0.85)',
+  color: 'var(--home-quote-text)',
   fontSize: 'clamp(1rem, 2.5vw, 1.5rem)',
   fontStyle: 'italic',
   lineHeight: 1.6,
@@ -108,21 +108,21 @@ const textStyle = {
 
 const authorStyle = {
   marginTop: '0.75rem',
-  color: 'rgba(173, 216, 230, 0.7)',
+  color: 'var(--home-quote-author)',
   fontSize: 'clamp(0.75rem, 2.5vw, 0.85rem)',
   letterSpacing: '0.15em',
   overflowWrap: 'anywhere',
 };
 
 const placeholderStyle = {
-  color: 'rgba(255,255,255,0.45)',
+  color: 'var(--home-quote-muted)',
   fontSize: 'clamp(1rem, 2.5vw, 1.35rem)',
   fontStyle: 'italic',
 };
 
 const errorStyle = {
   ...placeholderStyle,
-  color: 'rgba(255, 160, 140, 0.9)',
+  color: 'var(--home-quote-error)',
 };
 
 export default QuoteDisplay;

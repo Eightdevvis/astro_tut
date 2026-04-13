@@ -1,5 +1,6 @@
 ---
 import LoginWidget from './LoginWidget.jsx';
+import ThemeToggle from './ThemeToggle.astro';
 import { getUsernameFromCookies } from '../lib/session.js';
 import { SUPERUSER } from '../lib/permissions.js';
 
@@ -19,7 +20,7 @@ const showRpgNav = username === SUPERUSER;
     <div class="nav2-left">
       <div class="nav2-left-desktop">
         <a href="/quotes/new" class="nav2-icon" aria-label="Zitat einreichen" title="Zitat einreichen">
-          <svg width="38" height="38" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path
               d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm8 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm-4 5c2.33 0 4.31-1.46 5.11-3.5H6.89C7.69 14.54 9.67 16 12 16z"
             />
@@ -27,15 +28,15 @@ const showRpgNav = username === SUPERUSER;
         </a>
         <a href="/minigames" class="nav2-icon" aria-label="Minigames" title="Minigames">
           <svg width="38" height="38" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <rect x="3" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.6" />
-            <path d="M8 11h2v2H8zm3 0h2v2h-2zm3 0h2v2h-2z" fill="white" />
-            <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" stroke="white" stroke-width="1.4" stroke-linecap="round" />
+            <rect x="3" y="7" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M8 11h2v2H8zm3 0h2v2h-2zm3 0h2v2h-2z" fill="currentColor" />
+            <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
           </svg>
         </a>
         {
           showRpgNav && (
             <a href="/rpg" class="nav2-icon" aria-label="RPG Quests" title="RPG Quests">
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path
                   d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
                   opacity="0.95"
@@ -48,11 +49,11 @@ const showRpgNav = username === SUPERUSER;
           <svg width="38" height="38" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path
               d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2z"
-              stroke="white"
+              stroke="currentColor"
               stroke-width="1.6"
               stroke-linejoin="round"
             />
-            <path d="M8 8h8M8 12h6" stroke="white" stroke-width="1.4" stroke-linecap="round" />
+            <path d="M8 8h8M8 12h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
           </svg>
         </a>
       </div>
@@ -67,7 +68,7 @@ const showRpgNav = username === SUPERUSER;
         <div class="nav2-drawer-panel">
           <a href="/quotes/new" class="nav2-drawer-link" title="Zitate — einreichen und verwalten">
             <span class="nav2-drawer-ic" aria-hidden="true">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-4-8c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm8 0c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1zm-4 5c2.33 0 4.31-1.46 5.11-3.5H6.89C7.69 14.54 9.67 16 12 16z"
                 />
@@ -78,9 +79,9 @@ const showRpgNav = username === SUPERUSER;
           <a href="/minigames" class="nav2-drawer-link" title="Minigames">
             <span class="nav2-drawer-ic" aria-hidden="true">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="3" y="7" width="18" height="12" rx="2" stroke="white" stroke-width="1.6" />
-                <path d="M8 11h2v2H8zm3 0h2v2h-2zm3 0h2v2h-2z" fill="white" />
-                <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" stroke="white" stroke-width="1.4" stroke-linecap="round" />
+                <rect x="3" y="7" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
+                <path d="M8 11h2v2H8zm3 0h2v2h-2zm3 0h2v2h-2z" fill="currentColor" />
+                <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
               </svg>
             </span>
             <span>Minigames</span>
@@ -89,7 +90,7 @@ const showRpgNav = username === SUPERUSER;
             showRpgNav && (
               <a href="/rpg" class="nav2-drawer-link" title="RPG Quests">
                 <span class="nav2-drawer-ic" aria-hidden="true">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                     <path
                       d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
                       opacity="0.95"
@@ -105,19 +106,25 @@ const showRpgNav = username === SUPERUSER;
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path
                   d="M7 3h10a2 2 0 0 1 2 2v16l-7-3-7 3V5a2 2 0 0 1 2-2z"
-                  stroke="white"
+                  stroke="currentColor"
                   stroke-width="1.6"
                   stroke-linejoin="round"
                 />
-                <path d="M8 8h8M8 12h6" stroke="white" stroke-width="1.4" stroke-linecap="round" />
+                <path d="M8 8h8M8 12h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
               </svg>
             </span>
             <span>Blog</span>
           </a>
+          <div class="nav2-drawer-theme">
+            <ThemeToggle />
+          </div>
         </div>
       </details>
     </div>
     <div class="nav2-right">
+      <div class="nav2-theme-bar">
+        <ThemeToggle />
+      </div>
       <div class="nav2-login-wrap">
         <LoginWidget client:load />
       </div>
@@ -131,7 +138,7 @@ const showRpgNav = username === SUPERUSER;
           <svg width="38" height="38" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path
               d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5z"
-              stroke="white"
+              stroke="currentColor"
               stroke-width="1.6"
               stroke-linejoin="round"
             />
@@ -204,7 +211,7 @@ const showRpgNav = username === SUPERUSER;
     align-items: center;
     justify-content: center;
     padding: 10px 12px;
-    color: #fff;
+    color: var(--nav2-fg);
     border-radius: 8px;
     transition: background 0.15s ease;
   }
@@ -219,7 +226,7 @@ const showRpgNav = username === SUPERUSER;
 
   .nav2-drawer-summary:hover,
   .nav2-drawer-summary:focus-visible {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--nav2-drawer-hover);
     outline: none;
   }
 
@@ -233,8 +240,8 @@ const showRpgNav = username === SUPERUSER;
     top: calc(100% + 2px);
     min-width: 12rem;
     padding: 0.35rem 0;
-    background: rgba(8, 8, 10, 0.97);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--nav2-drawer-bg);
+    border: 1px solid var(--nav2-drawer-border);
     border-radius: 10px;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     z-index: 5;
@@ -245,14 +252,14 @@ const showRpgNav = username === SUPERUSER;
     align-items: center;
     gap: 0.75rem;
     padding: 0.65rem 1rem;
-    color: rgba(255, 255, 255, 0.95);
+    color: var(--nav2-drawer-text);
     text-decoration: none;
     font-size: 0.95rem;
   }
 
   .nav2-drawer-link:hover,
   .nav2-drawer-link:focus-visible {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--nav2-drawer-hover);
     outline: none;
   }
 
@@ -260,6 +267,28 @@ const showRpgNav = username === SUPERUSER;
     display: flex;
     flex-shrink: 0;
     align-items: center;
+    color: var(--nav2-fg);
+  }
+
+  .nav2-drawer-theme {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0.45rem 1rem 0.65rem;
+    border-top: 1px solid var(--nav2-drawer-border);
+  }
+
+  .nav2-drawer-theme :global(.theme-toggle) {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .nav2-drawer-theme :global(.theme-toggle)::after {
+    content: 'Hell / Dunkel';
+    font-size: 0.95rem;
+    color: var(--nav2-drawer-text);
   }
 
   @media screen and (max-width: 767px) {
@@ -269,6 +298,16 @@ const showRpgNav = username === SUPERUSER;
 
     .nav2-drawer {
       display: block;
+    }
+
+    .nav2-theme-bar {
+      display: none;
+    }
+  }
+
+  @media screen and (min-width: 768px) {
+    .nav2-drawer-theme {
+      display: none;
     }
   }
 
@@ -285,12 +324,19 @@ const showRpgNav = username === SUPERUSER;
     justify-content: flex-end;
   }
 
+  .nav2-theme-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.15rem;
+  }
+
   .nav2-icon {
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 10px;
-    color: white;
+    color: var(--nav2-fg);
     text-decoration: none;
     flex-shrink: 0;
     border-radius: 8px;
@@ -299,7 +345,7 @@ const showRpgNav = username === SUPERUSER;
 
   .nav2-icon:hover,
   .nav2-icon:focus-visible {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--nav2-drawer-hover);
     outline: none;
   }
 

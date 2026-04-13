@@ -127,15 +127,10 @@ h2, h3, h4, h5, h6, strong, b {
   }
 }
 
-/* Unterseiten (BaseLayout): dunkles Shell wie Startseite, kein Theme-Cycling */
-html.site-subpage {
-  --color-bg: #000;
-  --color-text: rgba(255, 255, 255, 0.9);
-}
-
+/* Unterseiten (BaseLayout): Farben aus themes.css (hell / html.dark) */
 html.site-subpage body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: var(--site-body-bg);
+  color: var(--site-body-text);
   padding: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px)) 1rem 2rem;
 }
 
@@ -151,10 +146,10 @@ html.site-subpage h1 {
 }
 
 html.site-subpage a {
-  color: rgba(180, 220, 255, 0.95);
+  color: var(--site-link);
 }
 
 html.site-subpage a:hover,
 html.site-subpage a:focus {
-  color: #fff;
+  color: var(--site-link-hover);
 }

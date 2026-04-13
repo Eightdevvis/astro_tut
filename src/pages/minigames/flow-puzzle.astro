@@ -1,6 +1,8 @@
 ---
 import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
 import FlowPuzzle from '../../components/FlowPuzzle.jsx';
 import '../../styles/global.css';
 ---
@@ -8,8 +10,10 @@ import '../../styles/global.css';
 <html lang="de" class="flow-puzzle-page">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>Fluss &amp; Felder · Minigames</title>
     <SiteFontOverrides />
   </head>
@@ -43,13 +47,13 @@ import '../../styles/global.css';
   }
 
   body {
-    background-color: #000;
+    background-color: var(--fp-body-bg);
     margin: 0;
     padding: 0;
     padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
     padding-left: max(0px, env(safe-area-inset-left, 0px));
     padding-right: max(0px, env(safe-area-inset-right, 0px));
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--site-body-text);
   }
 
   /* Flex-Children von body (global.css: flex column) dürfen schrumpfen, sonst overflow-x + Abschneiden */
@@ -154,8 +158,8 @@ import '../../styles/global.css';
     max-height: 70vh;
     border-radius: 0.75rem;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: #07080f;
+    border: 1px solid var(--fp-canvas-border);
+    background: var(--fp-canvas-bg);
     touch-action: none;
   }
 

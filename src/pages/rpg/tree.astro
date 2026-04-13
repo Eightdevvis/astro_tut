@@ -1,7 +1,11 @@
 ---
 import RpgQuestTree from '../../components/RpgQuestTree.jsx';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
+import ThemeToggle from '../../components/ThemeToggle.astro';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { SUPERUSER } from '../../lib/permissions.js';
+import '../../styles/themes.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
 if (!username || username !== SUPERUSER) {
@@ -13,8 +17,9 @@ if (!username || username !== SUPERUSER) {
 <html lang="de" class="rpg-root-html">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0c" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>RPG · Quest-Baum</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -25,13 +30,17 @@ if (!username || username !== SUPERUSER) {
     />
   </head>
   <body class="rpg-root-body">
+    <div class="rpg-theme-float">
+      <ThemeToggle />
+    </div>
     <RpgQuestTree client:load />
+    <ThemeClient />
   </body>
 </html>
 
 <style is:global>
   html.rpg-root-html {
-    color-scheme: dark;
+    color-scheme: light dark;
     --rpg-font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
 
@@ -39,12 +48,30 @@ if (!username || username !== SUPERUSER) {
   body.rpg-root-body {
     margin: 0;
     min-height: 100%;
-    background: #0a0a0c;
-    color: rgba(255, 255, 255, 0.92);
+    background: var(--rpg-root-bg);
+    color: var(--rpg-root-fg);
   }
 
   body.rpg-root-body {
     min-height: 100dvh;
     font-family: var(--rpg-font-sans);
+  }
+
+  .rpg-theme-float {
+    position: fixed;
+    top: calc(0.35rem + env(safe-area-inset-top, 0px));
+    right: calc(0.5rem + env(safe-area-inset-right, 0px));
+    z-index: 300;
+    pointer-events: auto;
+  }
+
+  .rpg-theme-float .theme-toggle {
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--rpg-root-fg) 8%, transparent);
+  }
+
+  .rpg-theme-float .theme-toggle:hover,
+  .rpg-theme-float .theme-toggle:focus-visible {
+    background: color-mix(in srgb, var(--rpg-root-fg) 14%, transparent);
   }
 </style>

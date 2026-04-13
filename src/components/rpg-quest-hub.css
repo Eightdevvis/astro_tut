@@ -10,10 +10,19 @@
     'Segoe UI',
     sans-serif
   );
+  --rpg-ink: #ffffff;
+  --rpg-page-bg: #0a0a0c;
+  --rpg-void: #000000;
   --rpg-accent: #7eb8da;
   --rpg-accent-dim: rgba(126, 184, 218, 0.35);
-  --rpg-surface: rgba(255, 255, 255, 0.04);
-  --rpg-border: rgba(255, 255, 255, 0.1);
+  --rpg-surface: color-mix(in srgb, var(--rpg-ink) 4%, var(--rpg-page-bg));
+  --rpg-border: color-mix(in srgb, var(--rpg-ink) 10%, var(--rpg-page-bg));
+}
+
+html:not(.dark) .rpg-hub {
+  --rpg-ink: #242220;
+  --rpg-page-bg: #ebe6dc;
+  --rpg-void: #ffffff;
 }
 
 .rpg-hub__rail {
@@ -25,7 +34,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: rgba(0, 0, 0, 0.35);
+  background: color-mix(in srgb, var(--rpg-void) 35%, var(--rpg-page-bg));
   min-height: 100dvh;
   box-sizing: border-box;
 }
@@ -58,7 +67,7 @@
   font-size: 0.65rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--rpg-ink) 35%, var(--rpg-page-bg));
   margin-bottom: 0.25rem;
 }
 
@@ -72,19 +81,19 @@
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: color-mix(in srgb, var(--rpg-ink) 55%, var(--rpg-page-bg));
   font-size: 0.9rem;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .rpg-hub__cat:hover {
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--rpg-ink) 85%, var(--rpg-page-bg));
   background: var(--rpg-surface);
 }
 
 .rpg-hub__cat--active {
-  color: rgba(255, 255, 255, 0.95);
+  color: color-mix(in srgb, var(--rpg-ink) 95%, var(--rpg-page-bg));
   border-color: var(--rpg-accent-dim);
   background: rgba(126, 184, 218, 0.08);
 }
@@ -141,8 +150,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid color-mix(in srgb, var(--rpg-ink) 14%, var(--rpg-page-bg));
+  background: color-mix(in srgb, var(--rpg-void) 45%, var(--rpg-page-bg));
   color: var(--rpg-accent);
   text-decoration: none;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -192,14 +201,14 @@
   margin: 0 0 1.1rem;
   font-size: 0.92rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.72);
+  color: color-mix(in srgb, var(--rpg-ink) 72%, var(--rpg-page-bg));
 }
 
 .rpg-section-label {
   font-size: 0.65rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
+  color: color-mix(in srgb, var(--rpg-ink) 38%, var(--rpg-page-bg));
   margin: 0 0 0.5rem;
 }
 
@@ -213,7 +222,7 @@
   margin-bottom: 0.45rem;
   font-size: 0.88rem;
   line-height: 1.45;
-  color: rgba(255, 255, 255, 0.82);
+  color: color-mix(in srgb, var(--rpg-ink) 82%, var(--rpg-page-bg));
   user-select: none;
 }
 
@@ -243,21 +252,21 @@
   border-radius: 999px;
   font-size: 0.72rem;
   letter-spacing: 0.04em;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid color-mix(in srgb, var(--rpg-ink) 18%, var(--rpg-page-bg));
+  background: color-mix(in srgb, var(--rpg-void) 35%, var(--rpg-page-bg));
+  color: color-mix(in srgb, var(--rpg-ink) 55%, var(--rpg-page-bg));
   pointer-events: none;
   user-select: none;
 }
 
 .rpg-reward-pill--locked {
   opacity: 0.42;
-  color: rgba(255, 255, 255, 0.35);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: color-mix(in srgb, var(--rpg-ink) 35%, var(--rpg-page-bg));
+  border-color: color-mix(in srgb, var(--rpg-ink) 10%, var(--rpg-page-bg));
 }
 
 .rpg-reward-pill:not(.rpg-reward-pill--locked) {
-  color: rgba(255, 255, 255, 0.88);
+  color: color-mix(in srgb, var(--rpg-ink) 88%, var(--rpg-page-bg));
   border-color: rgba(126, 184, 218, 0.35);
 }
 
@@ -318,7 +327,7 @@
   flex-wrap: wrap;
   gap: 0.35rem;
   font-size: 0.88rem;
-  color: rgba(255, 255, 255, 0.88);
+  color: color-mix(in srgb, var(--rpg-ink) 88%, var(--rpg-page-bg));
 }
 
 .rpg-step__summary::-webkit-details-marker {
@@ -329,7 +338,7 @@
   list-style: none;
   margin: 0.4rem 0 0;
   padding: 0 0 0 0.85rem;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid color-mix(in srgb, var(--rpg-ink) 10%, var(--rpg-page-bg));
 }
 
 .rpg-step__label {
@@ -349,7 +358,7 @@
   font-size: 0.65em;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.38);
+  color: color-mix(in srgb, var(--rpg-ink) 38%, var(--rpg-page-bg));
 }
 
 .rpg-step-badge--due {
@@ -359,7 +368,7 @@
 
 .rpg-step-hint {
   font-size: 0.72em;
-  color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--rpg-ink) 35%, var(--rpg-page-bg));
   margin-left: 0.15rem;
 }
 
@@ -367,7 +376,7 @@
   font-size: 0.65rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.32);
+  color: color-mix(in srgb, var(--rpg-ink) 32%, var(--rpg-page-bg));
   margin: 0 0 0.65rem;
 }
 
@@ -404,7 +413,7 @@
 }
 
 .rpg-strip__focus:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--rpg-ink) 4%, var(--rpg-page-bg));
 }
 
 .rpg-strip__expand {
@@ -417,14 +426,14 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--rpg-ink) 50%, var(--rpg-page-bg));
   cursor: pointer;
   font: inherit;
 }
 
 .rpg-strip__expand:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
+  background: color-mix(in srgb, var(--rpg-ink) 6%, var(--rpg-page-bg));
+  color: color-mix(in srgb, var(--rpg-ink) 75%, var(--rpg-page-bg));
 }
 
 .rpg-strip__title {
@@ -450,7 +459,7 @@
   min-width: 0;
   font-size: 0.72rem;
   line-height: 1.3;
-  color: rgba(255, 255, 255, 0.4);
+  color: color-mix(in srgb, var(--rpg-ink) 40%, var(--rpg-page-bg));
   white-space: nowrap;
   overflow: hidden;
   mask-image: linear-gradient(90deg, #000 0%, #000 55%, transparent 100%);
@@ -470,7 +479,7 @@
 
 .rpg-strip__body {
   padding: 0 0.85rem 0.85rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid color-mix(in srgb, var(--rpg-ink) 6%, var(--rpg-page-bg));
 }
 
 .rpg-strip__body .rpg-quest-block__title {

@@ -1,6 +1,8 @@
 ---
 import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
 import FraktaleSandbox from '../../components/FraktaleSandbox.jsx';
 import '../../styles/global.css';
 ---
@@ -8,8 +10,10 @@ import '../../styles/global.css';
 <html lang="de">
   <head>
     <meta charset="utf-8" />
+    <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#c5ac7e" />
     <title>Fraktale Sandbox · Minigames</title>
     <SiteFontOverrides />
   </head>
@@ -31,11 +35,11 @@ import '../../styles/global.css';
 
 <style>
   body {
-    background-color: #000;
+    background-color: var(--fs-page-bg);
     margin: 0;
     padding: 0;
     padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--site-body-text);
   }
 
   header.fs-page-head,

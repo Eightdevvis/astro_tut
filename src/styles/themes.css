@@ -1,10 +1,10 @@
 /* ========================================
-   THEME DEFINITIONS
+   Site theme: light (default) vs html.dark
    ======================================== */
 
-/* Default Theme */
 :root {
-  --color-bg: #c5ac7e;
+  color-scheme: light;
+  --color-bg: #ece8df;
   --color-nav-start: #4d3020;
   --color-nav-end: #512727;
   --color-text: #000000;
@@ -20,83 +20,96 @@
   --font-menu: 'Poppins', sans-serif;
   --font-hero: 'Protest Demo';
   --font-quote: 'Black Spiral';
+
+  /* Shell / Nav2 */
+  --nav2-fg: #1c1a18;
+  --nav2-drawer-bg: rgba(252, 250, 246, 0.98);
+  --nav2-drawer-border: rgba(0, 0, 0, 0.1);
+  --nav2-drawer-text: rgba(20, 18, 16, 0.92);
+  --nav2-drawer-hover: rgba(0, 0, 0, 0.06);
+
+  /* Region pages */
+  --site-body-bg: #ece8df;
+  --site-body-text: rgba(22, 20, 18, 0.92);
+  --site-link: rgba(45, 72, 120, 0.95);
+  --site-link-hover: #0a1a40;
+
+  --home-page-bg: #ebe6dc;
+  --home-hero-text: #1a1a1a;
+  --home-tail-opacity: 0.72;
+  --home-quote-text: rgba(32, 28, 22, 0.88);
+  --home-quote-author: rgba(55, 75, 105, 0.78);
+  --home-quote-muted: rgba(32, 28, 22, 0.42);
+  --home-quote-error: rgba(160, 55, 45, 0.92);
+
+  --mg-page-bg: #ece8df;
+  --mg-card-fg: #111;
+  --mg-card-muted: rgba(0, 0, 0, 0.65);
+
+  --fp-body-bg: #ebe6dc;
+  --fp-canvas-border: rgba(0, 0, 0, 0.12);
+  --fp-canvas-bg: #d4dce8;
+
+  --lv-body-gradient: linear-gradient(180deg, #dbe8f8 0%, #c9d8ef 48%, #a8bdd8 100%);
+
+  --fs-page-bg: #ebe6dc;
+  --fs-canvas-chrome: #e4e0d8;
+  --fs-panel-fg: rgba(22, 20, 18, 0.9);
+  --fs-muted: rgba(22, 20, 18, 0.55);
+
+  /* RPG root (html.rpg-root-html) */
+  --rpg-root-bg: #ebe6dc;
+  --rpg-root-fg: rgba(28, 26, 22, 0.92);
 }
 
-/* Dark Theme */
 html.dark {
-  --color-bg: #22203d;
-  --color-text: #fff;
-  --color-nav-start: #4a0e4e;
-  --color-nav-end: #2d0a30;
-  --color-menu-bg: #fff;
-  --color-menu-text: #000;
-  --color-link: #fff;
-  --color-link-hover: #ff9776;
+  color-scheme: dark;
+  --color-bg: #000000;
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-nav-start: #2a1810;
+  --color-nav-end: #2a1218;
+  --color-menu-bg: #3a1010;
+  --color-menu-text: #ffd5d5;
+  --color-link: rgba(180, 220, 255, 0.95);
+  --color-link-hover: #ffffff;
   --font-family: 'Courier New', Courier, monospace;
   --font-weight: 400;
   --font-weight-bold: 700;
-}
 
-/* Ocean Theme */
-html.ocean {
-  --color-bg: #e0f7ff;
-  --color-nav-start: #00b4d8;
-  --color-nav-end: #0077b6;
-  --color-text: #023047;
-  --color-accent: #0096c7;
-  --color-menu-bg: #0096c7;
-  --color-menu-text: #fff;
-  --color-link: #023047;
-  --color-link-hover: #48cae4;
-  --font-family: 'Georgia', serif;
-  --font-weight: 300;
-  --font-weight-bold: 600;
-}
+  --nav2-fg: #ffffff;
+  --nav2-drawer-bg: rgba(8, 8, 10, 0.97);
+  --nav2-drawer-border: rgba(255, 255, 255, 0.12);
+  --nav2-drawer-text: rgba(255, 255, 255, 0.95);
+  --nav2-drawer-hover: rgba(255, 255, 255, 0.08);
 
-/* Sunset Theme */
-html.sunset {
-  --color-bg: #fff4e6;
-  --color-nav-start: #ff6b6b;
-  --color-nav-end: #ffa500;
-  --color-text: #333;
-  --color-accent: #ff8c42;
-  --color-menu-bg: #ff8c42;
-  --color-menu-text: #fff;
-  --color-link: #333;
-  --color-link-hover: #ff6b6b;
-  --font-family: 'Arial', sans-serif;
-  --font-weight: 400;
-  --font-weight-bold: 800;
-}
+  --site-body-bg: #000000;
+  --site-body-text: rgba(255, 255, 255, 0.9);
+  --site-link: rgba(180, 220, 255, 0.95);
+  --site-link-hover: #ffffff;
 
-/* Forest Theme */
-html.forest {
-  --color-bg: #e8f5e9;
-  --color-nav-start: #2e7d32;
-  --color-nav-end: #1b5e20;
-  --color-text: #1b5e20;
-  --color-accent: #4caf50;
-  --color-menu-bg: #4caf50;
-  --color-menu-text: #fff;
-  --color-link: #1b5e20;
-  --color-link-hover: #66bb6a;
-  --font-family: 'Verdana', sans-serif;
-  --font-weight: 500;
-  --font-weight-bold: 700;
-}
+  --home-page-bg: #000000;
+  --home-hero-text: #ffffff;
+  --home-tail-opacity: 0.45;
+  --home-quote-text: rgba(255, 255, 255, 0.85);
+  --home-quote-author: rgba(173, 216, 230, 0.7);
+  --home-quote-muted: rgba(255, 255, 255, 0.45);
+  --home-quote-error: rgba(255, 160, 140, 0.9);
 
-/* Purple Dream Theme */
-html.purple {
-  --color-bg: #f3e5f5;
-  --color-nav-start: #9c27b0;
-  --color-nav-end: #6a1b9a;
-  --color-text: #4a148c;
-  --color-accent: #ab47bc;
-  --color-menu-bg: #ab47bc;
-  --color-menu-text: #fff;
-  --color-link: #4a148c;
-  --color-link-hover: #ce93d8;
-  --font-family: 'Trebuchet MS', sans-serif;
-  --font-weight: 400;
-  --font-weight-bold: 700;
+  --mg-page-bg: #000000;
+  --mg-card-fg: #111;
+  --mg-card-muted: rgba(0, 0, 0, 0.65);
+
+  --fp-body-bg: #000000;
+  --fp-canvas-border: rgba(255, 255, 255, 0.12);
+  --fp-canvas-bg: #07080f;
+
+  --lv-body-gradient: linear-gradient(180deg, #0f1830 0%, #070b14 48%, #03050a 100%);
+
+  --fs-page-bg: #000000;
+  --fs-canvas-chrome: #020208;
+  --fs-panel-fg: rgba(255, 255, 255, 0.88);
+  --fs-muted: rgba(255, 255, 255, 0.55);
+
+  --rpg-root-bg: #0a0a0c;
+  --rpg-root-fg: rgba(255, 255, 255, 0.92);
 }

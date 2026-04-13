@@ -105,10 +105,12 @@ void main() {
 `;
 
 /** Vertikaler Hintergrund-Gradient (Viewport), Mid-Ton für uAir. Embed: kein Textur-Hintergrund (transparentes Canvas). */
-function createBackdropGradient(embed) {
+function createBackdropGradient(embed, isDark) {
   const stops = embed
-    ? { air: 0x0a0a0c }
-    : { top: '#0f1830', mid: '#070b14', bot: '#03050a', air: 0x070b14, clear: 0x03050a };
+    ? { air: isDark ? 0x0a0a0c : 0xe8e4dc }
+    : isDark
+      ? { top: '#0f1830', mid: '#070b14', bot: '#03050a', air: 0x070b14, clear: 0x03050a }
+      : { top: '#dbe8f8', mid: '#c9d6eb', bot: '#a8bdd8', air: 0xc9d6eb, clear: 0xb0c8e5 };
   if (embed) {
     return {
       texture: null,
@@ -246,7 +248,12 @@ export default function LiquidVessels({ variant = 'page' }) {
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 
     const scene = new THREE.Scene();
-    const { texture: bgTexture, airColor: backdrop, clearColor: clearHex } = createBackdropGradient(isEmbed);
+    const darkScheme = () =>
+      typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    let { texture: bgTexture, airColor: backdrop, clearColor: clearHex } = createBackdropGradient(
+      isEmbed,
+      darkScheme()
+    );
     scene.background = bgTexture ?? null;
 
     let camFov = 42;
@@ -489,6 +496,21 @@ export default function LiquidVessels({ variant = 'page' }) {
       });
     }
 
+    const applyThemeBackdrop = () => {
+      const next = createBackdropGradient(isEmbed, darkScheme());
+      if (!isEmbed) {
+        bgTexture?.dispose?.();
+        bgTexture = next.texture;
+        scene.background = bgTexture ?? null;
+        renderer.setClearColor(new THREE.Color(next.clearColor), 1);
+      }
+      liqOrb.uniforms.uAir.value.copy(next.airColor);
+      liqHeart.uniforms.uAir.value.copy(next.airColor);
+    };
+    const themeObserver = new MutationObserver(() => applyThemeBackdrop());
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('site-theme-change', applyThemeBackdrop);
+
     const clock = new THREE.Clock();
     let raf = 0;
 
@@ -557,6 +579,8 @@ export default function LiquidVessels({ variant = 'page' }) {
     tick();
 
     return () => {
+      themeObserver.disconnect();
+      window.removeEventListener('site-theme-change', applyThemeBackdrop);
       cancelAnimationFrame(raf);
       ro.disconnect();
       if (oriHandler) window.removeEventListener('deviceorientation', oriHandler, true);
