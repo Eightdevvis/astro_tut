@@ -18,6 +18,7 @@ import {
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
+import { normalizeRpgLocationState } from '../lib/rpg-location.js';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
@@ -54,7 +55,16 @@ function RpgTreeDeepLink({ questId }) {
   );
 }
 
-function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 'hero', graph, itemCatalog }) {
+function QuestDetail({
+  quest,
+  stepDone,
+  onToggleStep,
+  showFocusBadge,
+  variant = 'hero',
+  graph,
+  itemCatalog,
+  location,
+}) {
   const TitleTag = variant === 'hero' ? 'h2' : 'h3';
   const wrapClass =
     variant === 'hero' ? 'rpg-quest-block rpg-quest-block--hero' : 'rpg-quest-block rpg-quest-block--embedded';
@@ -74,6 +84,8 @@ function QuestDetail({ quest, stepDone, onToggleStep, showFocusBadge, variant = 
         rewardsClass="rpg-rewards"
         graph={graph}
         itemCatalog={itemCatalog}
+        currentLocation={location}
+        showLocationGuidance
       />
     </div>
   );
@@ -94,6 +106,7 @@ export default function RpgQuestHub() {
   const persistFailFingerprintRef = useRef('');
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
+  const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
 
@@ -105,6 +118,7 @@ export default function RpgQuestHub() {
     setAdded(d.added);
     setStepDone(d.stepDone);
     setVitals(d.vitals);
+    setLocation(d.location);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -114,6 +128,14 @@ export default function RpgQuestHub() {
   useEffect(() => {
     itemCatalogRef.current = itemCatalog;
   }, [itemCatalog]);
+
+  useEffect(() => {
+    const onLocation = (/** @type {CustomEvent} */ e) => {
+      setLocation(normalizeRpgLocationState(e.detail));
+    };
+    window.addEventListener('rpg-location-updated', onLocation);
+    return () => window.removeEventListener('rpg-location-updated', onLocation);
+  }, []);
 
   useEffect(() => {
     const onCatalog = (/** @type {CustomEvent} */ e) => {
@@ -126,12 +148,13 @@ export default function RpgQuestHub() {
         addedIds: [...added],
         stepDone,
         vitals,
+        location,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone, vitals]);
+  }, [graph, added, stepDone, vitals, location]);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +169,7 @@ export default function RpgQuestHub() {
           setAdded(d.added);
           setStepDone(d.stepDone);
           setVitals(d.vitals);
+          setLocation(d.location);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -160,6 +184,7 @@ export default function RpgQuestHub() {
       setAdded(d.added);
       setStepDone(d.stepDone);
       setVitals(d.vitals);
+      setLocation(d.location);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -167,6 +192,7 @@ export default function RpgQuestHub() {
         addedIds: [...d.added],
         stepDone: d.stepDone,
         vitals: d.vitals,
+        location: d.location,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -180,7 +206,7 @@ export default function RpgQuestHub() {
   useEffect(() => {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone, vitals };
+      const payload = { graph, addedIds: [...added], stepDone, vitals, location };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
@@ -205,7 +231,7 @@ export default function RpgQuestHub() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location]);
 
   useEffect(() => {
     setVitals((prev) => {
@@ -337,6 +363,7 @@ export default function RpgQuestHub() {
                 variant="hero"
                 graph={graph}
                 itemCatalog={itemCatalog}
+                location={location}
               />
               <RpgTreeDeepLink questId={focusedQuest.id} />
             </div>
@@ -383,6 +410,7 @@ export default function RpgQuestHub() {
                               variant="embedded"
                               graph={graph}
                               itemCatalog={itemCatalog}
+                              location={location}
                             />
                             <RpgTreeDeepLink questId={q.id} />
                           </div>

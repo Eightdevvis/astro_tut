@@ -68,7 +68,7 @@ function QuoteDisplay() {
     <div style={containerStyle}>
       <div style={textStyle}>„{quote.text}"</div>
       {attribution ? (
-        <div style={authorStyle}>— {attribution.toUpperCase()}</div>
+        <div style={authorStyle}>— {attribution}</div>
       ) : null}
     </div>
   );

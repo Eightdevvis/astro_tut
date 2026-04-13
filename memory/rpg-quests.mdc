@@ -18,7 +18,7 @@ Eigenständiges Feature: **Quest-Übersicht** (Hub), **interaktiver Quest-Baum**
 
 ### GET `/api/rpg/quests` (Superuser, 403 sonst)
 
-Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (ob schon ein DB-Eintrag existiert), plus leere Legacy-Felder `main` / `side`:
+Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`location`** (`{ city, place }`), **`persisted`** (ob schon ein DB-Eintrag existiert), plus leere Legacy-Felder `main` / `side`:
 
 ```json
 {
@@ -87,11 +87,13 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 - **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look. **Roter Punkt** am Knoten: offene **Pflicht-Schritte mit Frist**, die in **&lt; 7 Tagen** fällig oder **überfällig** sind (siehe [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) Abschnitt Zeitbegrenzung).
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
 - **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert. Im **Bearbeiten-Modus** des Baums: **Quest bearbeiten** öffnet den Editor mit **manuell+** / **questmaker+** (Details: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
+- **Location-Status:** unter den Vessels ein kleiner Streifen `Location: <city[/place]>` aus persistentem `location`-State.
 
 ## Hub (UI)
 
 - Sidebar-Link **„Quest-Baum“** → `/rpg/tree`.
 - Pro Quest (Fokus + ausgeklappte Streifen): unten links **runder Link** mit Mini-Graph-SVG → `/rpg/tree?focus=<id>`.
+- Steps berücksichtigen den Location-State: Quest kann per `quest.cityLocation` komplett gesperrt werden (`Gehe zu …` / `Kehre zurück zu …`), Step kann per `step.placeLocation` beim **fokussierten Step** ein `Go to …` einblenden (nur im Hub; Tree-Panel bleibt ohne Place-Hinweis).
 
 ## Code-Übersicht
 

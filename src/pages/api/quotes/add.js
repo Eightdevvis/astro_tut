@@ -30,7 +30,8 @@ export async function POST({ request, cookies }) {
   }
 
   const { text, author } = body;
-  if (!text || String(text).trim().length === 0) {
+  const textRaw = text === undefined || text === null ? '' : String(text);
+  if (!textRaw.trim()) {
     return new Response(JSON.stringify({ error: 'Zitat darf nicht leer sein' }), { status: 400 });
   }
 
@@ -42,7 +43,7 @@ export async function POST({ request, cookies }) {
     const db = getDb();
     const result = await db.execute({
       sql: 'INSERT INTO quotes (username, text, author) VALUES (?, ?, ?)',
-      args: [username, String(text).trim(), authorTrim]
+      args: [username, textRaw, authorTrim]
     });
 
     const rid = result.lastInsertRowid;

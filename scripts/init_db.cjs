@@ -133,6 +133,33 @@ db.serialize(() => {
   `);
   console.log('✓ idx_ai_usage_log_user_created bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tester_bug_reports (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      username      TEXT NOT NULL,
+      page_url      TEXT NOT NULL,
+      comment       TEXT NOT NULL DEFAULT '',
+      screenshot    BLOB NOT NULL,
+      mime_type     TEXT NOT NULL DEFAULT 'image/png',
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ tester_bug_reports-Tabelle bereit.');
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_tester_bug_reports_created ON tester_bug_reports (created_at DESC)
+  `);
+  console.log('✓ idx_tester_bug_reports_created bereit.');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tester_ui_preferences (
+      username    TEXT PRIMARY KEY,
+      enabled     INTEGER NOT NULL DEFAULT 1,
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ tester_ui_preferences-Tabelle bereit.');
+
 });
 
 db.close();

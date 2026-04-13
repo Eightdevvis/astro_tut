@@ -3,12 +3,14 @@ import RpgQuestTree from '../../components/RpgQuestTree.jsx';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import ThemeToggle from '../../components/ThemeToggle.astro';
+import TesterBugBar from '../../components/TesterBugBar.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
-import { SUPERUSER } from '../../lib/permissions.js';
+import { hasPermission, SUPERUSER } from '../../lib/permissions.js';
 import '../../styles/themes.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
-if (!username || username !== SUPERUSER) {
+const canUseRpg = Boolean(username) && (username === SUPERUSER || (await hasPermission(username, 'rpg_access')));
+if (!canUseRpg) {
   return Astro.redirect('/');
 }
 ---
@@ -34,6 +36,7 @@ if (!username || username !== SUPERUSER) {
       <ThemeToggle />
     </div>
     <RpgQuestTree client:load />
+    <TesterBugBar client:load />
     <ThemeClient />
   </body>
 </html>

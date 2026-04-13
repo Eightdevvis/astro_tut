@@ -39,7 +39,8 @@ export async function PATCH({ cookies, params, request }) {
   }
 
   const { text, author } = body;
-  if (!text || String(text).trim().length === 0) {
+  const textRaw = text === undefined || text === null ? '' : String(text);
+  if (!textRaw.trim()) {
     return new Response(JSON.stringify({ error: 'Zitat darf nicht leer sein' }), { status: 400 });
   }
 
@@ -59,7 +60,7 @@ export async function PATCH({ cookies, params, request }) {
 
     await db.execute({
       sql: 'UPDATE quotes SET text = ?, author = ? WHERE id = ? AND username = ?',
-      args: [String(text).trim(), authorTrim, id, username],
+      args: [textRaw, authorTrim, id, username],
     });
 
     return new Response(JSON.stringify({ success: true }), { status: 200 });

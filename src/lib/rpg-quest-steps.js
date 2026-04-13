@@ -2,6 +2,7 @@
  * Rekursive Quest-Schritte: Gruppen, optionale Blätter, dependsOn, Step-Rewards,
  * Quest-Rewards mit Freischalt-Prozent. Fortschritt nur über nicht-optionale Blätter.
  */
+import { normalizeQuestCityLocation, normalizeStepPlaceLocation } from './rpg-location.js';
 
 /**
  * Einheitliches Reward-Modell für Step- und Quest-Belohnungen.
@@ -55,6 +56,8 @@ export function formatRewardPointsAmount(n) {
  *   dependsOn?: string[];
  *   reward?: RpgQuestRewardEntry;
  *   timeDueAt?: string;
+ *   cityLocation?: string;
+ *   placeLocation?: string;
  *   done?: boolean;
  *   orderLinked?: boolean;
  * }} RpgQuestStepNode
@@ -141,6 +144,8 @@ function normalizeOneStep(raw, next) {
   const rewardRaw = o.reward;
   const rewardNorm = normalizeRewardEntry(rewardRaw);
   const reward = rewardNorm ?? undefined;
+  const cityLocation = normalizeQuestCityLocation(o.cityLocation);
+  const placeLocation = normalizeStepPlaceLocation(o.placeLocation);
   let timeDueAt;
   const rawDue = typeof o.timeDueAt === 'string' ? o.timeDueAt.trim() : '';
   if (rawDue) {
@@ -156,6 +161,8 @@ function normalizeOneStep(raw, next) {
   let out = { id, label, optional };
   if (dependsOn.length) out = { ...out, dependsOn };
   if (reward) out = { ...out, reward };
+  if (cityLocation) out = { ...out, cityLocation };
+  if (placeLocation) out = { ...out, placeLocation };
   if (timeDueAt) out = { ...out, timeDueAt };
   if (o.orderLinked === true) out = { ...out, orderLinked: true };
   if (Array.isArray(subsRaw) && subsRaw.length > 0) {

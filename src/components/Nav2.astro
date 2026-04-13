@@ -2,7 +2,7 @@
 import LoginWidget from './LoginWidget.jsx';
 import ThemeToggle from './ThemeToggle.astro';
 import { getUsernameFromCookies } from '../lib/session.js';
-import { SUPERUSER } from '../lib/permissions.js';
+import { hasPermission, SUPERUSER } from '../lib/permissions.js';
 
 interface Props {
   /** Startseite: nur Icon-Leiste (fixiert). Großer Titel liegt im Fluss auf `index.astro`. Sonst: Haus-Icon zur Startseite. */
@@ -12,7 +12,7 @@ interface Props {
 const { variant = 'subpage' } = Astro.props;
 const isHome = variant === 'home';
 const username = Astro.isPrerendered ? null : await getUsernameFromCookies(Astro.cookies);
-const showRpgNav = username === SUPERUSER;
+const showRpgNav = Boolean(username) && (username === SUPERUSER || (await hasPermission(username, 'rpg_access')));
 ---
 
 <nav class:list={['nav2', isHome && 'nav2--home']} aria-label="Hauptnavigation">

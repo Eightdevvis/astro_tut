@@ -1,5 +1,7 @@
+import { useState } from 'preact/hooks';
 import { canSetStepDone, buildRewardDisplayList } from '../lib/rpg-quest-steps.js';
 import { questProgress } from '../lib/rpg-quest-graph.js';
+import { normalizeQuestCityLocation, normalizeStepPlaceLocation } from '../lib/rpg-location.js';
 
 function RewardCubeIcon() {
   return (
@@ -69,6 +71,8 @@ function RewardManaStarIcon() {
  *   rewardsClass?: string;
  *   graph?: import('../lib/rpg-quest-graph.js').RpgGraph | null;
  *   itemCatalog?: Record<string, { title?: string }>;
+ *   currentLocation?: { city?: string; place?: string } | null;
+ *   showLocationGuidance?: boolean;
  * }} props
  */
 export default function RpgQuestStepsView({
@@ -80,25 +84,45 @@ export default function RpgQuestStepsView({
   rewardsClass = 'rpg-rewards',
   graph = null,
   itemCatalog = {},
+  currentLocation = null,
+  showLocationGuidance = true,
 }) {
+  const [focusedStepId, setFocusedStepId] = useState(/** @type {string | null} */ (null));
   const doneFor = stepDone[quest.id] || {};
   const rewardProgressPct = graph ? questProgress(quest, stepDone, graph) : undefined;
+  const questCity = normalizeQuestCityLocation(quest.cityLocation);
+  const currentCity = normalizeQuestCityLocation(currentLocation?.city);
+  const cityMismatch = !!questCity && !!currentCity && questCity !== currentCity;
+  const cityLead = Object.values(doneFor).some(Boolean) ? 'Kehre zurueck zu' : 'Gehe zu';
 
   return (
     <>
       <ul class={stepsClass}>
-        {(quest.steps || []).map((s) => (
-          <StepBranch
-            key={s.id}
-            quest={quest}
-            step={s}
-            depth={0}
-            doneFor={doneFor}
-            stepDone={stepDone}
-            onToggleStep={onToggleStep}
-            interactive={interactive}
-          />
-        ))}
+        {cityMismatch ? (
+          <li class="rpg-step rpg-step--location-blocked">
+            <span class="rpg-step__location-hint">
+              {cityLead} {questCity}.
+            </span>
+          </li>
+        ) : (
+          (quest.steps || []).map((s) => (
+            <StepBranch
+              key={s.id}
+              quest={quest}
+              step={s}
+              depth={0}
+              doneFor={doneFor}
+              stepDone={stepDone}
+              onToggleStep={onToggleStep}
+              interactive={interactive}
+              focusedStepId={focusedStepId}
+              setFocusedStepId={setFocusedStepId}
+              currentLocation={currentLocation}
+              questCity={questCity}
+              showLocationGuidance={showLocationGuidance}
+            />
+          ))
+        )}
       </ul>
       <p class="rpg-section-label">Rewards</p>
       <div class={rewardsClass}>
@@ -147,9 +171,27 @@ export default function RpgQuestStepsView({
  *   stepDone: Record<string, Record<string, boolean>>;
  *   onToggleStep: (q: string, s: string) => void;
  *   interactive: boolean;
+ *   focusedStepId: string | null;
+ *   setFocusedStepId: (id: string | null) => void;
+ *   currentLocation: { city?: string; place?: string } | null;
+ *   questCity: string;
+ *   showLocationGuidance: boolean;
  * }} props
  */
-function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, interactive }) {
+function StepBranch({
+  quest,
+  step,
+  depth,
+  doneFor,
+  stepDone,
+  onToggleStep,
+  interactive,
+  focusedStepId,
+  setFocusedStepId,
+  currentLocation,
+  questCity,
+  showLocationGuidance,
+}) {
   const hasSubs = Array.isArray(step.substeps) && step.substeps.length > 0;
 
   if (hasSubs) {
@@ -179,6 +221,11 @@ function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, inter
                 stepDone={stepDone}
                 onToggleStep={onToggleStep}
                 interactive={interactive}
+                focusedStepId={focusedStepId}
+                setFocusedStepId={setFocusedStepId}
+                currentLocation={currentLocation}
+                questCity={questCity}
+                showLocationGuidance={showLocationGuidance}
               />
             ))}
           </ul>
@@ -189,6 +236,18 @@ function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, inter
 
   const checked = !!doneFor[step.id];
   const depBlocked = interactive && !checked && !canSetStepDone(quest, step.id, stepDone, true);
+  const stepPlace = normalizeStepPlaceLocation(step.placeLocation);
+  const stepCity = normalizeQuestCityLocation(step.cityLocation) || questCity;
+  const currentCity = normalizeQuestCityLocation(currentLocation?.city);
+  const currentPlace = normalizeStepPlaceLocation(currentLocation?.place);
+  const placeMismatch =
+    showLocationGuidance &&
+    !!stepPlace &&
+    (!!stepCity ? stepCity === currentCity : true) &&
+    stepPlace !== currentPlace;
+  const isFocused = focusedStepId === step.id;
+  const hasFocusedSibling = !!focusedStepId;
+  const showGoToHint = isFocused && placeMismatch;
 
   const toggle = () => {
     if (checked) {
@@ -201,8 +260,12 @@ function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, inter
   return (
     <li
       key={step.id}
-      class={`rpg-step rpg-step--leaf${step.optional ? ' rpg-step--optional' : ''}`}
+      class={`rpg-step rpg-step--leaf${step.optional ? ' rpg-step--optional' : ''}${
+        hasFocusedSibling && !isFocused ? ' rpg-step--dimmed' : ''
+      }${showGoToHint ? ' rpg-step--place-blocked' : ''}`}
       style={{ '--rpg-step-depth': String(depth) }}
+      onMouseEnter={() => setFocusedStepId(step.id)}
+      onFocusCapture={() => setFocusedStepId(step.id)}
     >
       <label class={`rpg-step__label${!interactive ? ' rpg-step__label--readonly' : ''}`}>
         {interactive ? (
@@ -213,7 +276,12 @@ function StepBranch({ quest, step, depth, doneFor, stepDone, onToggleStep, inter
             onChange={toggle}
           />
         ) : null}
-        <span class="rpg-step__text">{step.label}</span>
+        <span class="rpg-step__text-wrap">
+          {showGoToHint ? (
+            <span class="rpg-step__location-hint">Go to {stepPlace}.</span>
+          ) : null}
+          <span class="rpg-step__text">{step.label}</span>
+        </span>
         {step.optional ? (
           <span class="rpg-step-badge" title="Optional">
             optional

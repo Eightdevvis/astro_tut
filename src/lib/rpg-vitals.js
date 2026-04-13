@@ -56,7 +56,7 @@ export function gainHeartEnergy(state, amount) {
  * @param {number} amount
  * @returns {RpgVitalsState}
  */
-export function applyPointsRewardToVitals(state, pointKind, amount) {
+export function applyPointsReward(state, pointKind, amount) {
   if (pointKind === 'mana') return gainManaEnergy(state, amount);
   return gainHeartEnergy(state, amount);
 }
@@ -119,7 +119,7 @@ export function reconcileRpgVitals(graph, stepDone, rawState) {
       const key = `step:${q.id}:${s.id}`;
       if (applied.has(key)) return;
       applied.add(key);
-      acc = applyPointsRewardToVitals(acc, ent.pointKind, ent.amount);
+      acc = applyPointsReward(acc, ent.pointKind, ent.amount);
       changed = true;
     });
 
@@ -131,7 +131,7 @@ export function reconcileRpgVitals(graph, stepDone, rawState) {
         const key = `quest:${q.id}:reward:${i}`;
         if (applied.has(key)) continue;
         applied.add(key);
-        acc = applyPointsRewardToVitals(acc, ent.pointKind, ent.amount);
+        acc = applyPointsReward(acc, ent.pointKind, ent.amount);
         changed = true;
       }
     }

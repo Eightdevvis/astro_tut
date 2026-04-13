@@ -3,7 +3,8 @@ import { SignJWT } from 'jose';
 import { getDb, ensureDbSchema } from '../../lib/db.js';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import { getSessionCookieOptions } from '../../lib/session-cookie.js';
-import { SUPERUSER } from '../../lib/permissions.js';
+import { getPermissions, SUPERUSER } from '../../lib/permissions.js';
+import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
 
 export async function POST({ request, cookies }) {
   const { username, password } = await request.json();
@@ -37,10 +38,22 @@ export async function POST({ request, cookies }) {
   cookies.set('session', token, getSessionCookieOptions());
 
   const un = user.username;
+  const permissions = await getPermissions(un);
+  const isSuperuser = un === SUPERUSER;
+  const isTester = isSuperuser || permissions.includes('tester_access');
+  const testerUiEnabled = isTester ? await getTesterUiPreference(un) : false;
   return new Response(
     JSON.stringify({
       success: true,
-      user: { username: un, birthday: user.birthday, isSuperuser: un === SUPERUSER },
+      user: {
+        username: un,
+        birthday: user.birthday,
+        isSuperuser,
+        permissions,
+        isTester,
+        canUseRpg: isSuperuser || permissions.includes('rpg_access'),
+        testerUiEnabled,
+      },
     }),
     { status: 200 }
   );

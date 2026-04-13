@@ -90,7 +90,6 @@ if (token) {
         padding: 1rem;
         resize: vertical;
         box-sizing: border-box;
-        text-transform: uppercase;
         max-width: 100%;
       }
       textarea::placeholder { color: rgba(255,255,255,0.4); }
@@ -105,7 +104,6 @@ if (token) {
         color: #fff;
         font-size: 1rem;
         box-sizing: border-box;
-        text-transform: uppercase;
         max-width: 100%;
       }
       .author-field::placeholder { color: rgba(255,255,255,0.35); }
@@ -237,8 +235,8 @@ if (token) {
       const authorInput = document.getElementById('quoteAuthor') as HTMLInputElement | null;
       if (btn && msg && textarea && authorInput) {
         btn.addEventListener('click', async () => {
-          const text = textarea.value.trim();
-          if (!text) { msg.textContent = 'ZITAT DARF NICHT LEER SEIN'; return; }
+          const text = textarea.value;
+          if (!text.trim()) { msg.textContent = 'ZITAT DARF NICHT LEER SEIN'; return; }
 
           btn.disabled = true;
           msg.textContent = '';

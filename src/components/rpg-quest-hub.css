@@ -350,6 +350,34 @@ html:not(.dark) .rpg-hub {
   box-sizing: border-box;
 }
 
+.rpg-step__text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.rpg-step__location-hint {
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--rpg-accent) 74%, var(--rpg-ink));
+  letter-spacing: 0.02em;
+}
+
+.rpg-step--location-blocked {
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--rpg-ink) 14%, var(--rpg-page-bg));
+  background: color-mix(in srgb, var(--rpg-void) 30%, var(--rpg-page-bg));
+}
+
+.rpg-step--place-blocked .rpg-step__text {
+  color: color-mix(in srgb, var(--rpg-ink) 52%, var(--rpg-page-bg));
+}
+
+.rpg-step--dimmed {
+  opacity: 0.62;
+}
+
 .rpg-step__label--readonly {
   cursor: default;
 }

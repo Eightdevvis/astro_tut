@@ -179,7 +179,6 @@ if (token) {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
-        text-transform: uppercase;
       }
       .quote-item-meta {
         margin-top: 0.45rem;
@@ -203,7 +202,6 @@ if (token) {
         padding: 0.65rem 0.7rem;
         resize: vertical;
         box-sizing: border-box;
-        text-transform: uppercase;
       }
       input.edit-author {
         width: 100%;
@@ -217,7 +215,6 @@ if (token) {
         color: #fff;
         font-size: 1rem;
         box-sizing: border-box;
-        text-transform: uppercase;
       }
       .edit-toolbar {
         display: flex;
@@ -374,10 +371,10 @@ if (token) {
             const a = q.author;
             if (a !== null && a !== undefined) {
               const t = String(a).trim();
-              if (t !== '') return t.toUpperCase();
+              if (t !== '') return t;
               return 'OHNE AUTOR';
             }
-            return String(q.username).toUpperCase();
+            return String(q.username);
           }
 
           const statusEl = document.getElementById('status') as HTMLElement | null;
@@ -568,8 +565,8 @@ if (token) {
             const id = q.id;
 
             saveBtn.addEventListener('click', async () => {
-              const text = ta.value.trim();
-              if (!text) {
+              const text = ta.value;
+              if (!text.trim()) {
                 msg.style.color = 'salmon';
                 msg.textContent = 'ZITAT DARF NICHT LEER SEIN';
                 return;
@@ -589,7 +586,7 @@ if (token) {
                   const updated = {
                     ...q,
                     text,
-                    author: auth.value.trim() === '' ? '' : auth.value.trim(),
+                    author: auth.value.trim() === '' ? '' : auth.value,
                   };
                   li.replaceWith(renderItem(updated));
                 } else {

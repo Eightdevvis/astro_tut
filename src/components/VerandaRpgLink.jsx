@@ -7,7 +7,7 @@ export default function VerandaRpgLink() {
     fetch('/api/user')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.user?.isSuperuser) setShow(true);
+        if (data?.user?.canUseRpg) setShow(true);
       })
       .catch(() => {});
   }, []);

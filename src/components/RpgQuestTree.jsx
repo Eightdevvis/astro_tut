@@ -25,6 +25,7 @@ import {
   toRpgVitalsView,
   RPG_VITAL_MAX_POINTS,
 } from '../lib/rpg-vitals.js';
+import { normalizeRpgLocationState } from '../lib/rpg-location.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import LiquidVessels from './LiquidVessels.jsx';
@@ -87,6 +88,7 @@ export default function RpgQuestTree() {
   const persistFailFingerprintRef = useRef('');
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
   const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
+  const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
   const [canPersist, setCanPersist] = useState(true);
@@ -99,6 +101,7 @@ export default function RpgQuestTree() {
     setAdded(d.added);
     setStepDone(d.stepDone);
     setVitals(d.vitals);
+    setLocation(d.location);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -138,6 +141,14 @@ export default function RpgQuestTree() {
   }, [itemCatalog]);
 
   useEffect(() => {
+    const onLocation = (/** @type {CustomEvent} */ e) => {
+      setLocation(normalizeRpgLocationState(e.detail));
+    };
+    window.addEventListener('rpg-location-updated', onLocation);
+    return () => window.removeEventListener('rpg-location-updated', onLocation);
+  }, []);
+
+  useEffect(() => {
     const onCatalog = (/** @type {CustomEvent} */ e) => {
       const m = e.detail?.itemCatalog;
       if (!m || typeof m !== 'object') return;
@@ -148,12 +159,13 @@ export default function RpgQuestTree() {
         addedIds: [...added],
         stepDone,
         vitals,
+        location,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone, vitals]);
+  }, [graph, added, stepDone, vitals, location]);
 
   useEffect(() => {
     panRef.current = pan;
@@ -209,6 +221,7 @@ export default function RpgQuestTree() {
           setAdded(d.added);
           setStepDone(d.stepDone);
           setVitals(d.vitals);
+          setLocation(d.location);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -223,6 +236,7 @@ export default function RpgQuestTree() {
       setAdded(d.added);
       setStepDone(d.stepDone);
       setVitals(d.vitals);
+      setLocation(d.location);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -230,6 +244,7 @@ export default function RpgQuestTree() {
         addedIds: [...d.added],
         stepDone: d.stepDone,
         vitals: d.vitals,
+        location: d.location,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -250,6 +265,7 @@ export default function RpgQuestTree() {
         addedIds: [...added],
         stepDone,
         vitals,
+        location,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
       void (async () => {
@@ -276,7 +292,7 @@ export default function RpgQuestTree() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location]);
 
   useEffect(() => {
     setVitals((prev) => {
@@ -578,6 +594,7 @@ export default function RpgQuestTree() {
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
   const vesselsAria = `Leben ${vitalsView.heart} von ${RPG_VITAL_MAX_POINTS} Punkten, Mana ${vitalsView.mana} von ${RPG_VITAL_MAX_POINTS}`;
+  const locationLabel = location.place ? `${location.city} / ${location.place}` : location.city;
   const manaHeartDeko = !compact ? (
     <aside class="rpg-tree__vessels rpg-tree__vessels--desktop-only" aria-label={vesselsAria}>
       <LiquidVessels
@@ -585,6 +602,7 @@ export default function RpgQuestTree() {
         heartFill={vitalsView.heartFill}
         manaFill={vitalsView.manaFill}
       />
+      <div class="rpg-tree__location-strip">Location: {locationLabel}</div>
     </aside>
   ) : null;
 
@@ -625,6 +643,7 @@ export default function RpgQuestTree() {
           ×
         </button>
         <div class="rpg-tree__vessels-overlay-inner">
+          <p class="rpg-tree__location-strip rpg-tree__location-strip--overlay">Location: {locationLabel}</p>
           <LiquidVessels
             variant="rpg-tree-spread"
             heartFill={vitalsView.heartFill}
@@ -895,6 +914,8 @@ export default function RpgQuestTree() {
                     rewardsClass="rpg-tree-panel__rewards"
                     graph={graph}
                     itemCatalog={itemCatalog}
+                    currentLocation={location}
+                    showLocationGuidance={false}
                   />
                 </div>
               </details>

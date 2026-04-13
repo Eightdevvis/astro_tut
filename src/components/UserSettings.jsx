@@ -77,6 +77,9 @@ export default function UserSettings() {
   const [ai, setAi] = useState(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [testerUiEnabled, setTesterUiEnabled] = useState(true);
+  const [testerBusy, setTesterBusy] = useState(false);
+  const [testerMsg, setTesterMsg] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +96,10 @@ export default function UserSettings() {
           return;
         }
         const uData = await uRes.json();
-        if (!cancelled) setUser(uData.user);
+        if (!cancelled) {
+          setUser(uData.user);
+          setTesterUiEnabled(Boolean(uData?.user?.testerUiEnabled));
+        }
         if (aiRes.ok) {
           const aiData = await aiRes.json();
           if (!cancelled) setAi(aiData);
@@ -125,6 +131,9 @@ export default function UserSettings() {
       <div style={tabRow}>
         <TabButton id="account" label="Konto" active={tab === 'account'} onPick={setTab} />
         <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
+        {user?.isTester ? (
+          <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
+        ) : null}
       </div>
 
       {err ? <div style={errStyle}>{err}</div> : null}
@@ -261,6 +270,67 @@ export default function UserSettings() {
             )}
           </section>
         </>
+      )}
+
+      {!loading && tab === 'tester' && user?.isTester && (
+        <section style={section}>
+          <h2 style={h2}>Testeroberfläche</h2>
+          <p style={muted}>
+            Hier kannst du nur die Sichtbarkeit deiner Testerleiste steuern. Dein Testerstatus bleibt unverändert.
+          </p>
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 12,
+              fontSize: '0.95rem',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={testerUiEnabled}
+              onChange={(e) => setTesterUiEnabled(e.currentTarget.checked)}
+              disabled={testerBusy}
+            />
+            Testerleiste unten anzeigen
+          </label>
+          <button
+            type="button"
+            onClick={async () => {
+              setTesterBusy(true);
+              setTesterMsg('');
+              setErr('');
+              try {
+                const res = await fetch('/api/user/tester-ui', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'same-origin',
+                  body: JSON.stringify({ enabled: testerUiEnabled }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+                setTesterMsg(testerUiEnabled ? 'Testeroberfläche aktiviert.' : 'Testeroberfläche deaktiviert.');
+                setUser((prev) => (prev ? { ...prev, testerUiEnabled } : prev));
+              } catch (e) {
+                setErr(e?.message || 'Speichern fehlgeschlagen.');
+              } finally {
+                setTesterBusy(false);
+              }
+            }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 6,
+              border: '1px solid rgba(0,0,0,0.2)',
+              background: 'rgba(255,255,255,0.65)',
+              cursor: 'pointer',
+            }}
+            disabled={testerBusy}
+          >
+            {testerBusy ? 'Speichere…' : 'Speichern'}
+          </button>
+          {testerMsg ? <p style={{ ...muted, marginTop: 10 }}>{testerMsg}</p> : null}
+        </section>
       )}
     </div>
   );

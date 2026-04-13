@@ -13,6 +13,7 @@ import {
 import { migrateRpgGraphToV2 } from './rpg-quest-steps.js';
 import { questmakerCatalogToDisplayMap } from './rpg-questmaker-sync.js';
 import { normalizeRpgVitalsState } from './rpg-vitals.js';
+import { normalizeRpgLocationState } from './rpg-location.js';
 
 export { isValidGraphShape };
 
@@ -20,7 +21,7 @@ const RPG_SESSION_CACHE_KEY = 'rpg-bootstrap-v1';
 
 /**
  * Letzter bekannter Stand (Tab-Session): sofortige Anzeige ohne auf GET zu warten.
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState } | null}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string } } | null}
  */
 export function loadSessionCachedPayload() {
   if (typeof sessionStorage === 'undefined') return null;
@@ -37,13 +38,14 @@ export function loadSessionCachedPayload() {
         ? parsed.itemCatalog
         : {};
     const vitals = normalizeRpgVitalsState(parsed.vitals);
-    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals };
+    const location = normalizeRpgLocationState(parsed.location);
+    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals, location };
   } catch {
     return null;
   }
 }
 
-/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; itemCatalog?: Record<string, unknown> }} payload */
+/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; itemCatalog?: Record<string, unknown> }} payload */
 export function saveSessionCachedPayload(payload) {
   if (typeof sessionStorage === 'undefined') return;
   try {
@@ -54,6 +56,7 @@ export function saveSessionCachedPayload(payload) {
         addedIds: payload.addedIds,
         stepDone: payload.stepDone,
         vitals: payload.vitals,
+        location: normalizeRpgLocationState(payload.location),
         itemCatalog: payload.itemCatalog && typeof payload.itemCatalog === 'object' ? payload.itemCatalog : {},
       })
     );
@@ -69,7 +72,7 @@ export async function fetchRpgBootstrap() {
 }
 
 /**
- * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
+ * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
  * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; status?: number; error?: string; missing?: string[] }>}
  */
 export async function persistRpgState(payload) {
@@ -131,6 +134,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
     addedIds: added,
     stepDone: steps,
     vitals: normalizeRpgVitalsState(data?.vitals),
+    location: normalizeRpgLocationState(data?.location),
   });
   if (result.ok) {
     clearAllRpgLocalStorage();
@@ -143,6 +147,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
       addedIds: added,
       stepDone: steps,
       vitals: normalizeRpgVitalsState(data?.vitals),
+      location: normalizeRpgLocationState(data?.location),
     };
   }
   return data;
@@ -155,6 +160,7 @@ export function pickRpgPayloadFromResponse(data) {
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
   const vitals = normalizeRpgVitalsState(data?.vitals);
+  const location = normalizeRpgLocationState(data?.location);
   /** @type {Record<string, { title: string; category: string; description: string }>} */
   let itemCatalog = {};
   if (data?.questmakerItems && Array.isArray(data.questmakerItems)) {
@@ -166,15 +172,15 @@ export function pickRpgPayloadFromResponse(data) {
   ) {
     itemCatalog = /** @type {typeof itemCatalog} */ (data.itemCatalog);
   }
-  return { graph, addedIds, stepDone, vitals, persisted: !!data?.persisted, itemCatalog };
+  return { graph, addedIds, stepDone, vitals, location, persisted: !!data?.persisted, itemCatalog };
 }
 
 /**
  * @param {any} data GET-Antwort oder null (Sample-Fallback)
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
  */
 export function deriveRpgUiStateFromPayload(data) {
-  const { graph, addedIds, stepDone: sd, vitals, itemCatalog } = pickRpgPayloadFromResponse(data);
+  const { graph, addedIds, stepDone: sd, vitals, location, itemCatalog } = pickRpgPayloadFromResponse(data);
   const stepDone = mergeStepDoneBase(buildInitialStepMapFromGraph(graph), sd);
-  return { graph, added: new Set(addedIds), stepDone, vitals, itemCatalog };
+  return { graph, added: new Set(addedIds), stepDone, vitals, location, itemCatalog };
 }

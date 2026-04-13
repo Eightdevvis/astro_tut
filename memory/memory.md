@@ -16,6 +16,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | RPG — strukturierte Steps, Fristen, Rewards (Spez + Code-Pfade) | [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
 | RPG — Questmaker+, API, Rückfragen, Env | [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc) |
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
+| Tester-Modus (Tester-Freigaben, Screenshot-Bugs, Feature-Toggles) | [`tester-features.mdc`](tester-features.mdc) |
 | RPG — kommende Features (Backup, …) | [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc) |
 | RPG — vielleicht kommend (Default-Graph, …) | [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc) |
 | Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |

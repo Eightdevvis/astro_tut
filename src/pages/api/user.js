@@ -1,6 +1,7 @@
 import { jwtVerify } from 'jose';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
-import { SUPERUSER } from '../../lib/permissions.js';
+import { getPermissions, SUPERUSER } from '../../lib/permissions.js';
+import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
 
 /**
  * API-Endpunkt: GET /api/user
@@ -28,13 +29,21 @@ export async function GET({ cookies }) {
     // Wenn beides ok → payload enthält unsere Daten (username, birthday)
     const { payload } = await jwtVerify(token, getJwtSecretBytes());
 
-    const username = payload.username;
+    const username = String(payload.username || '');
+    const permissions = await getPermissions(username);
+    const isSuperuser = username === SUPERUSER;
+    const isTester = isSuperuser || permissions.includes('tester_access');
+    const testerUiEnabled = isTester ? await getTesterUiPreference(username) : false;
     return new Response(
       JSON.stringify({
         user: {
           username,
           birthday: payload.birthday,
-          isSuperuser: username === SUPERUSER,
+          isSuperuser,
+          permissions,
+          isTester,
+          canUseRpg: isSuperuser || permissions.includes('rpg_access'),
+          testerUiEnabled,
         },
       }),
       { status: 200 }

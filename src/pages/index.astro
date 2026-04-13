@@ -6,6 +6,7 @@ import Veranda from '../components/Veranda.astro';
 import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
+import TesterBugBar from '../components/TesterBugBar.jsx';
 import '../styles/global.css';
 
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
@@ -73,6 +74,7 @@ const lastPost = sorted[0] ?? null;
         )}
       </Grid>
     </section>
+    <TesterBugBar client:load />
     <ThemeClient />
   </body>
 </html>

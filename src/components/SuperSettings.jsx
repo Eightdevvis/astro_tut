@@ -109,6 +109,10 @@ export default function SuperSettings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveMsg, setSaveMsg] = useState('');
+  const [testerBugReports, setTesterBugReports] = useState([]);
+  const [testerUiEnabled, setTesterUiEnabled] = useState(true);
+  const [testerUiBusy, setTesterUiBusy] = useState(false);
+  const [testerUiMsg, setTesterUiMsg] = useState('');
   const [permBusy, setPermBusy] = useState(null);
   const [superuserName, setSuperuserName] = useState('sash');
   const [uploadLabel, setUploadLabel] = useState('');
@@ -130,6 +134,8 @@ export default function SuperSettings() {
       .then((data) => {
         setUsers(data.users || []);
         setKnownPermissions(data.knownPermissions || []);
+        setTesterBugReports(data.testerBugReports || []);
+        setTesterUiEnabled(Boolean(data.testerUiEnabled));
         if (data.superuser) setSuperuserName(data.superuser);
         setFontCatalog(data.fontCatalog || { options: [], weightOptions: [] });
         setFontPreviewCss(data.fontPreviewCss || '');
@@ -358,6 +364,10 @@ export default function SuperSettings() {
 
       <section style={section}>
         <h2 style={h2}>Nutzer-Rechte</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
+          <code>tester_access</code> markiert User als Tester (Bottom-Bar mit Kamera). Über zusätzliche Rechte wie
+          <code> rpg_access</code> steuerst du, welche Features Tester nutzen dürfen.
+        </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={tableStyle}>
             <thead>
@@ -406,6 +416,112 @@ export default function SuperSettings() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section style={section}>
+        <h2 style={h2}>Eigene Testeroberfläche (sash)</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
+          Dieser Schalter blendet nur deine eigene Testerleiste ein/aus. Rechte und Testerstatus bleiben gleich.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <input
+            type="checkbox"
+            checked={testerUiEnabled}
+            onChange={(e) => setTesterUiEnabled(e.currentTarget.checked)}
+            disabled={testerUiBusy}
+          />
+          Testerleiste unten anzeigen
+        </label>
+        <button
+          type="button"
+          style={btnPrimary}
+          disabled={testerUiBusy}
+          onClick={async () => {
+            setTesterUiBusy(true);
+            setTesterUiMsg('');
+            setError('');
+            try {
+              const res = await fetch('/api/user/tester-ui', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ enabled: testerUiEnabled }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+              setTesterUiMsg(testerUiEnabled ? 'Testeroberfläche aktiviert.' : 'Testeroberfläche deaktiviert.');
+            } catch (e) {
+              setError(e?.message || 'Speichern fehlgeschlagen');
+            } finally {
+              setTesterUiBusy(false);
+            }
+          }}
+        >
+          {testerUiBusy ? 'Speichern…' : 'Speichern'}
+        </button>
+        {testerUiMsg ? <p style={{ ...okStyle, marginTop: 10 }}>{testerUiMsg}</p> : null}
+      </section>
+
+      <section style={section}>
+        <h2 style={h2}>Tester-Übersicht & Bug-Screenshots</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
+          Letzte Einsendungen der Tester mit Screenshot, Kommentar und Quelle.
+        </p>
+        <div style={{ marginBottom: '1rem' }}>
+          <strong>Aktive Tester: </strong>
+          {users
+            .filter((u) => (u.permissions || []).includes('tester_access'))
+            .map((u) => u.username)
+            .join(', ') || 'Keine'}
+        </div>
+        {testerBugReports.length === 0 ? (
+          <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Noch keine Bug-Screenshots.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {testerBugReports.map((rep) => (
+              <article
+                key={rep.id}
+                style={{
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  borderRadius: 10,
+                  padding: '0.8rem',
+                  background: 'rgba(255,255,255,0.55)',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', opacity: 0.75, marginBottom: 6 }}>
+                  <strong>{rep.username}</strong> · {rep.createdAt}
+                </div>
+                <div style={{ fontSize: '0.82rem', marginBottom: 8 }}>
+                  <a href={rep.pageUrl} target="_blank" rel="noreferrer">
+                    {rep.pageUrl}
+                  </a>
+                </div>
+                {rep.comment ? (
+                  <p style={{ fontSize: '0.9rem', marginTop: 0, marginBottom: 10 }}>{rep.comment}</p>
+                ) : (
+                  <p style={{ fontSize: '0.83rem', opacity: 0.65, marginTop: 0, marginBottom: 10 }}>
+                    Kein Kommentar
+                  </p>
+                )}
+                <a href={rep.imageUrl} target="_blank" rel="noreferrer">
+                  <img
+                    src={rep.imageUrl}
+                    alt={`Bug von ${rep.username}`}
+                    style={{
+                      width: '100%',
+                      maxHeight: 360,
+                      objectFit: 'contain',
+                      borderRadius: 8,
+                      border: '1px solid rgba(0,0,0,0.12)',
+                      background: 'rgba(0,0,0,0.04)',
+                    }}
+                    loading="lazy"
+                  />
+                </a>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section style={section}>
