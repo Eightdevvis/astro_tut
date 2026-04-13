@@ -16,9 +16,8 @@ const shellStyle = {
 const innerStyle = {
   display: 'flex',
   gap: 8,
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexWrap: 'wrap',
+  flexDirection: 'column',
+  alignItems: 'stretch',
 };
 
 const actionBtn = {
@@ -29,6 +28,13 @@ const actionBtn = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '0.85rem',
+};
+
+const topRowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
 };
 
 export default function TesterBugBar() {
@@ -52,10 +58,18 @@ export default function TesterBugBar() {
     setMessage('');
     try {
       const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(document.documentElement, {
+      const canvas = await html2canvas(document.body, {
         scale: Math.min(2, window.devicePixelRatio || 1),
+        x: window.scrollX,
+        y: window.scrollY,
+        width: window.innerWidth,
+        height: window.innerHeight,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
         useCORS: true,
-        backgroundColor: null,
+        backgroundColor: '#ffffff',
       });
       const screenshotDataUrl = canvas.toDataURL('image/png', 0.95);
       const res = await fetch('/api/tester-bug-reports', {
@@ -82,9 +96,12 @@ export default function TesterBugBar() {
   return (
     <aside style={shellStyle}>
       <div style={innerStyle}>
-        <button type="button" style={actionBtn} disabled={busy} onClick={() => void captureAndSend()}>
-          {busy ? 'Sende…' : '📷 Bug-Screenshot senden'}
-        </button>
+        <div style={topRowStyle}>
+          <button type="button" style={actionBtn} disabled={busy} onClick={() => void captureAndSend()}>
+            {busy ? 'Sende…' : '📷 Bug-Screenshot senden'}
+          </button>
+          {message ? <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>{message}</span> : null}
+        </div>
         <input
           type="text"
           value={comment}
@@ -96,12 +113,10 @@ export default function TesterBugBar() {
             background: 'rgba(255,255,255,0.12)',
             color: '#fff',
             padding: '8px 10px',
-            minWidth: 260,
-            maxWidth: 'min(560px, 92vw)',
             width: '100%',
+            boxSizing: 'border-box',
           }}
         />
-        {message ? <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>{message}</span> : null}
       </div>
     </aside>
   );

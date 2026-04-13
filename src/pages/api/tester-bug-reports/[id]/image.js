@@ -23,7 +23,11 @@ export async function GET({ params, cookies }) {
   if (!row) return new Response('Nicht gefunden', { status: 404 });
 
   const contentType = String(row.mime_type || 'image/png');
-  return new Response(row.screenshot, {
+  let buf = row.screenshot;
+  if (buf instanceof ArrayBuffer) buf = new Uint8Array(buf);
+  else if (typeof Buffer !== 'undefined' && Buffer.isBuffer(buf)) buf = new Uint8Array(buf);
+  else if (!(buf instanceof Uint8Array)) buf = new Uint8Array(buf);
+  return new Response(buf, {
     status: 200,
     headers: {
       'Content-Type': contentType,
