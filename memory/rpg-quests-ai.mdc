@@ -83,14 +83,14 @@ Lokal: `.env`; Production: `import.meta.env` (wie bei JWT/Turso), nach Änderung
   "stepLabels": ["…"],
   "steps": [ /* normalisierte RpgQuestStepNode-Struktur */ ],
   "rewards": ["…"],
-  "questRewards": [ { "type": "text", "text": "…", "unlockAtPercent": 40 } | { "type": "item", "itemId": "…" } ],
+  "questRewards": [ { "type": "text", "text": "…", "unlockAtPercent": 40 } | { "type": "item", "itemId": "…" } | { "type": "points", "pointKind": "heart"|"mana", "amount": <int> } ],
   "questmakerItems": [ { "id": "…", "category": "…", "title": "…", "description": "…" } ]
 }
 ```
 
 `questmakerItems` nur bei neuen Item-IDs (nicht im bestehenden Katalog); sonst weglassen oder leeres Array.
 
-`questRewards` werden mit **`normalizeQuestRewardRows`** eingelesen (Text- und Item-Typen, optional **`unlockAtPercent`**). **`rewards`** als String-Liste ist weiterhin möglich, wenn **`questRewards`** fehlt. Freischaltung: explizites Prozent oder **`resolveQuestRewardRowsWithUnlocks`** (Auto-Slots via **`resolveQuestRewardUnlockSchedule`**) in `rpg-quest-steps.js`.
+`questRewards` werden mit **`normalizeQuestRewardRows`** eingelesen (Text-, Item- und **Punkte**-Typen, optional **`unlockAtPercent`**). **`rewards`** als String-Liste ist weiterhin möglich, wenn **`questRewards`** fehlt. Freischaltung: explizites Prozent oder **`resolveQuestRewardRowsWithUnlocks`** (Auto-Slots via **`resolveQuestRewardUnlockSchedule`**) in `rpg-quest-steps.js`.
 
 **Katalog verwalten:** Super-Settings → Abschnitt Questmaker; API **`GET`/`PUT /api/rpg/questmaker-items`**. Beim **`PUT /api/rpg/quests`** optional **`questmakerItems`**: vollständige Zeilen `{ id, category, title, description }` für alle im Graph neu referenzierten Item-IDs, die noch nicht in der DB stehen — sonst **400** mit **`missing`**. Keine automatischen Platzhalter-Zeilen mehr.
 

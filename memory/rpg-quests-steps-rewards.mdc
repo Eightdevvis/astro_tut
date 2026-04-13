@@ -42,6 +42,14 @@ Zwei sinnvolle Modellierungen:
 
 ## 4. Rewards — zwei Quellen, eine Anzeige-Liste
 
+### Reward-Einträge (`RewardEntry`): Text, Item, **Punkte**
+
+- **`{ "type": "text", "text": "…" }`** — freier Text.
+- **`{ "type": "item", "itemId": "…", "displayName"?: "…" }`** — Katalog-Item (siehe Item-Katalog).
+- **`{ "type": "points", "pointKind": "heart" | "mana", "amount": <Ganzzahl> }`** — **Herzpunkte** (`heart`, Symbol Herz) bzw. **Manapunkte** (`mana`, Achtzack-Stern). `amount` kann **negativ** sein (z. B. körperliche oder geistige Belastung). Anzeige: Symbol + Wert (`+3`, `−2`, …). Weitere `pointKind`-Werte später denkbar — aktuell nur diese beiden. **Evolutions-/Sammelpunkte** (Mana-Evo, Immunsystem-Evo, …) sind **noch nicht** modelliert; Idee nur in [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc).
+
+Normalisierung und Pills: `normalizeRewardEntry`, `buildRewardDisplayList`, `questRewardRowToStored` in `rpg-quest-steps.js`; UI `RpgQuestStepsView.jsx` (Icons), Editor `RpgQuestStepsBuilder.jsx` (Art „Punkte“).
+
 ### 4a. Reward **am Step** (`reward` am Step-Objekt)
 
 - Während der Step **nicht** erledigt ist: zugehöriger Reward-Eintrag in der **Rewards-Liste** **gedimmt/dunkel** (oder gleichwertig „gesperrt“).

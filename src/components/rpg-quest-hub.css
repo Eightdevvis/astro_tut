@@ -265,6 +265,34 @@
   gap: 0.35rem;
 }
 
+.rpg-reward-pill--points {
+  gap: 0.3rem;
+}
+
+.rpg-reward-pill__points-icon {
+  flex-shrink: 0;
+}
+
+.rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.95);
+}
+
+.rpg-reward-pill--locked .rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.45);
+}
+
+.rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.95);
+}
+
+.rpg-reward-pill--locked .rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.45);
+}
+
+.rpg-reward-pill__label--points {
+  font-variant-numeric: tabular-nums;
+}
+
 .rpg-reward-pill__cube {
   flex-shrink: 0;
   opacity: 0.95;

@@ -193,7 +193,11 @@ export default function RpgQuestGraphEditor({
     if (stepDrafts.some((s) => isDraftStepMeaningful(s))) return true;
     if (
       rewardRows.some((r) =>
-        r.kind === 'item' ? (r.itemId || '').trim().length > 0 : (r.text || '').trim().length > 0
+        r.kind === 'item'
+          ? (r.itemId || '').trim().length > 0
+          : r.kind === 'points'
+            ? (r.pointsAmount || '').trim().length > 0
+            : (r.text || '').trim().length > 0
       )
     )
       return true;

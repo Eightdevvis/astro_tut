@@ -706,11 +706,13 @@ export default function RpgQuestTree() {
                 const isFocus = focusIdFromUrl === q.id;
                 const timeUrgent = !completed && questHasUrgentTimeBoundLeaves(q, stepDone);
 
+                /* pointerdown nicht zum Viewport bubble: dort setPointerCapture — sonst geht der synthetisierte click auf <g> oft verloren */
                 return (
                   <g
                     key={q.id}
                     class={cls}
                     transform={`translate(${p.x},${p.y})`}
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onQuestNodeClick(q.id)}
                   >
                     {q.kind === 'main' ? (

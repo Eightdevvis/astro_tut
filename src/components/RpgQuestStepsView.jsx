@@ -20,6 +20,45 @@ function RewardCubeIcon() {
   );
 }
 
+function RewardHeartIcon() {
+  return (
+    <svg
+      class="rpg-reward-pill__points-icon rpg-reward-pill__points-icon--heart"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        fillOpacity="0.9"
+        d="M8 13.2 2.2 7.4c-1.1-1.1-1.1-2.9 0-4 1.1-1.1 2.9-1.1 4 0l1.8 1.8 1.8-1.8c1.1-1.1 2.9-1.1 4 0 1.1 1.1 1.1 2.9 0 4L8 13.2z"
+      />
+    </svg>
+  );
+}
+
+/** Achtzack-Stern (zwei überlagerte Quadrate). */
+function RewardManaStarIcon() {
+  return (
+    <svg
+      class="rpg-reward-pill__points-icon rpg-reward-pill__points-icon--mana"
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        fillOpacity="0.9"
+        d="M8.00,1.80L9.07,5.41L12.38,3.62L10.59,6.93L14.20,8.00L10.59,9.07L12.38,12.38L9.07,10.59L8.00,14.20L6.93,10.59L3.62,12.38L5.41,9.07L1.80,8.00L5.41,6.93L3.62,3.62L6.93,5.41Z"
+      />
+    </svg>
+  );
+}
+
 /**
  * @param {{
  *   quest: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
@@ -65,10 +104,10 @@ export default function RpgQuestStepsView({
       <div class={rewardsClass}>
         {buildRewardDisplayList(quest, stepDone, rewardProgressPct, itemCatalog).map((row, i) => (
           <span
-            key={`${row.source}-${i}-${row.label.slice(0, 24)}`}
+            key={`${row.source}-${i}-${row.kind}-${row.kind === 'points' && row.pointKind ? row.pointKind : ''}-${row.label.slice(0, 24)}`}
             class={`rpg-reward-pill${row.kind === 'item' ? ' rpg-reward-pill--item' : ''}${
-              row.unlocked ? '' : ' rpg-reward-pill--locked'
-            }`}
+              row.kind === 'points' ? ' rpg-reward-pill--points' : ''
+            }${row.unlocked ? '' : ' rpg-reward-pill--locked'}`}
             title={
               row.source === 'quest' && typeof row.unlockAtPercent === 'number'
                 ? `Ab ${row.unlockAtPercent} % Quest-Fortschritt (inkl. Subgraph)`
@@ -83,6 +122,11 @@ export default function RpgQuestStepsView({
               <>
                 <RewardCubeIcon />
                 <span class="rpg-reward-pill__label">{row.label}</span>
+              </>
+            ) : row.kind === 'points' ? (
+              <>
+                {row.pointKind === 'mana' ? <RewardManaStarIcon /> : <RewardHeartIcon />}
+                <span class="rpg-reward-pill__label rpg-reward-pill__label--points">{row.label}</span>
               </>
             ) : (
               row.label

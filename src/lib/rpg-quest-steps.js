@@ -7,8 +7,44 @@
  * Einheitliches Reward-Modell für Step- und Quest-Belohnungen.
  * @typedef {{ type: 'text'; text: string }} RpgQuestRewardText
  * @typedef {{ type: 'item'; itemId: string; displayName?: string }} RpgQuestRewardItem
- * @typedef {RpgQuestRewardText | RpgQuestRewardItem} RpgQuestRewardEntry
+ * @typedef {{ type: 'points'; pointKind: 'heart' | 'mana'; amount: number }} RpgQuestRewardPoints
+ * @typedef {RpgQuestRewardText | RpgQuestRewardItem | RpgQuestRewardPoints} RpgQuestRewardEntry
  */
+
+/** Stabile IDs für Punkt-Typen (UI: Herz bzw. Achtzack-Stern). */
+export const RPG_REWARD_POINT_KINDS = /** @type {const} */ (['heart', 'mana']);
+
+/**
+ * @param {unknown} v
+ * @returns {'heart' | 'mana' | null}
+ */
+export function normalizeRewardPointKind(v) {
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  if (s === 'heart' || s === 'mana') return s;
+  return null;
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {number | null}
+ */
+function parseRewardPointsAmount(raw) {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.trunc(raw);
+  if (typeof raw === 'string' && raw.trim()) {
+    const n = Number(raw.trim());
+    if (Number.isFinite(n)) return Math.trunc(n);
+  }
+  return null;
+}
+
+/**
+ * Anzeige der Punktzahl in Pills (+n / −n / 0).
+ * @param {number} n
+ */
+export function formatRewardPointsAmount(n) {
+  if (n > 0) return `+${n}`;
+  return String(n);
+}
 
 /**
  * @typedef {{
@@ -45,6 +81,13 @@ export function normalizeRewardEntry(raw) {
     return { type: 'text', text };
   }
 
+  if (typRaw === 'points') {
+    const pointKind = normalizeRewardPointKind(o.pointKind);
+    const amount = parseRewardPointsAmount(o.amount);
+    if (!pointKind || amount === null) return null;
+    return { type: 'points', pointKind, amount };
+  }
+
   if (typRaw === 'item' || (!typRaw && (o.itemId || o.id))) {
     const itemId = String(o.itemId ?? o.id ?? '').trim();
     if (!itemId) return null;
@@ -64,6 +107,7 @@ export function normalizeRewardEntry(raw) {
  */
 export function displayLabelForRewardEntry(e) {
   if (e.type === 'text') return e.text;
+  if (e.type === 'points') return formatRewardPointsAmount(e.amount);
   const dn = e.displayName?.trim();
   return dn || e.itemId;
 }
@@ -75,6 +119,7 @@ export function displayLabelForRewardEntry(e) {
  */
 export function rewardEntryDisplayLabel(entry, catalogById) {
   if (entry.type === 'text') return entry.text;
+  if (entry.type === 'points') return formatRewardPointsAmount(entry.amount);
   const t = catalogById?.[entry.itemId]?.title?.trim();
   if (t) return t;
   return displayLabelForRewardEntry(entry);
@@ -290,6 +335,8 @@ export function questRewardRowToStored(row) {
   let o;
   if (e.type === 'text') {
     o = { type: 'text', text: e.text };
+  } else if (e.type === 'points') {
+    o = { type: 'points', pointKind: e.pointKind, amount: e.amount };
   } else {
     o = { type: 'item', itemId: e.itemId };
     if (e.displayName) o.displayName = e.displayName;
@@ -573,20 +620,21 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
     typeof progressPercentOverride === 'number' && Number.isFinite(progressPercentOverride)
       ? progressPercentOverride
       : questLeafProgressRatio(quest, stepDone).percent;
-  /** @type {{ label: string; kind: 'text' | 'item'; unlocked: boolean; source: 'step' | 'quest'; itemId?: string; unlockAtPercent?: number }[]} */
+  /** @type {{ label: string; kind: 'text' | 'item' | 'points'; pointKind?: 'heart' | 'mana'; amount?: number; unlocked: boolean; source: 'step' | 'quest'; itemId?: string; unlockAtPercent?: number }[]} */
   const rows = [];
   walkStepsPreOrder(quest.steps || [], (s) => {
     const entry = normalizeRewardEntry(s.reward);
     if (!entry) return;
     const unlocked = isStepNodeComplete(quest, s.id, stepDone);
     const label = rewardEntryDisplayLabel(entry, itemCatalogById);
-    const kind = entry.type === 'item' ? 'item' : 'text';
+    const kind = entry.type === 'item' ? 'item' : entry.type === 'points' ? 'points' : 'text';
     rows.push({
       label,
       kind,
       unlocked,
       source: 'step',
       ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
+      ...(entry.type === 'points' ? { pointKind: entry.pointKind, amount: entry.amount } : {}),
     });
   });
   const qr = resolveQuestRewardRowsWithUnlocks(quest.id, getQuestRewardRows(quest));
@@ -594,7 +642,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
     const unlocked = pct >= r.unlockAtPercent;
     const entry = r.entry;
     const label = rewardEntryDisplayLabel(entry, itemCatalogById);
-    const kind = entry.type === 'item' ? 'item' : 'text';
+    const kind = entry.type === 'item' ? 'item' : entry.type === 'points' ? 'points' : 'text';
     rows.push({
       label,
       kind,
@@ -602,6 +650,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
       source: 'quest',
       unlockAtPercent: r.unlockAtPercent,
       ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
+      ...(entry.type === 'points' ? { pointKind: entry.pointKind, amount: entry.amount } : {}),
     });
   }
   return rows;

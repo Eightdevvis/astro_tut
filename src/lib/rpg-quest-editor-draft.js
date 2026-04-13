@@ -13,12 +13,14 @@ import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js'
  *   title: string;
  *   optional: boolean;
  *   rewardOn: boolean;
- *   rewardKind: 'text' | 'item';
+ *   rewardKind: 'text' | 'item' | 'points';
  *   rewardText: string;
  *   itemId: string;
  *   itemDisplayName: string;
  *   itemCategory: string;
  *   itemDescription: string;
+ *   pointKind: 'heart' | 'mana';
+ *   pointsAmount: string;
  *   substepsOn: boolean;
  *   children: QuestStepDraft[];
  *   saved: boolean;
@@ -50,6 +52,8 @@ export function createEmptyStepDraft(saved = false) {
     itemDisplayName: '',
     itemCategory: '',
     itemDescription: '',
+    pointKind: 'heart',
+    pointsAmount: '',
     substepsOn: false,
     children: [],
     saved,
@@ -75,10 +79,13 @@ export function questNodeToDraft(node) {
   const due = typeof node.timeDueAt === 'string' && node.timeDueAt.trim() ? node.timeDueAt.trim().slice(0, 10) : '';
   const rent = normalizeRewardEntry(node.reward);
   const rewardOn = !!rent;
-  const rewardKind = rent && rent.type === 'item' ? 'item' : 'text';
+  const rewardKind =
+    rent && rent.type === 'item' ? 'item' : rent && rent.type === 'points' ? 'points' : 'text';
   const rewardText = rent && rent.type === 'text' ? rent.text : '';
   const itemId = rent && rent.type === 'item' ? rent.itemId : '';
   const itemDisplayName = rent && rent.type === 'item' && rent.displayName ? rent.displayName : '';
+  const pointKind = rent && rent.type === 'points' ? rent.pointKind : 'heart';
+  const pointsAmount = rent && rent.type === 'points' ? String(rent.amount) : '';
   return {
     key: node.id || newDraftKey(),
     stableId: typeof node.id === 'string' ? node.id : undefined,
@@ -91,6 +98,8 @@ export function questNodeToDraft(node) {
     itemDisplayName,
     itemCategory: '',
     itemDescription: '',
+    pointKind,
+    pointsAmount,
     substepsOn: subs,
     children: subs ? node.substeps.map(questNodeToDraft) : [],
     saved: true,
@@ -155,6 +164,12 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
       const itemId = (d.itemId || '').trim();
       const dn = (d.itemDisplayName || '').trim();
       reward = dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
+    } else if (d.rewardKind === 'points' && (d.pointsAmount || '').trim()) {
+      const n = Number(String(d.pointsAmount).trim());
+      if (Number.isFinite(n)) {
+        const pointKind = d.pointKind === 'mana' ? 'mana' : 'heart';
+        reward = { type: 'points', pointKind, amount: Math.trunc(n) };
+      }
     } else if ((d.rewardText || '').trim()) {
       reward = { type: 'text', text: (d.rewardText || '').trim() };
     }
@@ -250,12 +265,14 @@ export function aiQuestNodesToDraftSteps(nodes) {
 /**
  * @typedef {{
  *   key: string;
- *   kind: 'text' | 'item';
+ *   kind: 'text' | 'item' | 'points';
  *   text: string;
  *   itemId: string;
  *   displayName: string;
  *   itemCategory: string;
  *   itemDescription: string;
+ *   pointKind: 'heart' | 'mana';
+ *   pointsAmount: string;
  *   unlockAtPercent: string;
  * }} QuestRewardDraftRow
  */
@@ -270,6 +287,8 @@ export function createEmptyRewardRow() {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    pointKind: 'heart',
+    pointsAmount: '',
     unlockAtPercent: '',
   };
 }
@@ -292,6 +311,22 @@ export function ensureRewardRowFields(raw) {
       displayName: typeof r.displayName === 'string' ? r.displayName : '',
       itemCategory: typeof r.itemCategory === 'string' ? r.itemCategory : '',
       itemDescription: typeof r.itemDescription === 'string' ? r.itemDescription : '',
+      pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
+      pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
+      unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
+    };
+  }
+  if (r.kind === 'points') {
+    return {
+      key,
+      kind: 'points',
+      text: '',
+      itemId: '',
+      displayName: '',
+      itemCategory: '',
+      itemDescription: '',
+      pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
+      pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
       unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
     };
   }
@@ -303,6 +338,8 @@ export function ensureRewardRowFields(raw) {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
+    pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
     unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
   };
 }
@@ -314,13 +351,17 @@ export function ensureRewardRowFields(raw) {
 export function ensureStepDraftFields(raw) {
   if (!raw || typeof raw !== 'object') return createEmptyStepDraft(false);
   const d = /** @type {QuestStepDraft} */ ({ ...createEmptyStepDraft(!!/** @type {any} */ (raw).saved), ...raw });
-  if (d.rewardKind !== 'text' && d.rewardKind !== 'item') {
+  if (d.rewardKind !== 'text' && d.rewardKind !== 'item' && d.rewardKind !== 'points') {
     d.rewardKind = (d.itemId || '').trim() ? 'item' : 'text';
   }
   if (typeof d.itemId !== 'string') d.itemId = '';
   if (typeof d.itemDisplayName !== 'string') d.itemDisplayName = '';
   if (typeof d.itemCategory !== 'string') d.itemCategory = '';
   if (typeof d.itemDescription !== 'string') d.itemDescription = '';
+  if (typeof d.pointKind !== 'string' || (d.pointKind !== 'heart' && d.pointKind !== 'mana')) {
+    d.pointKind = 'heart';
+  }
+  if (typeof d.pointsAmount !== 'string') d.pointsAmount = '';
   if (typeof d.rewardText !== 'string') d.rewardText = '';
   if (Array.isArray(d.children) && d.children.length > 0) {
     d.children = d.children.map((c) => ensureStepDraftFields(c));
@@ -349,6 +390,22 @@ export function questRewardRowsToDraftRows(rows) {
         displayName: e.displayName || '',
         itemCategory: '',
         itemDescription: '',
+        pointKind: 'heart',
+        pointsAmount: '',
+        unlockAtPercent: up,
+      };
+    }
+    if (e.type === 'points') {
+      return {
+        key: newDraftKey(),
+        kind: 'points',
+        text: '',
+        itemId: '',
+        displayName: '',
+        itemCategory: '',
+        itemDescription: '',
+        pointKind: e.pointKind,
+        pointsAmount: String(e.amount),
         unlockAtPercent: up,
       };
     }
@@ -360,6 +417,8 @@ export function questRewardRowsToDraftRows(rows) {
       displayName: '',
       itemCategory: '',
       itemDescription: '',
+      pointKind: 'heart',
+      pointsAmount: '',
       unlockAtPercent: up,
     };
   });
@@ -385,6 +444,12 @@ export function draftRewardRowsToQuestRewards(rows) {
       const itemId = String(e.itemId ?? '');
       const dn = typeof e.displayName === 'string' ? e.displayName.trim() : '';
       return dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
+    }
+    if (e.type === 'points') {
+      const pointKind = e.pointKind === 'mana' ? 'mana' : 'heart';
+      const amt = Number(e.amount);
+      const amount = Number.isFinite(amt) ? Math.trunc(amt) : 0;
+      return { type: 'points', pointKind, amount };
     }
     return { type: 'text', text: String(e.text ?? '') };
   });
@@ -413,6 +478,15 @@ export function draftRewardRowsToStoredQuestRewards(rows) {
       if (dn) o.displayName = dn;
       if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
       out.push(o);
+    } else if (r.kind === 'points' && (r.pointsAmount || '').trim()) {
+      const n = Number(String(r.pointsAmount).trim());
+      if (Number.isFinite(n)) {
+        const pointKind = r.pointKind === 'mana' ? 'mana' : 'heart';
+        /** @type {Record<string, unknown>} */
+        const o = { type: 'points', pointKind, amount: Math.trunc(n) };
+        if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
+        out.push(o);
+      }
     } else if (r.kind === 'text' && (r.text || '').trim()) {
       /** @type {Record<string, unknown>} */
       const o = { type: 'text', text: (r.text || '').trim() };

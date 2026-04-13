@@ -40,7 +40,7 @@ Wenn "responseType":"quest":
 - "description": 1–3 Sätze Alltag / echtes Leben
 - "kind": "main" oder "side"
 - "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
-- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" }; optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
+- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } oder { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } (amount darf negativ sein); optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
 - "questmakerItems": Pflicht sobald du irgendwo eine **neue** itemId verwendest (nicht in ITEM_KATALOG): Array von { "id", "category", "title", "description" } — category eine von: alltag, studium, arbeit, gesundheit, beziehungen, organisation, sonstiges; title und description jeweils nicht leer (Kurzbeschreibung des Items).
 - "steps": Array aus Schritt-Objekten (siehe unten)
 
@@ -49,11 +49,11 @@ Schritt-Objekt (rekursiv, "substeps" optional):
 - "label": konkrete Handlung im echten Leben
 - "optional": boolean
 - "dependsOn": Array von ids anderer Schritte (gleiche Quest), die zuerst erledigt sein müssen; leer [] wenn keine Abhängigkeit
-- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } — bei neuer itemId Eintrag in "questmakerItems" (siehe oben)
+- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } ODER { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } — bei neuer itemId Eintrag in "questmakerItems" (siehe oben). Für Punkte: heart = körperliche Herzpunkte (z. B. Bewegung: plus, Belastung: minus); mana = geistige Manapunkte (Lernen/Konzentration oft minus, Erholung plus — je nach Schritt sinnvoll setzen).
 - "timeDueAt": optional ISO-Datum "YYYY-MM-DD" nur wenn eine echte Frist sinnvoll ist (z. B. Bewerbungsende)
 - "substeps": optional Array weiterer Schritt-Objekte für Gruppen (Unterschritte)
 
-Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Keine Fantasy-Begriffe (keine Elfen, Mana, Questgeber im Sinne von RPG).
+Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. Titel und Beschreibung der Quest: Alltag, keine Fantasy-Welt. Die internen Reward-Typen "heart"/"mana" bei "points" sind erlaubt (Symbole in der UI); keine anderen Fantasy-Floskeln in Titel/Beschreibung.
 
 Wenn ein passendes Item schon in ITEM_KATALOG steht, nutze dieselbe itemId. Wenn du ein neues Item brauchst: erfinde eine stabile slug-artige itemId und liefere die vollständige Zeile in "questmakerItems". Weder neue Items ohne questmakerItems noch leere description/title bei neuen Items.`;
 

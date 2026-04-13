@@ -105,7 +105,9 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             {draft.rewardOn &&
             (draft.rewardKind === 'item'
               ? (draft.itemId || '').trim()
-              : (draft.rewardText || '').trim()) ? (
+              : draft.rewardKind === 'points'
+                ? (draft.pointsAmount || '').trim()
+                : (draft.rewardText || '').trim()) ? (
               <span class="rpg-step-card__badge" title="Mit Belohnung">
                 Belohnung
               </span>
@@ -186,6 +188,8 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                     itemDisplayName: '',
                     itemCategory: '',
                     itemDescription: '',
+                    pointKind: 'heart',
+                    pointsAmount: '',
                   }),
             });
           }}
@@ -210,6 +214,13 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             >
               Item
             </button>
+            <button
+              type="button"
+              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'points' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+              onClick={() => update({ rewardKind: 'points' })}
+            >
+              Punkte
+            </button>
           </div>
           {draft.rewardKind === 'text' ? (
             <>
@@ -220,6 +231,30 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 value={draft.rewardText}
                 placeholder="z. B. Fundstück, kleiner Bonus …"
                 onInput={(ev) => update({ rewardText: ev.currentTarget.value })}
+              />
+            </>
+          ) : draft.rewardKind === 'points' ? (
+            <>
+              <span class="rpg-step-card__field-label">Punktart</span>
+              <select
+                class="rpg-graph-editor__input"
+                value={draft.pointKind === 'mana' ? 'mana' : 'heart'}
+                onChange={(ev) =>
+                  update({ pointKind: ev.currentTarget.value === 'mana' ? 'mana' : 'heart' })
+                }
+              >
+                <option value="heart">Herz — körperliche Energie</option>
+                <option value="mana">Mana — geistige Energie</option>
+              </select>
+              <span class="rpg-step-card__field-label">Wert</span>
+              <input
+                type="text"
+                inputmode="numeric"
+                class="rpg-graph-editor__input"
+                value={draft.pointsAmount}
+                placeholder="z. B. 3 oder −2"
+                title="Ganze Zahl; negativ möglich"
+                onInput={(ev) => update({ pointsAmount: ev.currentTarget.value })}
               />
             </>
           ) : (
@@ -526,6 +561,17 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                 >
                   Item
                 </button>
+                <button
+                  type="button"
+                  class={`rpg-reward-kind-switch__btn${row.kind === 'points' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
+                  onClick={() => {
+                    const copy = [...rows];
+                    copy[i] = { ...row, kind: 'points', unlockAtPercent: row.unlockAtPercent ?? '' };
+                    onRowsChange(copy);
+                  }}
+                >
+                  Punkte
+                </button>
               </div>
               {row.kind === 'text' ? (
                 <input
@@ -539,6 +585,37 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
                     onRowsChange(copy);
                   }}
                 />
+              ) : row.kind === 'points' ? (
+                <div class="rpg-reward-builder__item-fields">
+                  <select
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={row.pointKind === 'mana' ? 'mana' : 'heart'}
+                    onChange={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = {
+                        ...row,
+                        pointKind: ev.currentTarget.value === 'mana' ? 'mana' : 'heart',
+                      };
+                      onRowsChange(copy);
+                    }}
+                  >
+                    <option value="heart">Herz (körperlich)</option>
+                    <option value="mana">Mana (geistig)</option>
+                  </select>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    class="rpg-graph-editor__input rpg-reward-builder__text"
+                    value={row.pointsAmount ?? ''}
+                    placeholder="Wert (z. B. 3 oder −2)"
+                    title="Ganze Zahl"
+                    onInput={(ev) => {
+                      const copy = [...rows];
+                      copy[i] = { ...row, pointsAmount: ev.currentTarget.value };
+                      onRowsChange(copy);
+                    }}
+                  />
+                </div>
               ) : (
                 <div class="rpg-reward-builder__item-fields">
                   <input

@@ -64,6 +64,7 @@
 }
 
 /* Ein Wrapper (lv-canvas-wrap--embed): kein sichtbares Chrome — WebGL nur Gefäße, Rest transparent */
+/* pointer-events durchgängig none: sonst liegt die Canvas (z-index 40) über dem Graph und blockiert Klicks */
 .rpg-tree__vessels .lv-canvas-wrap--embed {
   position: relative;
   display: block;
@@ -73,8 +74,7 @@
   min-height: 200px;
   margin: 0;
   padding: 0;
-  pointer-events: auto;
-  touch-action: none;
+  pointer-events: none;
   overflow: hidden;
   background: transparent;
   border-radius: 0;
@@ -87,6 +87,7 @@
   width: 100% !important;
   height: 100% !important;
   background: transparent !important;
+  pointer-events: none;
 }
 
 .rpg-tree__viewport {
@@ -408,6 +409,30 @@
 
 .rpg-tree-panel__steps-wrap .rpg-reward-pill--item {
   gap: 0.3rem;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill--points {
+  gap: 0.28rem;
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.95);
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill--locked .rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.45);
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.95);
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill--locked .rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.45);
+}
+
+.rpg-tree-panel__steps-wrap .rpg-reward-pill__label--points {
+  font-variant-numeric: tabular-nums;
 }
 
 .rpg-tree-panel__steps-wrap .rpg-reward-pill__cube {
@@ -1075,6 +1100,30 @@
 
 .rpg-graph-editor__qm-preview .rpg-reward-pill--item {
   gap: 0.35rem;
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill--points {
+  gap: 0.3rem;
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.95);
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill--locked .rpg-reward-pill__points-icon--heart {
+  color: rgba(255, 120, 150, 0.45);
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.95);
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill--locked .rpg-reward-pill__points-icon--mana {
+  color: rgba(160, 200, 255, 0.45);
+}
+
+.rpg-graph-editor__qm-preview .rpg-reward-pill__label--points {
+  font-variant-numeric: tabular-nums;
 }
 
 .rpg-graph-editor__qm-preview .rpg-reward-pill__label {
