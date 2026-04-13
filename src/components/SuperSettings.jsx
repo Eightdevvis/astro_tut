@@ -349,7 +349,7 @@ export default function SuperSettings() {
     setDeleteBugBusyId(String(id));
     try {
       const res = await fetch(`/api/tester-bug-reports/${encodeURIComponent(String(id))}`, {
-        method: 'DELETE',
+        method: 'POST',
         credentials: 'same-origin',
       });
       const data = await res.json().catch(() => ({}));

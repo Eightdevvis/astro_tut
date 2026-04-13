@@ -2,7 +2,7 @@ import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { SUPERUSER } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 
-export async function DELETE({ params, cookies }) {
+async function removeReport(params, cookies) {
   const username = await getUsernameFromCookies(cookies);
   if (!username || username !== SUPERUSER) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
@@ -31,4 +31,13 @@ export async function DELETE({ params, cookies }) {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+export async function DELETE({ params, cookies }) {
+  return removeReport(params, cookies);
+}
+
+// Fallback for environments where DELETE is filtered.
+export async function POST({ params, cookies }) {
+  return removeReport(params, cookies);
 }
