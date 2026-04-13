@@ -19,6 +19,12 @@ import {
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import { questHasUrgentTimeBoundLeaves } from '../lib/rpg-quest-steps.js';
+import {
+  normalizeRpgVitalsState,
+  reconcileRpgVitals,
+  toRpgVitalsView,
+  RPG_VITAL_MAX_POINTS,
+} from '../lib/rpg-vitals.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import LiquidVessels from './LiquidVessels.jsx';
@@ -80,6 +86,7 @@ export default function RpgQuestTree() {
   );
   const persistFailFingerprintRef = useRef('');
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
+  const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
   const [canPersist, setCanPersist] = useState(true);
@@ -91,6 +98,7 @@ export default function RpgQuestTree() {
     setGraph(d.graph);
     setAdded(d.added);
     setStepDone(d.stepDone);
+    setVitals(d.vitals);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -139,12 +147,13 @@ export default function RpgQuestTree() {
         graph,
         addedIds: [...added],
         stepDone,
+        vitals,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone]);
+  }, [graph, added, stepDone, vitals]);
 
   useEffect(() => {
     panRef.current = pan;
@@ -180,6 +189,7 @@ export default function RpgQuestTree() {
   }, [mobileManaOpen]);
 
   const panelReserve = compact ? PANEL_RESERVE_MOBILE : PANEL_RESERVE_DESKTOP;
+  const blockViewportGestures = compact && !!selectedId;
 
   const nodeR = useCallback(
     (kind) => (kind === 'main' ? (compact ? 30 : 28) : compact ? 26 : 24),
@@ -198,6 +208,7 @@ export default function RpgQuestTree() {
           setGraph(d.graph);
           setAdded(d.added);
           setStepDone(d.stepDone);
+          setVitals(d.vitals);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -211,12 +222,14 @@ export default function RpgQuestTree() {
       setGraph(d.graph);
       setAdded(d.added);
       setStepDone(d.stepDone);
+      setVitals(d.vitals);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
         graph: d.graph,
         addedIds: [...d.added],
         stepDone: d.stepDone,
+        vitals: d.vitals,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -236,6 +249,7 @@ export default function RpgQuestTree() {
         graph,
         addedIds: [...added],
         stepDone,
+        vitals,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
       void (async () => {
@@ -262,7 +276,14 @@ export default function RpgQuestTree() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals]);
+
+  useEffect(() => {
+    setVitals((prev) => {
+      const out = reconcileRpgVitals(graph, stepDone, prev);
+      return out.changed ? out.state : prev;
+    });
+  }, [graph, stepDone]);
 
   const applyGraph = useCallback((next, opts) => {
     setGraph(next);
@@ -308,12 +329,19 @@ export default function RpgQuestTree() {
     setEditorOpen(true);
   }, []);
 
-  const onToggleStep = useCallback((questId, stepId) => {
-    setStepDone((prev) => ({
-      ...prev,
-      [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
-    }));
-  }, []);
+  const onToggleStep = useCallback(
+    (questId, stepId) => {
+      setStepDone((prev) => {
+        const next = {
+          ...prev,
+          [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
+        };
+        setVitals((old) => reconcileRpgVitals(graph, next, old).state);
+        return next;
+      });
+    },
+    [graph]
+  );
 
   useEffect(() => {
     const ids = new Set((graph.quests || []).map((q) => q.id));
@@ -332,6 +360,7 @@ export default function RpgQuestTree() {
   }, [graph]);
 
   const byId = useMemo(() => questMap(graph), [graph]);
+  const vitalsView = useMemo(() => toRpgVitalsView(vitals), [vitals]);
   const layout = useMemo(
     () =>
       computeLayeredLayout(
@@ -398,7 +427,7 @@ export default function RpgQuestTree() {
 
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el) return;
+    if (!el || blockViewportGestures) return;
     const onWheel = (/** @type {WheelEvent} */ e) => {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
@@ -466,10 +495,11 @@ export default function RpgQuestTree() {
       el.removeEventListener('touchend', onTouchEndPinch);
       el.removeEventListener('touchcancel', onTouchEndPinch);
     };
-  }, []);
+  }, [blockViewportGestures]);
 
   const onPointerDownViewport = useCallback(
     (/** @type {PointerEvent} */ e) => {
+      if (blockViewportGestures) return;
       if (e.button !== 0) return;
       suppressNodeClickRef.current = false;
       dragRef.current = { px: e.clientX, py: e.clientY, vx: pan.x, vy: pan.y, moved: false };
@@ -483,7 +513,7 @@ export default function RpgQuestTree() {
         }
       }
     },
-    [pan.x, pan.y]
+    [blockViewportGestures, pan.x, pan.y]
   );
 
   const onPointerMove = useCallback((/** @type {PointerEvent} */ e) => {
@@ -547,11 +577,16 @@ export default function RpgQuestTree() {
   const panelAddLabel = selectedAdded ? 'Weg' : 'Add';
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
 
-  const manaHeartDeko = (
-    <aside class="rpg-tree__vessels rpg-tree__vessels--desktop-only" aria-hidden="true">
-      <LiquidVessels variant="rpg-tree" />
+  const vesselsAria = `Leben ${vitalsView.heart} von ${RPG_VITAL_MAX_POINTS} Punkten, Mana ${vitalsView.mana} von ${RPG_VITAL_MAX_POINTS}`;
+  const manaHeartDeko = !compact ? (
+    <aside class="rpg-tree__vessels rpg-tree__vessels--desktop-only" aria-label={vesselsAria}>
+      <LiquidVessels
+        variant="rpg-tree"
+        heartFill={vitalsView.heartFill}
+        manaFill={vitalsView.manaFill}
+      />
     </aside>
-  );
+  ) : null;
 
   const mobileManaDock =
     compact && !selectedId ? (
@@ -579,7 +614,7 @@ export default function RpgQuestTree() {
         class="rpg-tree__vessels-overlay"
         role="dialog"
         aria-modal="true"
-        aria-label="Mana und Leben"
+        aria-label={vesselsAria}
       >
         <button
           type="button"
@@ -590,7 +625,11 @@ export default function RpgQuestTree() {
           ×
         </button>
         <div class="rpg-tree__vessels-overlay-inner">
-          <LiquidVessels variant="rpg-tree-spread" />
+          <LiquidVessels
+            variant="rpg-tree-spread"
+            heartFill={vitalsView.heartFill}
+            manaFill={vitalsView.manaFill}
+          />
         </div>
       </div>
     ) : null;

@@ -17,6 +17,7 @@ import {
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
+import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
@@ -92,6 +93,7 @@ export default function RpgQuestHub() {
   );
   const persistFailFingerprintRef = useRef('');
   const [itemCatalog, setItemCatalog] = useState(() => ({}));
+  const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
 
@@ -102,6 +104,7 @@ export default function RpgQuestHub() {
     setGraph(d.graph);
     setAdded(d.added);
     setStepDone(d.stepDone);
+    setVitals(d.vitals);
     setItemCatalog(d.itemCatalog);
     itemCatalogRef.current = d.itemCatalog;
     setBootstrapped(true);
@@ -122,12 +125,13 @@ export default function RpgQuestHub() {
         graph,
         addedIds: [...added],
         stepDone,
+        vitals,
         itemCatalog: m,
       });
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone]);
+  }, [graph, added, stepDone, vitals]);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +145,7 @@ export default function RpgQuestHub() {
           setGraph(d.graph);
           setAdded(d.added);
           setStepDone(d.stepDone);
+          setVitals(d.vitals);
           setItemCatalog(d.itemCatalog);
           itemCatalogRef.current = d.itemCatalog;
         }
@@ -154,12 +159,14 @@ export default function RpgQuestHub() {
       setGraph(d.graph);
       setAdded(d.added);
       setStepDone(d.stepDone);
+      setVitals(d.vitals);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
         graph: d.graph,
         addedIds: [...d.added],
         stepDone: d.stepDone,
+        vitals: d.vitals,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -173,7 +180,7 @@ export default function RpgQuestHub() {
   useEffect(() => {
     if (!bootstrapped || !canPersist) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone };
+      const payload = { graph, addedIds: [...added], stepDone, vitals };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
@@ -198,7 +205,14 @@ export default function RpgQuestHub() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone]);
+  }, [bootstrapped, canPersist, graph, added, stepDone, vitals]);
+
+  useEffect(() => {
+    setVitals((prev) => {
+      const out = reconcileRpgVitals(graph, stepDone, prev);
+      return out.changed ? out.state : prev;
+    });
+  }, [graph, stepDone]);
 
   useEffect(() => {
     const m = questMap(graph);
@@ -246,12 +260,19 @@ export default function RpgQuestHub() {
     [quests, focusedQuest]
   );
 
-  const onToggleStep = useCallback((questId, stepId) => {
-    setStepDone((prev) => ({
-      ...prev,
-      [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
-    }));
-  }, []);
+  const onToggleStep = useCallback(
+    (questId, stepId) => {
+      setStepDone((prev) => {
+        const next = {
+          ...prev,
+          [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
+        };
+        setVitals((old) => reconcileRpgVitals(graph, next, old).state);
+        return next;
+      });
+    },
+    [graph]
+  );
 
   const toggleExpand = useCallback((id) => {
     setExpanded((prev) => {

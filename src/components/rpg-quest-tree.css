@@ -342,10 +342,24 @@ html:not(.dark) .rpg-tree {
   padding-right: env(safe-area-inset-right, 0px);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(12, 12, 14, 0.2) 0%, rgba(8, 8, 10, 0.97) 18%);
+  background: var(--rpg-editor-surface);
+  color: color-mix(in srgb, var(--rpg-ink) 92%, var(--rpg-page-bg));
   border-top: 1px solid var(--rpg-border);
   box-shadow: 0 -12px 40px color-mix(in srgb, var(--rpg-void) 55%, var(--rpg-page-bg));
   -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+html.dark .rpg-tree .rpg-tree-panel {
+  color-scheme: dark;
+}
+
+html:not(.dark) .rpg-tree .rpg-tree-panel {
+  color-scheme: light;
+  box-shadow:
+    0 -1px 0 color-mix(in srgb, var(--rpg-ink) 8%, var(--rpg-page-bg)),
+    0 -16px 48px color-mix(in srgb, var(--rpg-void) 18%, var(--rpg-page-bg));
 }
 
 @media (min-width: 561px) {
@@ -373,6 +387,8 @@ html:not(.dark) .rpg-tree {
   overflow-y: auto;
   align-items: flex-start;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .rpg-tree-panel__add {
@@ -416,9 +432,20 @@ html:not(.dark) .rpg-tree {
   background: rgba(255, 120, 120, 0.18);
 }
 
+html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove {
+  border-color: rgba(180, 60, 60, 0.35);
+  background: rgba(180, 60, 60, 0.08);
+  color: #9a3030;
+}
+
+html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
+  background: rgba(180, 60, 60, 0.14);
+}
+
 .rpg-tree-panel__main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 .rpg-tree-panel__head {
@@ -434,6 +461,7 @@ html:not(.dark) .rpg-tree {
   font-size: 1.05rem;
   font-weight: 600;
   line-height: 1.25;
+  color: color-mix(in srgb, var(--rpg-ink) 96%, var(--rpg-page-bg));
 }
 
 .rpg-tree-panel__close {
@@ -652,7 +680,7 @@ html:not(.dark) .rpg-tree {
     height: 100dvh;
     border-top: none;
     border-radius: 0;
-    background: #0a0a0c;
+    background: var(--rpg-editor-surface);
     padding-top: env(safe-area-inset-top, 0px);
   }
 

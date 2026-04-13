@@ -67,7 +67,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 
 ### Persistenz (Server)
 
-- Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: u. a. `graph`, `addedIds`, `stepDone`, `schemaVersion`), `updated_at`.
+- Tabelle **`rpg_user_state`**: `username` (PK), `payload` (JSON: u. a. `graph`, `addedIds`, `stepDone`, `vitals`, `schemaVersion`), `updated_at`.
 - Allgemeine **DB-Anbindung und Init**: [`database.mdc`](database.mdc).
 - Client-Helfer: `src/lib/rpg-server-sync.js` (`fetchRpgBootstrap`, `persistRpgState`, Migration).
 - RPG-spezifischer DB-Zugriff: `src/lib/rpg-state-db.js`.
@@ -82,7 +82,8 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 - **Oben rechts (Verwalten):** **„Verwalten“** schaltet den Bearbeitungsmodus ein. Im aktiven Modus: **„Fertig“** beendet ihn; **manuell+** und **questmaker+** starten **getrennte** Dialoge (manuelles Formular nur Schritt-/Texteditor; Questmaker nur Prompt, danach Vorschau — ohne Umschalten). Im **Detail-Panel** (Quest gewählt, Verwalten an): dieselbe Trennung **manuell+** / **questmaker+**.
 - **Manuelle Neuanlage — Entwürfe (nur Browser):** Schließen/ **Abbrechen** mit relevantem Formularinhalt → automatischer Entwurf in **localStorage** `rpg-quest-manual-drafts-v1`. Im Dialogkopf **drafts** (Liste, Laden, Löschen). Kein Auto-Entwurf bei **questmaker+**-Einstieg oder Legacy-Dialog mit aktivem Tab **questmaker+**; kein Entwurf nach erfolgreichem Speichern.
 - **Canvas:** Pan (Pointer auf Hintergrund, nicht auf Nodes), Zoom (Rad). **Nodes sind nicht verschiebbar**; Layout kommt aus `computeLayeredLayout` in `src/lib/rpg-quest-graph.js`.
-- **Deko links unten:** gestapelte **Mana-Kugel + Herz** (`LiquidVessels` mit `variant="rpg-tree"`, transparentes WebGL über Seitenhintergrund), siehe `rpg-quest-tree.css` (`.rpg-tree__vessels`).
+- **Deko links unten:** gestapelte **Mana-Kugel + Herz** (`LiquidVessels` mit `variant="rpg-tree"`, transparentes WebGL über Seitenhintergrund), siehe `rpg-quest-tree.css` (`.rpg-tree__vessels`). **Füllstand:** je **0–50 Punkte** (Start **25** = 50 %) aus persistentem `vitals`-Konto; neue Punkt-Rewards buchen einmalig via `reconcileRpgVitals`.
+- **Standalone-Showcase:** `/minigames/liquid-vessels` nutzt dieselbe `LiquidVessels`-Komponente, ist aber nur Demo/Testfläche für Look/Motion — die eigentliche Systemrolle bleibt die RPG-Vitals-Anzeige im Quest-Baum.
 - **Nodes:** Main = Sechseck, Side = Kreis. Gesperrt = dunkler; frei & nicht hinzugefügt = Rand-Glow, innen dunkel; aktiv (frei + hinzugefügt + nicht fertig) = Farbe + Glow; **fertig** (unabhängig von „hinzugefügt“) = ruhiger „completed“-Look. **Roter Punkt** am Knoten: offene **Pflicht-Schritte mit Frist**, die in **&lt; 7 Tagen** fällig oder **überfällig** sind (siehe [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) Abschnitt Zeitbegrenzung).
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
 - **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert. Im **Bearbeiten-Modus** des Baums: **Quest bearbeiten** öffnet den Editor mit **manuell+** / **questmaker+** (Details: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
@@ -98,6 +99,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`persisted`** (o
 |------|--------|
 | Sample-Graph | `src/lib/rpg-quests-data.js` (`SAMPLE_RPG_GRAPH`) |
 | Graph-Hilfen (Unlock, Layout, Fortschritt) | `src/lib/rpg-quest-graph.js` |
+| Mana/Herz-Konto + Einmal-Gutschrift + Fill (50er-Gefäß) | `src/lib/rpg-vitals.js` |
 | Persistenz (lokal / Migration) | `src/lib/rpg-persistence.js` |
 | Server-Sync (Client) | `src/lib/rpg-server-sync.js` |
 | Hub | `src/components/RpgQuestHub.jsx`, `rpg-quest-hub.css` |

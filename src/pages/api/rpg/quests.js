@@ -9,6 +9,7 @@ import {
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
 import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
+import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
 import {
   collectAllItemIdsFromGraph,
   normalizeQuestmakerCatalogPayloadItem,
@@ -40,6 +41,7 @@ export async function GET({ cookies }) {
   let addedIds = [];
   let stepDone = {};
   let persisted = false;
+  let vitals = normalizeRpgVitalsState(null);
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
@@ -48,6 +50,7 @@ export async function GET({ cookies }) {
     schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
     if (stored.stepDone && typeof stored.stepDone === 'object') stepDone = stored.stepDone;
+    vitals = normalizeRpgVitalsState(stored.vitals);
   }
 
   graph = migrateRpgGraphToV2(graph);
@@ -61,6 +64,7 @@ export async function GET({ cookies }) {
       graph,
       addedIds,
       stepDone,
+      vitals,
       persisted,
       schemaVersion,
       questmakerItems,
@@ -117,6 +121,7 @@ export async function PUT({ request, cookies }) {
   if (!body.stepDone || typeof body.stepDone !== 'object') {
     return new Response(JSON.stringify({ error: 'stepDone fehlt' }), { status: 400 });
   }
+  const vitals = normalizeRpgVitalsState(body.vitals);
 
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
@@ -135,6 +140,7 @@ export async function PUT({ request, cookies }) {
     },
     addedIds,
     stepDone: body.stepDone,
+    vitals,
     schemaVersion: Math.max(
       RPG_PAYLOAD_SCHEMA_VERSION,
       coerceRpgPayloadSchemaVersion(base.schemaVersion)

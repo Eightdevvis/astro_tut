@@ -13,8 +13,8 @@ import '../../styles/global.css';
     <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#c5ac7e" />
-    <title>Mana &amp; Leben · Minigames</title>
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>Mana &amp; Leben · RPG Vitals Showcase</title>
     <SiteFontOverrides />
   </head>
   <body>
@@ -22,7 +22,7 @@ import '../../styles/global.css';
     <header class="lv-page-head">
       <p class="lv-page-kicker"><a href="/minigames">le mathematicos rainbow</a></p>
       <p class="lv-page-lead">
-        Zwei Gefäße, eine Szene: Mana-Kugel und Herz mit Lebenssaft — optisches Schwappen (Shader), für Desktop und Mobil gedacht.
+        Showcase der RPG-Vitals: Mana-Kugel und Lebens-Herz als dieselbe WebGL-Komponente wie im Quest-Baum, hier separat zum Testen von Look und Motion.
       </p>
     </header>
     <LiquidVessels client:load />
@@ -54,7 +54,7 @@ import '../../styles/global.css';
     font-size: 0.8rem;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    opacity: 0.5;
+    color: var(--site-soft-muted);
     margin: 0 0 0.35rem;
   }
 
@@ -72,7 +72,7 @@ import '../../styles/global.css';
     max-width: 42rem;
     line-height: 1.55;
     font-size: 0.95rem;
-    opacity: 0.78;
+    color: var(--site-muted);
     overflow-wrap: break-word;
   }
 
@@ -80,7 +80,7 @@ import '../../styles/global.css';
     max-width: 1200px;
     margin: 0 auto;
     padding: 1rem 1rem 2rem;
-    opacity: 0.5;
+    color: var(--site-soft-muted);
   }
 
   .lv-page-back a {
@@ -134,24 +134,17 @@ import '../../styles/global.css';
     font-size: 0.75rem;
     padding: 0.35rem 0.6rem;
     border-radius: 999px;
-    border: 1px solid var(--fp-canvas-border);
-    background: color-mix(in srgb, var(--site-body-bg) 82%, #000);
-    color: var(--site-body-text);
+    border: 1px solid var(--site-control-border);
+    background: var(--site-control-bg);
+    color: var(--site-control-fg);
     cursor: pointer;
     backdrop-filter: blur(6px);
-  }
-
-  html.dark :global(.lv-gyro),
-  html.dark :global(.lv-motion) {
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    background: rgba(10, 12, 24, 0.75);
-    color: rgba(255, 255, 255, 0.9);
   }
 
   :global(.lv-note) {
     margin: 0.75rem 0 0;
     font-size: 0.8rem;
-    opacity: 0.5;
+    color: var(--site-soft-muted);
     line-height: 1.45;
     max-width: 40rem;
   }

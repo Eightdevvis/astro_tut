@@ -2,6 +2,31 @@ import { useEffect, useRef } from 'preact/hooks';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
+/** @param {number} n */
+function clamp01(n) {
+  return Math.max(0, Math.min(1, n));
+}
+
+/**
+ * Kugel (r=1): exakt invertierte Volumenformel.
+ * Schnitt-Ebene ist y = -uPlaneD.
+ * @param {number} fill01
+ */
+function spherePlaneDFromFill(fill01) {
+  const f = clamp01(fill01);
+  let lo = 0;
+  let hi = 2;
+  for (let i = 0; i < 28; i++) {
+    const h = (lo + hi) * 0.5;
+    const frac = (h * h * (3 - h)) / 4;
+    if (frac < f) lo = h;
+    else hi = h;
+  }
+  const h = (lo + hi) * 0.5;
+  const y = h - 1;
+  return -y;
+}
+
 const LIQUID_VERT = /* glsl */ `
 varying vec3 vPos;
 varying vec3 vNormal;
@@ -221,6 +246,87 @@ function makeHeartShape() {
   return s;
 }
 
+/**
+ * @param {{ x: number; y: number }[]} pts
+ */
+function polygonAreaAbs(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return 0;
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const q = pts[(i + 1) % pts.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(a) * 0.5;
+}
+
+/**
+ * Sutherland-Hodgman: Polygon gegen Halbebene y <= ymax clippen.
+ * @param {{ x: number; y: number }[]} pts
+ * @param {number} ymax
+ * @returns {{ x: number; y: number }[]}
+ */
+function clipPolygonBelowY(pts, ymax) {
+  /** @type {{ x: number; y: number }[]} */
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const ina = a.y <= ymax;
+    const inb = b.y <= ymax;
+    if (ina && inb) {
+      out.push(b);
+      continue;
+    }
+    if (ina && !inb) {
+      const t = (ymax - a.y) / (b.y - a.y || 1e-9);
+      out.push({ x: a.x + (b.x - a.x) * t, y: ymax });
+      continue;
+    }
+    if (!ina && inb) {
+      const t = (ymax - a.y) / (b.y - a.y || 1e-9);
+      out.push({ x: a.x + (b.x - a.x) * t, y: ymax });
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+/**
+ * Extrudiertes Herz: Volumenanteil entspricht Flächenanteil im XY-Profil.
+ * @returns {(fill01: number) => number} uPlaneD
+ */
+function buildHeartPlaneDFromFill() {
+  const ptsRaw = makeHeartShape().getPoints(1200);
+  const yMinRaw = Math.min(...ptsRaw.map((p) => p.y));
+  const yMaxRaw = Math.max(...ptsRaw.map((p) => p.y));
+  const yCenter = (yMinRaw + yMaxRaw) * 0.5;
+  const pts = ptsRaw.map((p) => ({ x: p.x, y: p.y - yCenter }));
+  const yMin = yMinRaw - yCenter;
+  const yMax = yMaxRaw - yCenter;
+  const total = polygonAreaAbs(pts);
+
+  const areaFrac = (yCut) => {
+    const clipped = clipPolygonBelowY(pts, yCut);
+    return total > 0 ? polygonAreaAbs(clipped) / total : 0;
+  };
+
+  return (fill01) => {
+    const target = clamp01(fill01);
+    let lo = yMin;
+    let hi = yMax;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (areaFrac(mid) < target) lo = mid;
+      else hi = mid;
+    }
+    const yCut = (lo + hi) * 0.5;
+    return -yCut;
+  };
+}
+
+const heartPlaneDFromFill = buildHeartPlaneDFromFill();
+
 /** @param {THREE.Object3D} root */
 function disposeObject(root) {
   root.traverse((obj) => {
@@ -233,13 +339,24 @@ function disposeObject(root) {
 }
 
 /**
- * @param {{ variant?: 'page' | 'rpg-tree' | 'rpg-tree-spread' }} props
+ * @param {{
+ *   variant?: 'page' | 'rpg-tree' | 'rpg-tree-spread';
+ *   heartFill?: number;
+ *   manaFill?: number;
+ * }} props — `heartFill` / `manaFill`: 0–1 (Anteil am max. Gefäß); ohne Angabe 0.5 (Standalone-Demo/Showcase-Seite).
  * — `rpg-tree-spread`: volle Fläche, Mobil-Overlay — Kugel oben, Herz unten (übereinander, je ~halbe Viewport-Höhe).
  */
-export default function LiquidVessels({ variant = 'page' }) {
+export default function LiquidVessels({ variant = 'page', heartFill, manaFill }) {
   const wrapRef = useRef(null);
   const isEmbed = variant === 'rpg-tree' || variant === 'rpg-tree-spread';
   const isSpread = variant === 'rpg-tree-spread';
+
+  const fillRef = useRef({ heart: 0.5, mana: 0.5 });
+  const hf =
+    typeof heartFill === 'number' && Number.isFinite(heartFill) ? clamp01(heartFill) : 0.5;
+  const mf =
+    typeof manaFill === 'number' && Number.isFinite(manaFill) ? clamp01(manaFill) : 0.5;
+  fillRef.current = { heart: hf, mana: mf };
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -559,6 +676,10 @@ export default function LiquidVessels({ variant = 'page' }) {
 
       worldDirToLocal(orbLiquidMesh, tmpN, tmpPlaneObj).normalize();
       worldDirToLocal(orbLiquidMesh, shakeVel, tmpShakeObj);
+      const { heart: fh, mana: fm } = fillRef.current;
+      liqOrb.uniforms.uPlaneD.value = spherePlaneDFromFill(fm);
+      liqHeart.uniforms.uPlaneD.value = heartPlaneDFromFill(fh);
+
       liqOrb.uniforms.uPlaneN.value.copy(tmpPlaneObj);
       liqOrb.uniforms.uShake.value.copy(tmpShakeObj);
       liqOrb.uniforms.uMeniscusW.value.copy(meniscusW);

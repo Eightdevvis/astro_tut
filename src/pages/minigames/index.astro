@@ -12,7 +12,7 @@ import '../../styles/global.css';
     <ThemeInit />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#c5ac7e" />
+    <meta name="theme-color" content="#f4f1ea" />
     <title>Minigames · SASH</title>
     <SiteFontOverrides />
   </head>
@@ -91,7 +91,7 @@ import '../../styles/global.css';
             </span>
             <span class="mg-card-body">
               <span class="mg-card-title">Mana &amp; Leben</span>
-              <span class="mg-card-desc">Kugel und Herz mit geschwappter Flüssigkeit — Deko, eine WebGL-Szene.</span>
+              <span class="mg-card-desc">RPG-Vitals als WebGL-Showcase: Kugel und Herz, wie im Quest-Baum verwendet.</span>
             </span>
           </a>
         </li>
@@ -126,14 +126,14 @@ import '../../styles/global.css';
     font-size: 0.85rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    opacity: 0.55;
+    color: var(--site-soft-muted);
     margin: 0 0 0.5rem;
   }
 
   .mg-lead {
     margin: 0 0 2rem;
     line-height: 1.55;
-    opacity: 0.85;
+    color: var(--site-muted);
     overflow-wrap: break-word;
   }
 
@@ -151,25 +151,20 @@ import '../../styles/global.css';
     border-radius: 1rem;
     text-decoration: none;
     color: inherit;
-    background: #fff;
-    box-shadow:
-      inset 0 0 40px 10px rgba(0, 0, 0, 0.35),
-      inset 0 0 80px 10px rgba(0, 0, 0, 0.25),
-      inset 0 0 8px 2px rgba(0, 0, 0, 0.45);
+    background: var(--site-card-bg);
+    border: 1px solid var(--site-card-border);
+    box-shadow: var(--site-card-inset-soft), var(--site-card-inset-strong), var(--site-card-shadow);
     transition: transform 0.25s ease, box-shadow 0.25s ease;
   }
 
   .mg-card:hover {
     transform: translateY(-2px);
-    box-shadow:
-      inset 0 0 30px 8px rgba(0, 0, 0, 0.3),
-      inset 0 0 60px 8px rgba(0, 0, 0, 0.2),
-      0 8px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--site-card-inset-soft), var(--site-card-inset-strong), var(--site-card-shadow-hover);
   }
 
   .mg-card-icon {
     flex-shrink: 0;
-    color: #1a1a2e;
+    color: var(--mg-card-icon);
     padding-top: 0.15rem;
   }
 
@@ -195,7 +190,7 @@ import '../../styles/global.css';
 
   .mg-back {
     margin-top: 2.5rem;
-    opacity: 0.55;
+    color: var(--site-soft-muted);
   }
 
   .mg-back a {
