@@ -110,6 +110,7 @@ export default function SuperSettings() {
   const [error, setError] = useState('');
   const [saveMsg, setSaveMsg] = useState('');
   const [testerBugReports, setTesterBugReports] = useState([]);
+  const [deleteBugBusyId, setDeleteBugBusyId] = useState(null);
   const [testerUiEnabled, setTesterUiEnabled] = useState(true);
   const [testerUiBusy, setTesterUiBusy] = useState(false);
   const [testerUiMsg, setTesterUiMsg] = useState('');
@@ -343,6 +344,24 @@ export default function SuperSettings() {
     );
   }
 
+  async function deleteTesterBugReport(id) {
+    setError('');
+    setDeleteBugBusyId(String(id));
+    try {
+      const res = await fetch(`/api/tester-bug-reports/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Löschen fehlgeschlagen');
+      setTesterBugReports((prev) => prev.filter((r) => String(r.id) !== String(id)));
+    } catch (e) {
+      setError(e?.message || 'Löschen fehlgeschlagen');
+    } finally {
+      setDeleteBugBusyId(null);
+    }
+  }
+
   if (loading) {
     return (
       <div style={box}>
@@ -518,6 +537,16 @@ export default function SuperSettings() {
                     loading="lazy"
                   />
                 </a>
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    style={{ ...btnPrimary, padding: '7px 10px', fontSize: '0.75rem' }}
+                    disabled={deleteBugBusyId === String(rep.id)}
+                    onClick={() => void deleteTesterBugReport(rep.id)}
+                  >
+                    {deleteBugBusyId === String(rep.id) ? 'Lösche…' : 'Screenshot löschen'}
+                  </button>
+                </div>
               </article>
             ))}
           </div>

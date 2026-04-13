@@ -58,6 +58,9 @@ export default function TesterBugBar() {
     setMessage('');
     try {
       const { default: html2canvas } = await import('html2canvas');
+      const detailsOpenState = Array.from(document.querySelectorAll('details')).map((el) =>
+        el.hasAttribute('open')
+      );
       const canvas = await html2canvas(document.body, {
         scale: Math.min(2, window.devicePixelRatio || 1),
         x: window.scrollX,
@@ -70,6 +73,18 @@ export default function TesterBugBar() {
         scrollY: window.scrollY,
         useCORS: true,
         backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const clonedDetails = Array.from(clonedDoc.querySelectorAll('details'));
+          clonedDetails.forEach((el, idx) => {
+            const isOpen = detailsOpenState[idx] === true;
+            if (isOpen) el.setAttribute('open', '');
+            else {
+              el.removeAttribute('open');
+              const panel = el.querySelector('.nav2-drawer-panel');
+              if (panel) panel.style.display = 'none';
+            }
+          });
+        },
       });
       const screenshotDataUrl = canvas.toDataURL('image/png', 0.95);
       const res = await fetch('/api/tester-bug-reports', {
