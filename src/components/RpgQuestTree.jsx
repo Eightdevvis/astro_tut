@@ -14,7 +14,6 @@ import {
   fetchRpgBootstrap,
   migrateLocalRpgToServerIfNeeded,
   deriveRpgUiStateFromPayload,
-  loadSessionCachedPayload,
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
@@ -207,9 +206,6 @@ export default function RpgQuestTree() {
       let data = await fetchRpgBootstrap();
       if (cancelled) return;
       if (!data) {
-        // #region agent log
-        fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H3',location:'src/components/RpgQuestTree.jsx:bootstrap-null-data',message:'Bootstrap data missing, entering fallback flow',data:{},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         const d = deriveRpgUiStateFromPayload(null);
         setGraph(d.graph);
         setAdded(d.added);
@@ -269,9 +265,6 @@ export default function RpgQuestTree() {
         locationCatalog,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H8',location:'src/components/RpgQuestTree.jsx:pre-persist',message:'Tree about to persist payload',data:{bootstrapped,canPersist,graphQuestCount:Array.isArray(graph?.quests)?graph.quests.length:null,addedCount:added.size},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {

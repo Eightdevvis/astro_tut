@@ -35,9 +35,6 @@ function forbidden() {
  */
 export async function POST({ request, cookies }) {
   const actor = await getUsernameFromCookies(cookies);
-  // #region agent log
-  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H9',location:'src/pages/api/rpg/quests-import.js:POST-auth',message:'RPG import auth evaluated',data:{actorPresent:Boolean(actor),isSuperuser:actor===SUPERUSER},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!actor || actor !== SUPERUSER) return forbidden();
 
   let body;
@@ -98,9 +95,6 @@ export async function POST({ request, cookies }) {
 
   await ensureDbSchema();
   await saveRpgState(targetUsername, payload);
-  // #region agent log
-  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H9',location:'src/pages/api/rpg/quests-import.js:POST-saved',message:'RPG payload restored via import endpoint',data:{targetUsername,questCount:Array.isArray(payload?.graph?.quests)?payload.graph.quests.length:null,addedCount:Array.isArray(payload?.addedIds)?payload.addedIds.length:null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   return new Response(
     JSON.stringify({
