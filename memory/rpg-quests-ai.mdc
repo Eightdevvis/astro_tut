@@ -1,6 +1,6 @@
 # RPG — KI-Quest-Generierung (Questmaker+)
 
-Superuser kann Quest-Inhalte per **KI** befüllen. **Graph-Kanten** (Vorgänger-Quests) bleiben **manuell** im Editor. Inhalt ist auf **echtes Leben** ausgerichtet (Studium, Arbeit, Alltag), **keine** Fantasy-Welt — siehe System-Prompt in `src/pages/api/rpg/quests-generate.js`.
+Superuser kann Quest-Inhalte per **KI** befüllen. **Graph-Kanten** (Vorgänger-Quests) bleiben **manuell** im Editor. **Inhalt** = nur echtes Leben (Studium, Arbeit, Alltag), keine Fantasy-Welt als Setting; **Sprache** darf metaphorisch/expressiv/leicht mystisch sein (Titel, Beschreibung, Schritt-Labels), Schritte müssen real plausibel bleiben — siehe `SYSTEM_PROMPT` / JSON-Anweisung in `src/pages/api/rpg/quests-generate.js`.
 
 ## UI: manuell+ und questmaker+
 
@@ -16,7 +16,7 @@ Superuser kann Quest-Inhalte per **KI** befüllen. **Graph-Kanten** (Vorgänger-
 
 Die Route `POST /api/rpg/quests-generate` nutzt:
 
-1. **`SYSTEM_PROMPT` + angehängte JSON-Anweisung** — Fokus Alltag; bei fehlenden Fakten **Rückfragen** statt Halluzination; bei ausreichendem Kontext strukturierte Quest mit **`steps`**-Baum.
+1. **`SYSTEM_PROMPT` + angehängte JSON-Anweisung** — Realitätsbezug; bei fehlenden Fakten **Rückfragen** statt Halluzination; bei ausreichendem Kontext strukturierte Quest mit **`steps`**-Baum; Ton: expressiv/metaphorisch möglich, Schritte konkret umsetzbar.
 
 2. **`response_format: { type: 'json_object' }`** — Einheitlich für alle OpenAI-kompatiblen Endpunkte (kein `json_schema`+strict mehr in dieser Route: zu starr für rekursive Step-Strukturen und `clarify`/`quest`-Variante). Validierung und Normalisierung erfolgen **serverseitig** nach dem Parsen.
 
