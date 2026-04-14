@@ -27,6 +27,9 @@ export function loadSessionCachedPayload() {
   if (typeof sessionStorage === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem(RPG_SESSION_CACHE_KEY);
+    // #region agent log
+    fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H2',location:'src/lib/rpg-server-sync.js:loadSessionCachedPayload',message:'Session cache inspected',data:{hasRawCache:Boolean(raw)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || !isValidGraphShape(parsed.graph)) return null;
@@ -71,6 +74,9 @@ export function saveSessionCachedPayload(payload) {
 
 export async function fetchRpgBootstrap() {
   const res = await fetch('/api/rpg/quests');
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H1',location:'src/lib/rpg-server-sync.js:fetchRpgBootstrap',message:'Bootstrap API response received',data:{ok:res.ok,status:res.status},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!res.ok) return null;
   return res.json();
 }
@@ -85,6 +91,9 @@ export async function persistRpgState(payload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H4',location:'src/lib/rpg-server-sync.js:persistRpgState',message:'Persist API response received',data:{ok:res.ok,status:res.status,questCount:Array.isArray(payload?.graph?.quests)?payload.graph.quests.length:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!res.ok) {
     try {
       const err = await res.json();
@@ -136,6 +145,9 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
   const steps = loadStepDone();
   const hasLocal =
     (g?.quests?.length ?? 0) > 0 || added.length > 0 || Object.keys(steps).length > 0;
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H5',location:'src/lib/rpg-server-sync.js:migrateLocalRpgToServerIfNeeded',message:'Legacy local migration check',data:{persisted:Boolean(data?.persisted),hasLocal,localQuestCount:Array.isArray(g?.quests)?g.quests.length:0,localAddedCount:added.length,localStepDoneQuestCount:Object.keys(steps).length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (!hasLocal) return data;
   const graph = (g?.quests?.length ?? 0) > 0 ? { quests: g.quests, edges: g.edges || [] } : data.graph;
   if (!isValidGraphShape(graph)) return data;
@@ -169,6 +181,9 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
 export function pickRpgPayloadFromResponse(data) {
   const raw = isValidGraphShape(data?.graph) ? data.graph : SAMPLE_RPG_GRAPH;
   const graph = migrateRpgGraphToV2(raw);
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H7',location:'src/lib/rpg-server-sync.js:pickRpgPayloadFromResponse',message:'Client normalized bootstrap payload',data:{incomingGraphValid:isValidGraphShape(data?.graph),incomingQuestCount:Array.isArray(data?.graph?.quests)?data.graph.quests.length:null,finalQuestCount:Array.isArray(graph?.quests)?graph.quests.length:null,persisted:Boolean(data?.persisted)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
   const vitals = normalizeRpgVitalsState(data?.vitals);

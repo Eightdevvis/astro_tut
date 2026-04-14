@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'preact/hooks';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'preact/hooks';
 import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
@@ -13,7 +13,6 @@ import {
   fetchRpgBootstrap,
   migrateLocalRpgToServerIfNeeded,
   deriveRpgUiStateFromPayload,
-  loadSessionCachedPayload,
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
@@ -111,23 +110,7 @@ export default function RpgQuestHub() {
   const [locations, setLocations] = useState(() => []);
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
-
-  useLayoutEffect(() => {
-    const snap = loadSessionCachedPayload();
-    if (!snap) return;
-    const d = deriveRpgUiStateFromPayload({ ...snap, persisted: true });
-    setGraph(d.graph);
-    setAdded(d.added);
-    setStepDone(d.stepDone);
-    setVitals(d.vitals);
-    setLocation(d.location);
-    setLocationCatalog(d.locationCatalog);
-    setLocations(d.locations);
-    setItemCatalog(d.itemCatalog);
-    itemCatalogRef.current = d.itemCatalog;
-    setBootstrapped(true);
-    setCanPersist(false);
-  }, []);
+  const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
 
   useEffect(() => {
     itemCatalogRef.current = itemCatalog;
@@ -164,23 +147,20 @@ export default function RpgQuestHub() {
 
   useEffect(() => {
     let cancelled = false;
-    const hadSessionCache = !!loadSessionCachedPayload();
     (async () => {
       let data = await fetchRpgBootstrap();
       if (cancelled) return;
       if (!data) {
-        if (!hadSessionCache) {
-          const d = deriveRpgUiStateFromPayload(null);
-          setGraph(d.graph);
-          setAdded(d.added);
-          setStepDone(d.stepDone);
-          setVitals(d.vitals);
-          setLocation(d.location);
-          setLocationCatalog(d.locationCatalog);
-          setLocations(d.locations);
-          setItemCatalog(d.itemCatalog);
-          itemCatalogRef.current = d.itemCatalog;
-        }
+        const d = deriveRpgUiStateFromPayload(null);
+        setGraph(d.graph);
+        setAdded(d.added);
+        setStepDone(d.stepDone);
+        setVitals(d.vitals);
+        setLocation(d.location);
+        setLocationCatalog(d.locationCatalog);
+        setLocations(d.locations);
+        setItemCatalog(d.itemCatalog);
+        itemCatalogRef.current = d.itemCatalog;
         setBootstrapped(true);
         setCanPersist(true);
         return;
@@ -209,6 +189,7 @@ export default function RpgQuestHub() {
       });
       setBootstrapped(true);
       setCanPersist(true);
+      setDirtySinceBootstrap(false);
     })();
     return () => {
       cancelled = true;
@@ -216,13 +197,14 @@ export default function RpgQuestHub() {
   }, []);
 
   useEffect(() => {
-    if (!bootstrapped || !canPersist) return;
+    if (!bootstrapped || !canPersist || !dirtySinceBootstrap) return;
     const t = setTimeout(() => {
       const payload = { graph, addedIds: [...added], stepDone, vitals, location, locationCatalog };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
           persistFailFingerprintRef.current = '';
+          setDirtySinceBootstrap(false);
           if (r.itemCatalog) {
             setItemCatalog(r.itemCatalog);
             itemCatalogRef.current = r.itemCatalog;
@@ -247,7 +229,18 @@ export default function RpgQuestHub() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location, locationCatalog, locations]);
+  }, [
+    bootstrapped,
+    canPersist,
+    dirtySinceBootstrap,
+    graph,
+    added,
+    stepDone,
+    vitals,
+    location,
+    locationCatalog,
+    locations,
+  ]);
 
   useEffect(() => {
     setVitals((prev) => {
@@ -304,6 +297,7 @@ export default function RpgQuestHub() {
 
   const onToggleStep = useCallback(
     (questId, stepId) => {
+      setDirtySinceBootstrap(true);
       setStepDone((prev) => {
         const next = {
           ...prev,

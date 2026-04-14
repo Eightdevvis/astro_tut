@@ -1,5 +1,5 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission, SUPERUSER } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { SAMPLE_RPG_QUESTS, SAMPLE_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
@@ -37,12 +37,22 @@ function forbidden() {
  */
 export async function GET({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) {
+  const hasRpgAccess = username ? await hasPermission(username, 'rpg_access') : false;
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H1',location:'src/pages/api/rpg/quests.js:GET-auth',message:'RPG GET auth gate evaluated',data:{usernamePresent:Boolean(username),isSuperuser:username===SUPERUSER,hasRpgAccess},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  if (!username || (username !== SUPERUSER && !hasRpgAccess)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H1',location:'src/pages/api/rpg/quests.js:GET-forbidden',message:'RPG GET rejected by superuser-only gate',data:{usernamePresent:Boolean(username),hasRpgAccess},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return forbidden();
   }
 
   await ensureDbSchema();
   const stored = await getRpgState(username);
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H6',location:'src/pages/api/rpg/quests.js:GET-state',message:'RPG GET loaded stored state',data:{hasStoredState:Boolean(stored),storedHasGraph:Boolean(stored&&stored.graph),storedQuestCount:Array.isArray(stored?.graph?.quests)?stored.graph.quests.length:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   let graph = SAMPLE_RPG_GRAPH;
   let addedIds = [];
   let stepDone = {};
@@ -68,6 +78,9 @@ export async function GET({ cookies }) {
 
   const questmakerItems = await listQuestmakerCatalogRows();
   const locations = await listRpgLocations();
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H6',location:'src/pages/api/rpg/quests.js:GET-response',message:'RPG GET response payload prepared',data:{persisted,graphQuestCount:Array.isArray(graph?.quests)?graph.quests.length:null,addedCount:Array.isArray(addedIds)?addedIds.length:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   return new Response(
     JSON.stringify({
@@ -96,7 +109,14 @@ export async function GET({ cookies }) {
  */
 export async function PUT({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) {
+  const hasRpgAccess = username ? await hasPermission(username, 'rpg_access') : false;
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H1',location:'src/pages/api/rpg/quests.js:PUT-auth',message:'RPG PUT auth gate evaluated',data:{usernamePresent:Boolean(username),isSuperuser:username===SUPERUSER,hasRpgAccess},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  if (!username || (username !== SUPERUSER && !hasRpgAccess)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H4',location:'src/pages/api/rpg/quests.js:PUT-forbidden',message:'RPG PUT rejected by superuser-only gate',data:{usernamePresent:Boolean(username),hasRpgAccess},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return forbidden();
   }
 
@@ -142,6 +162,17 @@ export async function PUT({ request, cookies }) {
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
   const existing = await getRpgState(username);
+  const existingQuestCount = Array.isArray(existing?.graph?.quests) ? existing.graph.quests.length : 0;
+  const nextQuestCount = Array.isArray(body?.graph?.quests) ? body.graph.quests.length : 0;
+  if (existingQuestCount > 0 && nextQuestCount === 0) {
+    return new Response(
+      JSON.stringify({
+        error:
+          'Sicherheitsabbruch: Leerer Graph würde bestehenden Quest-Baum überschreiben. Nutze resetToDefault für bewusstes Löschen.',
+      }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
   const base =
     existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
   const prevGraph =

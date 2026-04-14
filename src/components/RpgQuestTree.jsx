@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
@@ -94,25 +94,10 @@ export default function RpgQuestTree() {
   const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
   const [locations, setLocations] = useState(() => []);
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
   const [canPersist, setCanPersist] = useState(true);
 
-  useLayoutEffect(() => {
-    const snap = loadSessionCachedPayload();
-    if (!snap) return;
-    const d = deriveRpgUiStateFromPayload({ ...snap, persisted: true });
-    setGraph(d.graph);
-    setAdded(d.added);
-    setStepDone(d.stepDone);
-    setVitals(d.vitals);
-    setLocation(d.location);
-    setLocationCatalog(d.locationCatalog);
-    setLocations(d.locations);
-    setItemCatalog(d.itemCatalog);
-    itemCatalogRef.current = d.itemCatalog;
-    setBootstrapped(true);
-    setCanPersist(false);
-  }, []);
   const [selectedId, setSelectedId] = useState(/** @type {string | null} */ (null));
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(1);
@@ -218,23 +203,23 @@ export default function RpgQuestTree() {
 
   useEffect(() => {
     let cancelled = false;
-    const hadSessionCache = !!loadSessionCachedPayload();
     (async () => {
       let data = await fetchRpgBootstrap();
       if (cancelled) return;
       if (!data) {
-        if (!hadSessionCache) {
-          const d = deriveRpgUiStateFromPayload(null);
-          setGraph(d.graph);
-          setAdded(d.added);
-          setStepDone(d.stepDone);
-          setVitals(d.vitals);
-          setLocation(d.location);
-          setLocationCatalog(d.locationCatalog);
-          setLocations(d.locations);
-          setItemCatalog(d.itemCatalog);
-          itemCatalogRef.current = d.itemCatalog;
-        }
+        // #region agent log
+        fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H3',location:'src/components/RpgQuestTree.jsx:bootstrap-null-data',message:'Bootstrap data missing, entering fallback flow',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        const d = deriveRpgUiStateFromPayload(null);
+        setGraph(d.graph);
+        setAdded(d.added);
+        setStepDone(d.stepDone);
+        setVitals(d.vitals);
+        setLocation(d.location);
+        setLocationCatalog(d.locationCatalog);
+        setLocations(d.locations);
+        setItemCatalog(d.itemCatalog);
+        itemCatalogRef.current = d.itemCatalog;
         setBootstrapped(true);
         setCanPersist(true);
         return;
@@ -263,6 +248,7 @@ export default function RpgQuestTree() {
       });
       setBootstrapped(true);
       setCanPersist(true);
+      setDirtySinceBootstrap(false);
     })();
     return () => {
       cancelled = true;
@@ -270,7 +256,7 @@ export default function RpgQuestTree() {
   }, []);
 
   useEffect(() => {
-    if (!bootstrapped || !canPersist) return;
+    if (!bootstrapped || !canPersist || !dirtySinceBootstrap) return;
     const t = setTimeout(() => {
       const batch = questmakerBatchRef.current;
       questmakerBatchRef.current = [];
@@ -283,10 +269,14 @@ export default function RpgQuestTree() {
         locationCatalog,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
+      // #region agent log
+      fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'880baa'},body:JSON.stringify({sessionId:'880baa',runId:'initial',hypothesisId:'H8',location:'src/components/RpgQuestTree.jsx:pre-persist',message:'Tree about to persist payload',data:{bootstrapped,canPersist,graphQuestCount:Array.isArray(graph?.quests)?graph.quests.length:null,addedCount:added.size},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
           persistFailFingerprintRef.current = '';
+          setDirtySinceBootstrap(false);
           if (r.itemCatalog) {
             setItemCatalog(r.itemCatalog);
             itemCatalogRef.current = r.itemCatalog;
@@ -311,7 +301,18 @@ export default function RpgQuestTree() {
       })();
     }, 450);
     return () => clearTimeout(t);
-  }, [bootstrapped, canPersist, graph, added, stepDone, vitals, location, locationCatalog, locations]);
+  }, [
+    bootstrapped,
+    canPersist,
+    dirtySinceBootstrap,
+    graph,
+    added,
+    stepDone,
+    vitals,
+    location,
+    locationCatalog,
+    locations,
+  ]);
 
   useEffect(() => {
     setVitals((prev) => {
@@ -322,6 +323,7 @@ export default function RpgQuestTree() {
 
   const applyGraph = useCallback((next, opts) => {
     setGraph(next);
+    setDirtySinceBootstrap(true);
     const extra = opts?.questmakerItems;
     if (Array.isArray(extra) && extra.length > 0) {
       const prev = questmakerBatchRef.current;
@@ -339,6 +341,21 @@ export default function RpgQuestTree() {
     setEditorOpen(false);
     setEditorCreateEntry(undefined);
     setEditorEditEntry(undefined);
+  }, []);
+
+  const handleLocationChange = useCallback((next) => {
+    setDirtySinceBootstrap(true);
+    setLocation(normalizeRpgLocationState(next));
+  }, []);
+
+  const handleLocationCatalogChange = useCallback((next) => {
+    setDirtySinceBootstrap(true);
+    setLocationCatalog(normalizeRpgLocationCatalog(next));
+  }, []);
+
+  const handleLocationsChange = useCallback((next) => {
+    setDirtySinceBootstrap(true);
+    setLocations(Array.isArray(next) ? next : []);
   }, []);
 
   /**
@@ -366,6 +383,7 @@ export default function RpgQuestTree() {
 
   const onToggleStep = useCallback(
     (questId, stepId) => {
+      setDirtySinceBootstrap(true);
       setStepDone((prev) => {
         const next = {
           ...prev,
@@ -594,6 +612,7 @@ export default function RpgQuestTree() {
     const completed = isQuestCompleted(q, stepDone);
     if (completed) return;
     if (!unlocked) return;
+    setDirtySinceBootstrap(true);
     setAdded((prev) => {
       const next = new Set(prev);
       if (next.has(selectedId)) next.delete(selectedId);
@@ -622,11 +641,11 @@ export default function RpgQuestTree() {
       />
       <RpgLocationStrip
         location={location}
-        onLocationChange={setLocation}
+        onLocationChange={handleLocationChange}
         catalog={locationCatalog}
-        onCatalogChange={setLocationCatalog}
+        onCatalogChange={handleLocationCatalogChange}
         locations={locations}
-        onLocationsChange={setLocations}
+        onLocationsChange={handleLocationsChange}
       />
     </aside>
   ) : null;
@@ -637,11 +656,11 @@ export default function RpgQuestTree() {
         <RpgLocationStrip
           className="rpg-location-strip--mobile-dock"
           location={location}
-          onLocationChange={setLocation}
+          onLocationChange={handleLocationChange}
           catalog={locationCatalog}
-          onCatalogChange={setLocationCatalog}
+          onCatalogChange={handleLocationCatalogChange}
           locations={locations}
-          onLocationsChange={setLocations}
+          onLocationsChange={handleLocationsChange}
         />
         <button
           type="button"
