@@ -11,6 +11,7 @@ import { getDb } from './db.js';
  *   schemaVersion?: number;
  *   location?: { city: string; place: string };
  *   locationCatalog?: { cityIds: string[]; placeIds: string[] };
+ *   locations?: { id: string; kind: string; name: string; description?: string; city?: string; country?: string }[];
  *   [key: string]: unknown;
  * }} RpgStoredPayload
  */

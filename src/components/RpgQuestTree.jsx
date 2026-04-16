@@ -263,6 +263,7 @@ export default function RpgQuestTree() {
         vitals,
         location,
         locationCatalog,
+        locations,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
       void (async () => {
@@ -411,7 +412,9 @@ export default function RpgQuestTree() {
     () =>
       computeLayeredLayout(
         graph,
-        compact ? { colGap: 92, rowGap: 96, padding: 56 } : { colGap: 128, rowGap: 108, padding: 72 }
+        compact
+          ? { colGap: 92, rowGap: 96, padding: 56, compact: true }
+          : { colGap: 128, rowGap: 108, padding: 72, compact: false }
       ),
     [graph, compact]
   );
@@ -979,10 +982,20 @@ export default function RpgQuestTree() {
                       type="button"
                       class="rpg-tree-panel__edit-btn"
                       onClick={() => openEditQuest(selectedQuest.id, 'ai')}
+                      title={
+                        selectedQuest.questmakerPrompt?.trim()
+                          ? 'Gespeicherten Questmaker-Prompt laden, anpassen und neu generieren'
+                          : 'Quest mit Questmaker (KI) neu aufsetzen'
+                      }
                     >
                       questmaker+
                     </button>
                   </div>
+                  {selectedQuest.questmakerPrompt?.trim() ? (
+                    <p class="rpg-tree-panel__edit-note">
+                      Gespeicherter Questmaker-Prompt: über „questmaker+“ bearbeiten und erneut generieren.
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>

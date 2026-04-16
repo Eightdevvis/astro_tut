@@ -124,3 +124,75 @@ export function collectLocationEntriesFromGraph(graph) {
   }
   return out;
 }
+
+const MAX_USER_LOCATION_PICKER_ROWS = 400;
+
+/**
+ * Gespeicherte Orts-Zeilen im User-Payload (Picker/Dropdown), begrenzt und bereinigt.
+ * @param {unknown} raw
+ * @returns {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]}
+ */
+export function normalizeRpgUserLocationRows(raw) {
+  if (!Array.isArray(raw)) return [];
+  /** @type {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]} */
+  const out = [];
+  for (let i = 0; i < raw.length && out.length < MAX_USER_LOCATION_PICKER_ROWS; i++) {
+    const x = raw[i];
+    if (!x || typeof x !== 'object' || Array.isArray(x)) continue;
+    const o = /** @type {Record<string, unknown>} */ (x);
+    const id = cleanPart(o.id);
+    if (!id) continue;
+    const kind = cleanPart(o.kind) === 'place' ? 'place' : 'city';
+    const name = cleanPart(o.name);
+    if (!name) continue;
+    out.push({
+      id,
+      kind,
+      name,
+      description: cleanPart(o.description),
+      city: cleanPart(o.city),
+      country: cleanPart(o.country),
+    });
+  }
+  return out;
+}
+
+/**
+ * Orte für Dropdown: nur Einträge aus `locationCatalog` + gespeicherten User-Zeilen,
+ * mit Kanonisierung aus dem globalen Katalog (`globalRows`).
+ *
+ * @param {{ locationCatalog?: unknown; locations?: unknown } | null | undefined} storedSlice
+ * @param {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} globalRows
+ */
+export function resolveRpgUserPickerLocations(storedSlice, globalRows) {
+  const catalog = normalizeRpgLocationCatalog(storedSlice?.locationCatalog);
+  /** @type {Set<string>} */
+  const wanted = new Set([...catalog.cityIds, ...catalog.placeIds]);
+  const storedRows = normalizeRpgUserLocationRows(storedSlice?.locations);
+  for (const r of storedRows) wanted.add(r.id);
+
+  const byId = new Map(globalRows.map((r) => [r.id, r]));
+  /** @type {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} */
+  const out = [];
+  for (const id of wanted) {
+    const g = byId.get(id);
+    if (g) {
+      out.push(g);
+      continue;
+    }
+    const snap = storedRows.find((r) => r.id === id);
+    if (snap) {
+      out.push({
+        id: snap.id,
+        kind: snap.kind,
+        name: snap.name,
+        description: snap.description,
+        city: snap.city,
+        country: snap.country,
+        updatedAt: '',
+      });
+    }
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}

@@ -1,5 +1,5 @@
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import {
   MAX_FONT_BYTES,
@@ -30,7 +30,7 @@ async function uniqueFamilyName(db, base) {
 
 export async function POST({ request, cookies }) {
   const caller = await getUsernameFromCookies(cookies);
-  if (!caller || caller !== SUPERUSER) {
+  if (!caller || !(await hasPermission(caller, 'super_access'))) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }
 

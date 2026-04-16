@@ -22,6 +22,26 @@ function clean(raw) {
 }
 
 /**
+ * @param {Record<string, unknown>} o
+ * @returns {RpgLocationRow | null}
+ */
+function rowFromDb(o) {
+  const id = clean(o.id);
+  const kind = clean(o.kind) === 'place' ? 'place' : 'city';
+  const name = clean(o.name);
+  if (!id || !name) return null;
+  return {
+    id,
+    kind,
+    name,
+    description: clean(o.description),
+    city: clean(o.city),
+    country: clean(o.country),
+    updatedAt: clean(o.updated_at),
+  };
+}
+
+/**
  * @returns {Promise<RpgLocationRow[]>}
  */
 export async function listRpgLocations() {
@@ -34,20 +54,8 @@ export async function listRpgLocations() {
   /** @type {RpgLocationRow[]} */
   const out = [];
   for (const row of r.rows) {
-    const o = /** @type {Record<string, unknown>} */ (row);
-    const id = clean(o.id);
-    const kind = clean(o.kind) === 'place' ? 'place' : 'city';
-    const name = clean(o.name);
-    if (!id || !name) continue;
-    out.push({
-      id,
-      kind,
-      name,
-      description: clean(o.description),
-      city: clean(o.city),
-      country: clean(o.country),
-      updatedAt: clean(o.updated_at),
-    });
+    const parsed = rowFromDb(/** @type {Record<string, unknown>} */ (row));
+    if (parsed) out.push(parsed);
   }
   return out;
 }
@@ -68,13 +76,7 @@ export async function upsertRpgLocation(input) {
   await db.execute({
     sql: `INSERT INTO rpg_locations (id, kind, name, description, city, country, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-          ON CONFLICT(id) DO UPDATE SET
-            kind = excluded.kind,
-            name = excluded.name,
-            description = excluded.description,
-            city = excluded.city,
-            country = excluded.country,
-            updated_at = datetime('now')`,
+          ON CONFLICT(id) DO NOTHING`,
     args: [id, kind, name, description, city, country],
   });
   return { id, kind, name, description, city, country, updatedAt: '' };

@@ -1,10 +1,10 @@
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { FONT_SETTING_KEYS, saveSiteFontSettings } from '../../../lib/site-font-settings.js';
 
 export async function POST({ request, cookies }) {
   const caller = await getUsernameFromCookies(cookies);
-  if (!caller || caller !== SUPERUSER) {
+  if (!caller || !(await hasPermission(caller, 'super_access'))) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }
 

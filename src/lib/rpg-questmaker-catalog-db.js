@@ -45,7 +45,8 @@ export async function listQuestmakerCatalogRows() {
 }
 
 /**
- * Upsert vollständiger Katalog-Zeilen (keine Platzhalter — title/description Pflicht).
+ * Legt nur **neue** Katalog-Zeilen an. Bereits existierende `id` bleiben unverändert
+ * (kein Überschreiben fremder oder eigener Einträge durch spätere PUTs).
  * @param {{ id: string; category: string; title: string; description: string }[]} items
  */
 export async function upsertQuestmakerCatalogItems(items) {
@@ -55,11 +56,7 @@ export async function upsertQuestmakerCatalogItems(items) {
     await db.execute({
       sql: `INSERT INTO rpg_questmaker_items (id, category, title, description, updated_at)
             VALUES (?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(id) DO UPDATE SET
-              category = excluded.category,
-              title = excluded.title,
-              description = excluded.description,
-              updated_at = datetime('now')`,
+            ON CONFLICT(id) DO NOTHING`,
       args: [it.id, it.category, it.title, it.description],
     });
   }

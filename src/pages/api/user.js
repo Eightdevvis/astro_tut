@@ -1,6 +1,6 @@
 import { jwtVerify } from 'jose';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
-import { getPermissions, SUPERUSER } from '../../lib/permissions.js';
+import { getPermissions } from '../../lib/permissions.js';
 import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
 
 /**
@@ -31,7 +31,7 @@ export async function GET({ cookies }) {
 
     const username = String(payload.username || '');
     const permissions = await getPermissions(username);
-    const isSuperuser = username === SUPERUSER;
+    const isSuperuser = permissions.includes('super_access');
     const isTester = isSuperuser || permissions.includes('tester_access');
     const testerUiEnabled = isTester ? await getTesterUiPreference(username) : false;
     return new Response(

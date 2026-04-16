@@ -29,12 +29,8 @@ db.serialize(() => {
   // → Ein User kann beliebig viele Rechte haben (n:m-Beziehung).
   // → UNIQUE(username, permission) verhindert doppelte Einträge.
   //
-  // Verfügbare Rechte (werden hier nur dokumentiert, nicht erzwungen):
-  //   quote_poster  — darf Zitate auf der Startseite posten
-  //   (weitere folgen)
-  //
-  // Sonderfall "sash": wird NICHT in dieser Tabelle geprüft —
-  // sash ist hardcoded Superuser in src/lib/permissions.js und hat immer alle Rechte.
+  // Verfügbare Rechte: siehe KNOWN_PERMISSIONS in src/lib/permissions.js
+  // (u. a. super_access = Vollzugriff, quote_poster, tester_access, rpg_access).
   db.run(`
     CREATE TABLE IF NOT EXISTS user_permissions (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,

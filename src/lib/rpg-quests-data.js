@@ -7,7 +7,7 @@
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
 /** @typedef {{ id: string; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
 /** @typedef {{ main: RpgQuest[]; side: RpgQuest[] }} RpgQuestPayloadLegacy */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[] }} RpgGraphQuest */
+/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; questmakerPrompt?: string }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 

@@ -3,7 +3,7 @@ import { SignJWT } from 'jose';
 import { getDb, ensureDbSchema } from '../../lib/db.js';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import { getSessionCookieOptions } from '../../lib/session-cookie.js';
-import { getPermissions, SUPERUSER } from '../../lib/permissions.js';
+import { getPermissions } from '../../lib/permissions.js';
 import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
 
 export async function POST({ request, cookies }) {
@@ -37,7 +37,7 @@ export async function POST({ request, cookies }) {
 
   cookies.set('session', token, getSessionCookieOptions());
   const permissions = await getPermissions(username);
-  const isSuperuser = username === SUPERUSER;
+  const isSuperuser = permissions.includes('super_access');
   const isTester = isSuperuser || permissions.includes('tester_access');
   const testerUiEnabled = isTester ? await getTesterUiPreference(username) : false;
 

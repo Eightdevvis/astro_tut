@@ -1,10 +1,9 @@
-import { hasPermission, SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { getTesterUiPreference, setTesterUiPreference } from '../../../lib/tester-ui-preference.js';
 
 async function canControlTesterUi(username) {
   if (!username) return false;
-  if (username === SUPERUSER) return true;
   return hasPermission(username, 'tester_access');
 }
 

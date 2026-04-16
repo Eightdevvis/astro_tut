@@ -1,5 +1,5 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { listQuestmakerCatalogRows } from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
@@ -153,12 +153,13 @@ function coerceStepsArray(raw) {
 }
 
 /**
- * POST /api/rpg/quests-generate — KI-Entwurf für eine Quest (nur Superuser).
+ * POST /api/rpg/quests-generate — KI-Entwurf für eine Quest (rpg_access).
  * Body: { prompt, existingQuestIds?, lockedQuestId?, clarification?: { pairs: { question, answer }[] } }
  */
 export async function POST({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) {
+  const hasRpgAccess = username ? await hasPermission(username, 'rpg_access') : false;
+  if (!username || !hasRpgAccess) {
     return forbidden();
   }
 

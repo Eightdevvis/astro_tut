@@ -1,5 +1,5 @@
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
-import { getPermissions, KNOWN_PERMISSIONS, SUPERUSER } from '../../../lib/permissions.js';
+import { getPermissions, KNOWN_PERMISSIONS, hasPermission } from '../../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { buildFontCatalog, getCustomFontFacesCss } from '../../../lib/font-catalog.js';
 import { getAllSiteFontSettings } from '../../../lib/site-font-settings.js';
@@ -7,7 +7,7 @@ import { getTesterUiPreference } from '../../../lib/tester-ui-preference.js';
 
 export async function GET({ cookies }) {
   const caller = await getUsernameFromCookies(cookies);
-  if (!caller || caller !== SUPERUSER) {
+  if (!caller || !(await hasPermission(caller, 'super_access'))) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }
 
@@ -52,7 +52,6 @@ export async function GET({ cookies }) {
       users,
       knownPermissions: KNOWN_PERMISSIONS,
       fonts,
-      superuser: SUPERUSER,
       fontCatalog,
       fontPreviewCss,
       testerBugReports,

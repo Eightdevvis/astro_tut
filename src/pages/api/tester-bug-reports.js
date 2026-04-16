@@ -1,5 +1,5 @@
 import { getDb, ensureDbSchema } from '../../lib/db.js';
-import { hasPermission, SUPERUSER } from '../../lib/permissions.js';
+import { hasPermission } from '../../lib/permissions.js';
 import { getUsernameFromCookies } from '../../lib/session.js';
 
 function decodeDataUrl(input) {
@@ -18,7 +18,7 @@ function decodeDataUrl(input) {
 
 export async function GET({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) {
+  if (!username || !(await hasPermission(username, 'super_access'))) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }
 
@@ -52,7 +52,7 @@ export async function POST({ request, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), { status: 401 });
   }
-  const allowed = username === SUPERUSER || (await hasPermission(username, 'tester_access'));
+  const allowed = await hasPermission(username, 'tester_access');
   if (!allowed) {
     return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
   }

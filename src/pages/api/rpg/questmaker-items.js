@@ -1,5 +1,5 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import {
   listQuestmakerCatalogRows,
@@ -14,11 +14,11 @@ function forbidden() {
 }
 
 /**
- * GET /api/rpg/questmaker-items — Katalog (Superuser).
+ * GET /api/rpg/questmaker-items — Katalog (super_access).
  */
 export async function GET({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) return forbidden();
+  if (!username || !(await hasPermission(username, 'super_access'))) return forbidden();
 
   await ensureDbSchema();
   const items = await listQuestmakerCatalogRows();
@@ -29,12 +29,12 @@ export async function GET({ cookies }) {
 }
 
 /**
- * PUT /api/rpg/questmaker-items — Katalog ersetzen (Superuser).
+ * PUT /api/rpg/questmaker-items — Katalog ersetzen (super_access).
  * Body: { items: { id, category?, title, description? }[] }
  */
 export async function PUT({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) return forbidden();
+  if (!username || !(await hasPermission(username, 'super_access'))) return forbidden();
 
   let body;
   try {

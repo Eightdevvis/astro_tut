@@ -32,13 +32,8 @@ function LoginWidget() {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      if (data.user?.isSuperuser) {
-        window.location.reload();
-        return;
-      }
-      setUser(data.user);
-      setOpen(false);
-      setForm({ username: '', password: '', birthday: '', password2: '' });
+      window.location.reload();
+      return;
     } else {
       setError(data.error || 'Login fehlgeschlagen');
     }
@@ -71,7 +66,11 @@ function LoginWidget() {
   }
 
   async function handleLogout() {
-    await fetch('/api/logout', { method: 'POST' });
+    const res = await fetch('/api/logout', { method: 'POST' });
+    if (res.ok) {
+      window.location.reload();
+      return;
+    }
     setUser(null);
     setForm({ username: '', password: '', birthday: '', password2: '' });
     setError('');

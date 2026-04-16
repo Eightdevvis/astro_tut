@@ -1,6 +1,6 @@
 import { ensureDbSchema } from '../../../lib/db.js';
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { upsertRpgLocation } from '../../../lib/rpg-location-catalog-db.js';
 
 function forbidden() {
@@ -12,7 +12,7 @@ function forbidden() {
 
 export async function POST({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) return forbidden();
+  if (!username || !(await hasPermission(username, 'super_access'))) return forbidden();
   await ensureDbSchema();
   let body;
   try {

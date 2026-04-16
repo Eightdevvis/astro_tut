@@ -10,6 +10,16 @@ import { questmakerCatalogToDisplayMap } from '../lib/rpg-questmaker-sync.js';
 
 const RPG_QUESTMAKER_CATALOG_EVENT = 'rpg-questmaker-catalog-updated';
 
+/** Gleicher Wert wie SUPER_PERMISSION in permissions.js — hier lokal, damit das Client-Bundle kein db.js lädt. */
+const SUPER_PERM = 'super_access';
+
+/** @param {string[] | undefined} perms @param {string} p */
+function effectivePerm(perms, p) {
+  const arr = perms || [];
+  if (p === SUPER_PERM) return arr.includes(SUPER_PERM);
+  return arr.includes(SUPER_PERM) || arr.includes(p);
+}
+
 const box = {
   maxWidth: 720,
   margin: '0 auto',
@@ -115,7 +125,6 @@ export default function SuperSettings() {
   const [testerUiBusy, setTesterUiBusy] = useState(false);
   const [testerUiMsg, setTesterUiMsg] = useState('');
   const [permBusy, setPermBusy] = useState(null);
-  const [superuserName, setSuperuserName] = useState('sash');
   const [uploadLabel, setUploadLabel] = useState('');
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
@@ -137,7 +146,6 @@ export default function SuperSettings() {
         setKnownPermissions(data.knownPermissions || []);
         setTesterBugReports(data.testerBugReports || []);
         setTesterUiEnabled(Boolean(data.testerUiEnabled));
-        if (data.superuser) setSuperuserName(data.superuser);
         setFontCatalog(data.fontCatalog || { options: [], weightOptions: [] });
         setFontPreviewCss(data.fontPreviewCss || '');
         const next = {};
@@ -317,7 +325,12 @@ export default function SuperSettings() {
   }
 
   async function togglePermission(username, permission, currentlyHas) {
-    if (username === superuserName) return;
+    const u = users.find((x) => x.username === username);
+    const perms = u?.permissions || [];
+    if (currentlyHas && permission !== SUPER_PERM && perms.includes(SUPER_PERM)) {
+      setError('Zuerst super_access entfernen, um einzelne Rechte zu ändern.');
+      return;
+    }
     setPermBusy(`${username}:${permission}`);
     setError('');
     const url = currentlyHas ? '/api/admin/revoke' : '/api/admin/grant';
@@ -333,15 +346,11 @@ export default function SuperSettings() {
       setError(data.error || 'Recht konnte nicht geändert werden');
       return;
     }
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.username !== username) return u;
-        const set = new Set(u.permissions || []);
-        if (currentlyHas) set.delete(permission);
-        else set.add(permission);
-        return { ...u, permissions: [...set] };
-      })
-    );
+    try {
+      await loadPanel();
+    } catch (e) {
+      setError(e?.message || 'Tabelle konnte nicht aktualisiert werden');
+    }
   }
 
   async function deleteTesterBugReport(id) {
@@ -384,8 +393,9 @@ export default function SuperSettings() {
       <section style={section}>
         <h2 style={h2}>Nutzer-Rechte</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
-          <code>tester_access</code> markiert User als Tester (Bottom-Bar mit Kamera). Über zusätzliche Rechte wie
-          <code> rpg_access</code> steuerst du, welche Features Tester nutzen dürfen.
+          <code>super_access</code> = Vollzugriff (alle Rechte aus dieser Liste).{' '}
+          <code>tester_access</code> markiert User als Tester (Bottom-Bar mit Kamera).{' '}
+          <code>rpg_access</code> erlaubt das RPG inkl. Questmaker.
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={tableStyle}>
@@ -404,25 +414,25 @@ export default function SuperSettings() {
                 <tr key={u.username}>
                   <td style={thtd}>
                     <strong>{u.username}</strong>
-                    {u.username === superuserName ? (
+                    {(u.permissions || []).includes(SUPER_PERM) ? (
                       <span style={{ display: 'block', fontSize: 11, opacity: 0.65 }}>
-                        Superuser
+                        super_access (Vollzugriff)
                       </span>
                     ) : null}
                   </td>
                   {knownPermissions.map((p) => {
-                    const has = (u.permissions || []).includes(p);
-                    const busy =
-                      permBusy === `${u.username}:${p}` || u.username === superuserName;
+                    const has = effectivePerm(u.permissions, p);
+                    const lockedBySuper = p !== SUPER_PERM && (u.permissions || []).includes(SUPER_PERM);
+                    const busy = permBusy === `${u.username}:${p}`;
                     return (
                       <td key={p} style={{ ...thtd, textAlign: 'center' }}>
                         <input
                           type="checkbox"
                           checked={has}
-                          disabled={busy}
+                          disabled={busy || lockedBySuper}
                           title={
-                            u.username === superuserName
-                              ? 'Superuser hat immer alle Rechte'
+                            lockedBySuper
+                              ? 'Zuerst super_access entfernen, um einzelne Rechte zu ändern'
                               : ''
                           }
                           onChange={() => togglePermission(u.username, p, has)}
@@ -438,7 +448,7 @@ export default function SuperSettings() {
       </section>
 
       <section style={section}>
-        <h2 style={h2}>Eigene Testeroberfläche (sash)</h2>
+        <h2 style={h2}>Eigene Testeroberfläche</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
           Dieser Schalter blendet nur deine eigene Testerleiste ein/aus. Rechte und Testerstatus bleiben gleich.
         </p>
@@ -489,7 +499,7 @@ export default function SuperSettings() {
         <div style={{ marginBottom: '1rem' }}>
           <strong>Aktive Tester: </strong>
           {users
-            .filter((u) => (u.permissions || []).includes('tester_access'))
+            .filter((u) => effectivePerm(u.permissions, 'tester_access'))
             .map((u) => u.username)
             .join(', ') || 'Keine'}
         </div>

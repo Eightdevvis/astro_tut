@@ -2,10 +2,10 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import SuperSettings from '../../components/SuperSettings.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
-import { SUPERUSER } from '../../lib/permissions.js';
+import { hasPermission } from '../../lib/permissions.js';
 
 const username = await getUsernameFromCookies(Astro.cookies);
-if (!username || username !== SUPERUSER) {
+if (!username || !(await hasPermission(username, 'super_access'))) {
   return Astro.redirect('/');
 }
 ---

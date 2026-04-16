@@ -861,6 +861,13 @@ html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
   color: color-mix(in srgb, var(--rpg-ink) 38%, var(--rpg-page-bg));
 }
 
+.rpg-tree-panel__edit-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--rpg-ink) 48%, var(--rpg-page-bg));
+}
+
 .rpg-tree-panel__edit-row {
   display: flex;
   gap: 0.45rem;

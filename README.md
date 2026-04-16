@@ -51,13 +51,20 @@ npm run dev
 
 Jeder User kann Rechte haben. Rechte sind einfache Strings in der Tabelle `user_permissions`.
 
-**Superuser:** `sash` — hat hardcoded immer alle Rechte, unabhängig von der DB.
+**Vollzugriff:** Recht `super_access` in `user_permissions` — `hasPermission(username, irgendetwas)` ist dann true (siehe `src/lib/permissions.js`). Zusätzlich hat der Login-Name aus **`SITE_SUPERUSER`** (Umgebungsvariable) dieselbe Wirkung; wenn unset/leer, Fallback **`sash`**. Logik nur in `permissions.js`.
 
 | Recht | Beschreibung |
 | :--- | :--- |
+| `super_access` | Admin/Super-Einstellungen, globale RPG-Tools, Bugreport-Verwaltung |
 | `quote_poster` | Darf Zitate auf der Startseite posten — Seite: `/quotes/new` |
+| `tester_access` | Tester-Oberfläche (Bug-Screenshots) |
+| `rpg_access` | RPG inkl. Questmaker |
 
-**Rechte erteilen/entziehen** (nur als `sash`):
+**Nach Umstellung von älteren Deployments:** mindestens einem Account einmalig `super_access` in der DB setzen (z. B. per Turso/SQLite-Konsole), sonst ist `/super/settings` nicht erreichbar:
+
+`INSERT OR IGNORE INTO user_permissions (username, permission) VALUES ('dein_admin_user', 'super_access');`
+
+**Rechte erteilen/entziehen** (nur mit `super_access`):
 ```sh
 # Recht erteilen
 POST /api/admin/grant   { "username": "lea", "permission": "quote_poster" }

@@ -199,7 +199,7 @@ export default function RpgQuestHub() {
   useEffect(() => {
     if (!bootstrapped || !canPersist || !dirtySinceBootstrap) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone, vitals, location, locationCatalog };
+      const payload = { graph, addedIds: [...added], stepDone, vitals, location, locationCatalog, locations };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {

@@ -4,7 +4,7 @@ import {
   loadStepDone,
   clearAllRpgLocalStorage,
 } from './rpg-persistence.js';
-import { SAMPLE_RPG_GRAPH } from './rpg-quests-data.js';
+import { EMPTY_RPG_GRAPH } from './rpg-quests-data.js';
 import {
   isValidGraphShape,
   mergeStepDoneBase,
@@ -167,7 +167,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
 
 /** @param {any} data */
 export function pickRpgPayloadFromResponse(data) {
-  const raw = isValidGraphShape(data?.graph) ? data.graph : SAMPLE_RPG_GRAPH;
+  const raw = isValidGraphShape(data?.graph) ? data.graph : EMPTY_RPG_GRAPH;
   const graph = migrateRpgGraphToV2(raw);
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const stepDone = data?.stepDone && typeof data.stepDone === 'object' ? data.stepDone : {};
@@ -190,7 +190,7 @@ export function pickRpgPayloadFromResponse(data) {
 }
 
 /**
- * @param {any} data GET-Antwort oder null (Sample-Fallback)
+ * @param {any} data GET-Antwort oder null (leerer Graph als Fallback)
  * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
  */
 export function deriveRpgUiStateFromPayload(data) {

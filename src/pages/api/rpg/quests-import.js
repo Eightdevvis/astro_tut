@@ -1,5 +1,5 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
 import { saveRpgState } from '../../../lib/rpg-state-db.js';
@@ -35,7 +35,7 @@ function forbidden() {
  */
 export async function POST({ request, cookies }) {
   const actor = await getUsernameFromCookies(cookies);
-  if (!actor || actor !== SUPERUSER) return forbidden();
+  if (!actor || !(await hasPermission(actor, 'super_access'))) return forbidden();
 
   let body;
   try {

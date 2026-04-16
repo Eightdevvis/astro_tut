@@ -8,7 +8,7 @@ import {
 
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number }} RpgGraphQuest */
+/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number; questmakerPrompt?: string }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
@@ -168,17 +168,141 @@ export function questMap(graph) {
   return m;
 }
 
+/** @param {'main' | 'side'} kind @param {boolean} compact */
+function layoutShapeRadius(kind, compact) {
+  return kind === 'main' ? (compact ? 30 : 28) : compact ? 26 : 24;
+}
+
+/**
+ * Lokale AABB relativ zum Knotenmittelpunkt (SVG wie RpgQuestTree: Label unter dem Shape).
+ * @param {RpgGraphQuest} q
+ * @param {boolean} compact
+ */
+function layoutNodeLocalBounds(q, compact) {
+  const r = layoutShapeRadius(q.kind, compact);
+  const title = typeof q.title === 'string' ? q.title : '';
+  const labelText = title.length > 20 ? `${title.slice(0, 18)}…` : title;
+  const charW = compact ? 5.7 : 6.2;
+  const labelHalfW = Math.min(78, (Math.max(labelText.length, 1) * charW) / 2);
+  const labelBelow = 16;
+  const labelH = compact ? 12 : 13;
+  const sidePad = 6;
+  const halfW = Math.max(r + sidePad, labelHalfW + sidePad);
+  return {
+    left: -halfW,
+    right: halfW,
+    top: -(r + sidePad),
+    bottom: r + labelBelow + labelH + sidePad,
+  };
+}
+
+/**
+ * Iterativ überlappende Knoten-Hüllen auseinanderdrücken (SAT-Minimum Translation).
+ * @param {Record<string, { x: number; y: number }>} positions — wird mutiert
+ * @param {RpgGraph} graph
+ * @param {boolean} compact
+ * @param {{ iterations?: number; extraSeparation?: number }} [opts]
+ */
+export function resolveQuestNodeCollisions(positions, graph, compact, opts = {}) {
+  const iterations = opts.iterations ?? 48;
+  const extra = opts.extraSeparation ?? 2;
+  const byId = questMap(graph);
+  const ids = (graph.quests || []).map((q) => q.id).filter((id) => positions[id]);
+  const bounds = new Map(
+    ids.map((id) => {
+      const q = byId.get(id);
+      return [id, q ? layoutNodeLocalBounds(q, compact) : { left: -24, right: 24, top: -28, bottom: 44 }];
+    })
+  );
+
+  for (let it = 0; it < iterations; it++) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const ia = ids[i];
+        const ib = ids[j];
+        const ba = bounds.get(ia);
+        const bb = bounds.get(ib);
+        const pa = positions[ia];
+        const pb = positions[ib];
+        if (!ba || !bb || !pa || !pb) continue;
+
+        const ax0 = pa.x + ba.left;
+        const ax1 = pa.x + ba.right;
+        const ay0 = pa.y + ba.top;
+        const ay1 = pa.y + ba.bottom;
+        const bx0 = pb.x + bb.left;
+        const bx1 = pb.x + bb.right;
+        const by0 = pb.y + bb.top;
+        const by1 = pb.y + bb.bottom;
+
+        const overlapX = Math.min(ax1, bx1) - Math.max(ax0, bx0);
+        const overlapY = Math.min(ay1, by1) - Math.max(ay0, by0);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+
+        if (overlapX < overlapY) {
+          const mag = overlapX * 0.5 + extra;
+          const dir = pa.x < pb.x ? 1 : -1;
+          const sx = dir * mag;
+          pa.x -= sx;
+          pb.x += sx;
+        } else {
+          const mag = overlapY * 0.5 + extra;
+          const dir = pa.y < pb.y ? 1 : -1;
+          const sy = dir * mag;
+          pa.y -= sy;
+          pb.y += sy;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * @param {Record<string, { x: number; y: number }>} positions
+ * @param {RpgGraph} graph
+ * @param {boolean} compact
+ * @param {number} padding
+ */
+function normalizeLayoutOrigin(positions, graph, compact, padding) {
+  const quests = graph.quests || [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const q of quests) {
+    const p = positions[q.id];
+    if (!p) continue;
+    const b = layoutNodeLocalBounds(q, compact);
+    minX = Math.min(minX, p.x + b.left);
+    maxX = Math.max(maxX, p.x + b.right);
+    minY = Math.min(minY, p.y + b.top);
+    maxY = Math.max(maxY, p.y + b.bottom);
+  }
+  if (!Number.isFinite(minX)) return;
+  const dx = padding - minX;
+  const dy = padding - minY;
+  for (const q of quests) {
+    const p = positions[q.id];
+    if (p) {
+      p.x += dx;
+      p.y += dy;
+    }
+  }
+}
+
 /**
  * Layer0 = keine eingehenden Kanten (unten). Höhere Layer = weiter oben.
  * @param {RpgGraph} graph
- * @param {{ rowGap?: number; colGap?: number; padding?: number }} [opts]
+ * @param {{ rowGap?: number; colGap?: number; padding?: number; compact?: boolean; collisionIterations?: number }} [opts]
  */
 export function computeLayeredLayout(graph, opts = {}) {
   const rowGap = opts.rowGap ?? 108;
   const colGap = opts.colGap ?? 128;
   const padding = opts.padding ?? 72;
-
+  const compact = !!opts.compact;
   const quests = graph.quests || [];
+  const collisionIterations =
+    opts.collisionIterations ?? Math.min(120, 36 + Math.floor(quests.length * 2.5));
   const ids = quests.map((q) => q.id);
   const incoming = buildIncomingMap(graph);
 
@@ -244,8 +368,20 @@ export function computeLayeredLayout(graph, opts = {}) {
     });
   }
 
-  const width = padding * 2 + maxRowW + 80;
-  const height = padding * 2 + (maxL + 1) * rowGap;
+  resolveQuestNodeCollisions(positions, graph, compact, { iterations: collisionIterations });
+  normalizeLayoutOrigin(positions, graph, compact, padding);
+
+  let maxR = 0;
+  let maxB = 0;
+  for (const q of quests) {
+    const p = positions[q.id];
+    if (!p) continue;
+    const b = layoutNodeLocalBounds(q, compact);
+    maxR = Math.max(maxR, p.x + b.right);
+    maxB = Math.max(maxB, p.y + b.bottom);
+  }
+  const width = Math.ceil(maxR + padding);
+  const height = Math.ceil(maxB + padding);
   return { positions, width, height, maxLevel: maxL };
 }
 

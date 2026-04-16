@@ -1,7 +1,7 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { hasPermission, SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
-import { SAMPLE_RPG_QUESTS, SAMPLE_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
+import { EMPTY_RPG_GRAPH, SAMPLE_RPG_QUESTS } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
 import {
@@ -19,6 +19,8 @@ import {
   normalizeRpgLocationCatalog,
   collectLocationEntriesFromGraph,
   normalizeRpgLocationState,
+  normalizeRpgUserLocationRows,
+  resolveRpgUserPickerLocations,
 } from '../../../lib/rpg-location.js';
 import {
   listQuestmakerCatalogRows,
@@ -33,18 +35,18 @@ function forbidden() {
 }
 
 /**
- * GET /api/rpg/quests — Graph + addedIds + stepDone (Superuser), aus DB oder Default.
+ * GET /api/rpg/quests — Graph + addedIds + stepDone (rpg_access), aus DB oder Default.
  */
 export async function GET({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
   const hasRpgAccess = username ? await hasPermission(username, 'rpg_access') : false;
-  if (!username || (username !== SUPERUSER && !hasRpgAccess)) {
+  if (!username || !hasRpgAccess) {
     return forbidden();
   }
 
   await ensureDbSchema();
   const stored = await getRpgState(username);
-  let graph = SAMPLE_RPG_GRAPH;
+  let graph = EMPTY_RPG_GRAPH;
   let addedIds = [];
   let stepDone = {};
   let persisted = false;
@@ -54,7 +56,7 @@ export async function GET({ cookies }) {
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
-    graph = /** @type {typeof SAMPLE_RPG_GRAPH} */ (stored.graph);
+    graph = /** @type {typeof EMPTY_RPG_GRAPH} */ (stored.graph);
     persisted = true;
     schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
@@ -68,7 +70,13 @@ export async function GET({ cookies }) {
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
 
   const questmakerItems = await listQuestmakerCatalogRows();
-  const locations = await listRpgLocations();
+  const globalLocs = await listRpgLocations();
+  const locations = resolveRpgUserPickerLocations(
+    stored
+      ? { locationCatalog: stored.locationCatalog, locations: stored.locations }
+      : null,
+    globalLocs
+  );
 
   return new Response(
     JSON.stringify({
@@ -98,7 +106,7 @@ export async function GET({ cookies }) {
 export async function PUT({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
   const hasRpgAccess = username ? await hasPermission(username, 'rpg_access') : false;
-  if (!username || (username !== SUPERUSER && !hasRpgAccess)) {
+  if (!username || !hasRpgAccess) {
     return forbidden();
   }
 
@@ -172,6 +180,9 @@ export async function PUT({ request, cookies }) {
     vitals,
     location,
     locationCatalog,
+    locations: Array.isArray(body.locations)
+      ? normalizeRpgUserLocationRows(body.locations)
+      : normalizeRpgUserLocationRows(base.locations),
     schemaVersion: Math.max(
       RPG_PAYLOAD_SCHEMA_VERSION,
       coerceRpgPayloadSchemaVersion(base.schemaVersion)
@@ -222,7 +233,11 @@ export async function PUT({ request, cookies }) {
   await saveRpgState(username, payload);
 
   const questmakerItems = await listQuestmakerCatalogRows();
-  const locations = await listRpgLocations();
+  const globalLocsAfter = await listRpgLocations();
+  const locations = resolveRpgUserPickerLocations(
+    { locationCatalog: payload.locationCatalog, locations: payload.locations },
+    globalLocsAfter
+  );
 
   return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog }), {
     status: 200,

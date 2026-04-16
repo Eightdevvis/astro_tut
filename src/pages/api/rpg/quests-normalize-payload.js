@@ -1,5 +1,5 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
-import { SUPERUSER } from '../../../lib/permissions.js';
+import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { listAllRpgStates, saveRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
@@ -19,11 +19,11 @@ function forbidden() {
 /**
  * POST /api/rpg/quests-normalize-payload — alle Zeilen in `rpg_user_state` auf kanonisches Graph-v2-Format schreiben
  * (`migrateRpgGraphToV2`: Steps, questRewards inkl. optional unlockAtPercent, ohne Legacy rewards).
- * Nur Superuser. Idempotent wenn schon normalisiert.
+ * Nur super_access. Idempotent wenn schon normalisiert.
  */
 export async function POST({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
-  if (!username || username !== SUPERUSER) {
+  if (!username || !(await hasPermission(username, 'super_access'))) {
     return forbidden();
   }
 

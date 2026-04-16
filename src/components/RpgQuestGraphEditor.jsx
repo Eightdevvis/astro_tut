@@ -85,6 +85,8 @@ export default function RpgQuestGraphEditor({
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(/** @type {string | null} */ (null));
   const aiSeedRef = useRef('');
+  /** Zuletzt erfolgreich an die KI gesandter Questmaker-Prompt (Session); beim Speichern in die Quest übernommen. */
+  const lastQmPromptRef = useRef('');
   /** @type {{ question: string; answer: string }[]} */
   const [clarifyHistoryPairs, setClarifyHistoryPairs] = useState([]);
   /** @type {string[] | null} */
@@ -119,9 +121,11 @@ export default function RpgQuestGraphEditor({
   useEffect(() => {
     if (!open) {
       aiSeedRef.current = '';
+      lastQmPromptRef.current = '';
       aiQuestmakerItemsRef.current = [];
       return;
     }
+    lastQmPromptRef.current = '';
     if (mode === 'edit' && questId) {
       aiQuestmakerItemsRef.current = [];
       const q = graph.quests.find((x) => x.id === questId);
@@ -150,7 +154,8 @@ export default function RpgQuestGraphEditor({
         orderInLayer: typeof q.orderInLayer === 'number' ? q.orderInLayer : 0,
       };
       resetAiSession();
-      setAiPrompt('');
+      const storedQm = typeof q.questmakerPrompt === 'string' ? q.questmakerPrompt : '';
+      setAiPrompt((editEntry ?? 'form') === 'ai' ? storedQm : '');
       setCreateMode('manual');
       setAiLoading(false);
       setQmPhase((editEntry ?? 'form') === 'ai' ? 'prompt' : 'result');
@@ -314,6 +319,7 @@ export default function RpgQuestGraphEditor({
       return;
     }
     const questRewards = draftRewardRowsToStoredQuestRewards(rewardRows);
+    const qmSaved = lastQmPromptRef.current.trim();
     const quest = {
       id: nid,
       kind,
@@ -322,6 +328,7 @@ export default function RpgQuestGraphEditor({
       steps,
       questRewards,
       orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+      ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
     };
     const next = upsertQuestInGraph(graph, quest, [...prereqIds]);
     if (graphHasCycle(next)) {
@@ -438,8 +445,10 @@ export default function RpgQuestGraphEditor({
         setClarifyAnswerBuf(data.questions.map(() => ''));
         return;
       }
+      const usedPromptSnapshot = aiSeedRef.current.trim();
       resetAiSession();
       applyGeneratedQuestPayload(data);
+      if (usedPromptSnapshot) lastQmPromptRef.current = usedPromptSnapshot;
       if (onlyQuestmaker) setQmPhase('result');
     } catch {
       setAiError('Netzwerkfehler');
@@ -466,7 +475,12 @@ export default function RpgQuestGraphEditor({
   const handleQmRegenerate = () => {
     setQmPhase('prompt');
     resetAiSession();
-    setAiPrompt('');
+    const qPersist =
+      mode === 'edit' && questId ? graph.quests.find((x) => x.id === questId) : null;
+    const seed =
+      lastQmPromptRef.current.trim() ||
+      (qPersist && typeof qPersist.questmakerPrompt === 'string' ? qPersist.questmakerPrompt.trim() : '');
+    setAiPrompt(seed);
     if (mode === 'edit' && editQmBaselineRef.current) {
       const b = editQmBaselineRef.current;
       setStepDrafts(b.stepDrafts);
