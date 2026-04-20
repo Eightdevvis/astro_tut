@@ -142,6 +142,12 @@ export default function RpgQuestGraphEditor({
         'Mindestens ein Schritt war nicht konkret genug. Bitte formuliere überprüfbare Handlungen.',
       missing_questmaker_items:
         'Für neue Item-IDs fehlen vollständige Item-Definitionen. Bitte Prompt konkretisieren oder Item-Namen angeben.',
+      item_lookup_no_candidates:
+        'Die Item-Suche hat keine belastbaren Treffer gefunden. Bitte Item-Name und Stichworte konkreter beschreiben.',
+      item_lookup_ambiguous:
+        'Die Item-Suche war mehrdeutig. Bitte den beabsichtigten Item-Typ klarer benennen.',
+      item_resolution_failed:
+        'Die KI konnte die Item-Treffer nicht sauber auflösen. Bitte erneut generieren oder Prompt präzisieren.',
       invalid_package_payload:
         'Das KI-Paket war unvollständig. Bitte den Unterabschnitt enger und konkreter beschreiben.',
       package_placeholder_steps:

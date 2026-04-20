@@ -1,7 +1,10 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
-import { listQuestmakerCatalogRows } from '../../../lib/rpg-questmaker-catalog-db.js';
+import {
+  listQuestmakerCatalogRows,
+  searchQuestmakerCatalogCandidates,
+} from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
 import {
   normalizeQuestStepsTree,
@@ -18,19 +21,28 @@ const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
 const MAX_CLARIFY_ROUNDS = 2;
 const MAX_PACKAGE_QUESTS = 16;
+const MAX_LOOKUP_REQUESTS = 24;
+const MAX_LOOKUP_CANDIDATES = 6;
 
 const PLACEHOLDER_PATTERNS = [
   /\betc\b/i,
-  /\bund so weiter\b/i,
+  /\bund\s+so\s+weiter\b/i,
   /\birgendwie\b/i,
-  /\bspäter mal\b/i,
-  /\bgather all\b/i,
-  /\bget all\b/i,
-  /\bschreibe die software\b/i,
-  /\bresearch options\b/i,
-  /\bcollect components\b/i,
-  /\bdo setup\b/i,
-  /\bmake progress\b/i,
+  /\bspäter\b/i,
+  /\bwhatever\b/i,
+  /\bthing\b/i,
+  /\bstuff\b/i,
+];
+
+const GENERIC_PATTERNS = [
+  /\bsetup\b/i,
+  /\bresearch\b/i,
+  /\bcollect\b/i,
+  /\bgather\b/i,
+  /\bplan\b/i,
+  /\borganize\b/i,
+  /\bimplement\b/i,
+  /\bdo\b/i,
 ];
 
 /** @param {string | undefined} raw */
@@ -45,7 +57,7 @@ function chatCompletionsUrl(raw) {
  */
 const JSON_OBJECT_INSTRUCTION = `
 
-Antworte ausschließlich mit einem JSON-Objekt (kein Markdown, kein Code-Fence). Pflicht-Top-Level-Key: "responseType" mit dem Wert "clarify" oder "quest".
+Antworte ausschließlich mit einem JSON-Objekt (kein Markdown, kein Code-Fence). Pflicht-Top-Level-Key: "responseType" mit dem Wert "clarify" oder "quest" (optional "package", falls unten aktiviert).
 
 Wenn "responseType":"clarify":
 - "questions": Array von 1–6 kurzen Rückfragen auf Deutsch (was dir für eine realistische Quest noch fehlt: Ort, Datum, Institution, Budget, …).
@@ -57,8 +69,9 @@ Wenn "responseType":"quest":
 - "kind": "main" oder "side"
 - "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
 - "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } oder { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } (amount darf negativ sein); optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
-- "questmakerItems": Pflicht sobald du irgendwo eine **neue** itemId verwendest (nicht in ITEM_KATALOG): Array von { "id", "category", "title", "description" } — category eine von: alltag, studium, arbeit, gesundheit, beziehungen, organisation, sonstiges; title und description jeweils nicht leer (Kurzbeschreibung des Items).
 - "steps": Array aus Schritt-Objekten (siehe unten)
+- "itemLookupRequests": optionales Array (max ${MAX_LOOKUP_REQUESTS}) für jede unklare Item-Wahl: { "itemId": "slug", "name": "gesuchter Name", "keywords": ["..."], "reason": "kurz" }.
+  Nutze hier echte Suchbegriffe. Die finale Katalog-Auflösung macht der Server in einem separaten Schritt.
 
 Schritt-Objekt (rekursiv, "substeps" optional):
 - "id": kurzer technischer Schlüssel (ascii, eindeutig innerhalb der Quest)
@@ -72,26 +85,10 @@ Schritt-Objekt (rekursiv, "substeps" optional):
 Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. **Inhalt** immer echtes Leben des Nutzers — keine erfundene Quest, keine Spielwelt. **Sprache** darf Alltag als bedeutsam, spannend oder fast magisch rahmen (Metaphern, leichte Mystik), aber ohne RPG-Klischees wie „Held“, „Dungeon“, „NPC“. Die internen Reward-Typen "heart"/"mana" bei "points" sind erlaubt (Symbole in der UI).
 
 Qualitätsregeln (verbindlich):
-- Keine Platzhalter-Schritte wie "gather all components", "write software", "research options", "etc.".
-- Jeder Leaf-Step muss eine überprüfbare Handlung enthalten (Verb + konkretes Objekt/Ziel).
-- Wenn ein Schritt ein Sammelpunkt ist (z. B. "Komponenten beschaffen"), dann als Gruppen-Step mit konkreten Substeps.
-- Bei mehrdeutigen Kernfakten (Budget, vorhandene Teile, Ort, Frist, Zielniveau) zuerst **clarify** statt raten.
-
-Negativbeispiele (verboten):
-- "Gather all components needed"
-- "Get a display and a raspberry pi and all other components"
-- "Write the software"
-- "Do setup"
-- "Research options and decide from your heart"
-- "Plan it somehow and continue later"
-
-Positivbeispiele (gewünscht):
-- "Komponenten beschaffen" + Substeps: "Display 24'' auswählen", "Raspberry Pi 5 (8GB) bestellen", "USB-Mikrofon auswählen", ...
-- "Basis-Software entwickeln" + Substeps: "Main loop starten", "Speech-to-text anbinden", "Lokales Prompt-Routing", "Smoke-Test auf Deutsch"
-- "Studienentscheidung eingrenzen" + Substeps mit klaren Quellen, Fristen, Rückmeldung von 2 konkreten Personen
-- "Tutor-Modul testen" + Substeps: "15-Minuten-Lernsession", "Fehlerprotokoll", "Nächste Iteration priorisieren"
-- "Bewerbungsfrist absichern" mit \`timeDueAt\`
-- "Entscheidung dokumentieren" mit konkretem Output (eine Liste, ein Sheet, ein Final-Entscheid)`;
+- Keine Platzhalter oder reine Sammelphrasen ("etc", "do stuff", "später", ...).
+- Jeder Leaf-Step beschreibt eine nachvollziehbare reale Aktion (was wird erzeugt, geprüft oder eingereicht).
+- Bei Sammelpunkten nutze Substeps mit überprüfbaren Outcomes.
+- Bei fehlenden Kernfakten zuerst "clarify", nicht raten.`;
 
 const JSON_OBJECT_INSTRUCTION_PACKAGE = `
 
@@ -103,26 +100,8 @@ Optional kannst du bei komplexen Vorhaben statt einer Einzelquest ein Paket lief
 - "quests": Array von 1 bis ${MAX_PACKAGE_QUESTS} Quest-Objekten (gleiches Quest-Shape wie bei responseType "quest")
 - "edges": optionale Array von { "from":"questId", "to":"questId" } zwischen Quests im Paket
 - "unlockHints": optionales Array kurzer Hinweise für grobe Container-Unlocks (nur Hinweise, keine persistenten Regeln)
-
-Wenn ein passendes Item schon in ITEM_KATALOG steht, nutze dieselbe itemId. Wenn du ein neues Item brauchst: erfinde eine stabile slug-artige itemId und liefere die vollständige Zeile in "questmakerItems". Weder neue Items ohne questmakerItems noch leere description/title bei neuen Items.
+- "itemLookupRequests": optional wie oben, quer über alle Quests.
 `;
-
-/** @param {{ id: string; category: string; title: string; description: string }[]} rows */
-function formatCatalogInstruction(rows) {
-  if (!rows.length) {
-    return `
-
-ITEM_KATALOG: (noch leer — du darfst neue Items mit "questmakerItems" anlegen oder nur Text-Belohnungen nutzen.)`;
-  }
-  const lines = rows.map(
-    (r) =>
-      `- ${r.category} | ${r.id} | ${r.title}${r.description ? ` — ${String(r.description).slice(0, 160)}` : ''}`
-  );
-  return `
-
-ITEM_KATALOG (bestehend — bei Treffer dieselbe itemId nutzen; sonst neue Id + vollständiger Eintrag in questmakerItems):
-${lines.join('\n')}`;
-}
 
 const SYSTEM_PROMPT = `Du hilfst beim Erstellen von Quests für ein persönliches Fortschritts-System — **Inhalt ausschließlich echtes Leben** (Studium, Arbeit, Gesundheit, Behörden, Beziehungen, Reisen, Familie): keine fiktive Handlung, keine Fantasy-Welt als Setting.
 
@@ -130,7 +109,29 @@ Priorität:
 1) Wenn dir für sinnvolle, **in der Realität vollständig plausible** Schritte wichtige Fakten fehlen (Ort, Zeitraum, Zielinstitution, …), antworte mit responseType "clarify" und stelle gezielte Rückfragen — nicht raten, nicht halluzinieren.
 2) Wenn genug Kontext da ist oder der Nutzer Rückfragen beantwortet hat, liefere responseType "quest" mit strukturierten steps (Gruppen/Unterschritte/Abhängigkeiten wo sinnvoll). Jeder Schritt muss sich im echten Leben so umsetzen lassen, wie beschrieben.
 
-**Ton:** Ermunternd. Quest-Titel, Beschreibung und Schritt-Labels dürfen **metaphorisch, leicht mystisch oder wie ein schöner Buchrand** klingen — bedeutungsvoll, expressiv, manchmal seltsam-im Bild (z. B. ironischer Titel, der die echte Situation trifft). So wird Alltag als lebendig und erwähnenswert gerahmt, ohne nüchtern zu wirken. Vermeide RPG-/Spielwelt-Klischees („Held“, „Dungeon“, „NPC“) und reine Verwaltungssprache.`;
+**Ton:** Ermunternd. Quest-Titel, Beschreibung und Schritt-Labels dürfen metaphorisch sein, müssen aber handlungsleitend und konkret bleiben. Vermeide RPG-/Spielwelt-Klischees („Held“, „Dungeon“, „NPC“) und reine Verwaltungssprache.`;
+
+const ITEM_RESOLUTION_PROMPT = `Du löst Item-Referenzen für Quest-Rewards auf.
+Du erhältst:
+1) unresolvedItems: Liste aus itemId/name/keywords
+2) candidatesByItemId: je unresolved itemId 0..${MAX_LOOKUP_CANDIDATES} Katalogkandidaten
+
+Antworte NUR JSON:
+{
+  "resolutions": [
+    {
+      "itemId": "unresolved-id",
+      "selectedExistingItemId": "catalog-id" | null,
+      "createNewItem": { "id": "...", "category": "alltag|studium|arbeit|gesundheit|beziehungen|organisation|sonstiges", "title": "...", "description": "..." } | null
+    }
+  ]
+}
+
+Regeln:
+- Wenn ein Kandidat klar passt: selectedExistingItemId setzen.
+- Wenn keiner passt: createNewItem vollständig ausfüllen.
+- Genau eine der beiden Varianten pro Resolution nutzen.
+- Niemals freie Texte außerhalb JSON ausgeben.`;
 
 /**
  * @param {string} code
@@ -198,35 +199,228 @@ function collectLeafLabels(steps) {
 }
 
 /**
- * @param {string} prompt
- */
-function promptLooksComplex(prompt) {
-  const p = prompt.toLowerCase();
-  return (
-    p.includes('projekt') ||
-    p.includes('study') ||
-    p.includes('studium') ||
-    p.includes('raspberry') ||
-    p.includes('software') ||
-    p.includes('hardware') ||
-    p.includes('assist') ||
-    p.includes('tutor') ||
-    p.includes('reise')
-  );
-}
-
-/**
  * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
  * @param {string} prompt
  */
 function assessQuestStepQuality(steps, prompt) {
   const leaves = collectLeafLabels(steps);
   const hasPlaceholder = leaves.some((label) => PLACEHOLDER_PATTERNS.some((re) => re.test(label)));
-  const noConcreteLeaf = leaves.some((label) => label.split(/\s+/).length < 3);
-  const complexPrompt = promptLooksComplex(prompt);
-  const tooFlatForComplex = complexPrompt && !hasNestedSubsteps(steps) && countLeafSteps(steps) < 5;
-  const hasOnlyGeneric = leaves.length > 0 && leaves.every((label) => /plan|setup|research|gather|collect|write/i.test(label));
+  const noConcreteLeaf = leaves.some((label) => {
+    const words = label.split(/\s+/).filter(Boolean);
+    if (words.length >= 3) return false;
+    return !/\b(antrag|mail|formular|termin|liste|dokument|test|check|abgabe|kauf|call|ticket)\b/i.test(label);
+  });
+  const hasShallowShape = countLeafSteps(steps) < 4 && !hasNestedSubsteps(steps);
+  const hasOnlyGeneric =
+    leaves.length > 0 &&
+    leaves.every((label) => {
+      const lowered = label.toLowerCase();
+      return GENERIC_PATTERNS.some((re) => re.test(lowered));
+    });
+  const tooFlatForComplex = hasShallowShape && (prompt.length > 220 || leaves.length >= 4);
   return { hasPlaceholder, noConcreteLeaf, tooFlatForComplex, hasOnlyGeneric };
+}
+
+/**
+ * @param {string} apiKey
+ * @param {string | undefined} baseUrl
+ * @param {string} model
+ * @param {{ role: 'system' | 'user'; content: string }[]} messages
+ * @param {number} [temperature]
+ */
+async function requestJsonCompletion(apiKey, baseUrl, model, messages, temperature = 0.35) {
+  const upstream = await fetch(chatCompletionsUrl(baseUrl), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature,
+      messages,
+      response_format: { type: 'json_object' },
+    }),
+  });
+  const rawText = await upstream.text();
+  if (!upstream.ok) {
+    const err = new Error(`KI-Anbieter-Fehler (${upstream.status}): ${rawText.slice(0, 500)}`);
+    // @ts-ignore - lightweight error metadata
+    err.statusCode = upstream.status;
+    throw err;
+  }
+  const completion = JSON.parse(rawText);
+  const content = completion?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('Leere Modell-Antwort');
+  }
+  const parsed = JSON.parse(content);
+  return { completion, parsed };
+}
+
+/**
+ * @param {unknown} raw
+ */
+function normalizeLookupRequest(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = /** @type {Record<string, unknown>} */ (raw);
+  const itemId = typeof o.itemId === 'string' ? o.itemId.trim() : '';
+  const name = typeof o.name === 'string' ? o.name.trim() : '';
+  const reason = typeof o.reason === 'string' ? o.reason.trim() : '';
+  const keywords = Array.isArray(o.keywords)
+    ? o.keywords.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+    : [];
+  if (!itemId && !name && keywords.length === 0) return null;
+  return { itemId, name, reason, keywords };
+}
+
+/**
+ * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {ReturnType<typeof normalizeQuestRewardRows>} questRewardRows
+ * @param {Map<string, string>} idMap
+ */
+function remapItemIdsInQuest(steps, questRewardRows, idMap) {
+  const walk = (arr) => {
+    for (const s of arr || []) {
+      if (s?.reward && typeof s.reward === 'object' && s.reward.type === 'item' && idMap.has(s.reward.itemId)) {
+        s.reward.itemId = /** @type {string} */ (idMap.get(s.reward.itemId));
+      }
+      if (Array.isArray(s?.substeps) && s.substeps.length > 0) walk(s.substeps);
+    }
+  };
+  walk(steps);
+  for (const row of questRewardRows) {
+    const entry = row?.entry;
+    if (entry?.type === 'item' && idMap.has(entry.itemId)) {
+      entry.itemId = /** @type {string} */ (idMap.get(entry.itemId));
+    }
+  }
+}
+
+/**
+ * @param {Map<string, { itemId: string; name: string; keywords: string[]; reason: string }>} unresolvedMap
+ * @param {Array<{ itemId?: string; name?: string; keywords?: string[]; reason?: string }>} lookupRequests
+ */
+function mergeLookupRequests(unresolvedMap, lookupRequests) {
+  for (const req of lookupRequests) {
+    const id = String(req?.itemId || '').trim();
+    if (!id || !unresolvedMap.has(id)) continue;
+    const prev = /** @type {{ itemId: string; name: string; keywords: string[]; reason: string }} */ (unresolvedMap.get(id));
+    const nextName = String(req?.name || '').trim();
+    const nextReason = String(req?.reason || '').trim();
+    const nextKeywords = Array.isArray(req?.keywords) ? req.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
+    unresolvedMap.set(id, {
+      itemId: id,
+      name: nextName || prev.name,
+      reason: nextReason || prev.reason,
+      keywords: [...new Set([...(prev.keywords || []), ...nextKeywords])].slice(0, 10),
+    });
+  }
+}
+
+/**
+ * @param {{
+ *   unresolved: { itemId: string; name: string; keywords: string[]; reason: string }[];
+ *   lookupRequests: { itemId: string; name: string; reason: string; keywords: string[] }[];
+ *   apiKey: string;
+ *   baseUrl: string | undefined;
+ *   model: string;
+ * }} params
+ */
+async function resolveUnknownItemsForResponse(params) {
+  /** @type {Map<string, { itemId: string; name: string; keywords: string[]; reason: string }>} */
+  const unresolvedMap = new Map(params.unresolved.map((x) => [x.itemId, x]));
+  mergeLookupRequests(unresolvedMap, params.lookupRequests);
+  const unresolved = [...unresolvedMap.values()];
+  /** @type {Record<string, { id: string; category: string; title: string; description: string }[]>} */
+  const candidatesByItemId = {};
+  for (const req of unresolved) {
+    const candidates = await searchQuestmakerCatalogCandidates({
+      proposedItemId: req.itemId,
+      name: req.name,
+      keywords: req.keywords,
+      limit: MAX_LOOKUP_CANDIDATES,
+    });
+    candidatesByItemId[req.itemId] = candidates.map((x) => ({
+      id: x.id,
+      category: x.category,
+      title: x.title,
+      description: x.description,
+    }));
+  }
+
+  let completion;
+  let parsed;
+  try {
+    const resolution = await requestJsonCompletion(
+      params.apiKey,
+      params.baseUrl,
+      params.model,
+      [
+        { role: 'system', content: ITEM_RESOLUTION_PROMPT },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            unresolvedItems: unresolved,
+            candidatesByItemId,
+          }),
+        },
+      ],
+      0.2
+    );
+    completion = resolution.completion;
+    parsed = resolution.parsed;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'resolution_failed';
+    return { ok: false, error: jsonError('item_resolution_failed', 'Item-Auflösung durch KI fehlgeschlagen.', String(msg).slice(0, 500), 502) };
+  }
+
+  const rawRows = Array.isArray(parsed?.resolutions) ? parsed.resolutions : [];
+  /** @type {Map<string, string>} */
+  const remap = new Map();
+  /** @type {{ id: string; category: string; title: string; description: string }[]} */
+  const newItems = [];
+  for (const raw of rawRows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const itemId = typeof raw.itemId === 'string' ? raw.itemId.trim() : '';
+    if (!itemId || !unresolvedMap.has(itemId)) continue;
+    const picked = typeof raw.selectedExistingItemId === 'string' ? raw.selectedExistingItemId.trim() : '';
+    if (picked) {
+      const exists = (candidatesByItemId[itemId] || []).some((x) => x.id === picked);
+      if (!exists) {
+        return {
+          ok: false,
+          error: jsonError(
+            'item_lookup_ambiguous',
+            `KI hat unzulässigen Kandidaten für ${itemId} gewählt.`,
+            'Bitte Prompt präzisieren oder erneut generieren.',
+            502
+          ),
+        };
+      }
+      remap.set(itemId, picked);
+      continue;
+    }
+    const created = normalizeQuestmakerCatalogPayloadItem(raw.createNewItem);
+    if (created) {
+      newItems.push(created);
+      remap.set(itemId, created.id);
+    }
+  }
+
+  const unresolvedAfter = unresolved.filter((x) => !remap.has(x.itemId));
+  if (unresolvedAfter.length > 0) {
+    return {
+      ok: false,
+      error: jsonError(
+        'item_lookup_no_candidates',
+        'Nicht alle Item-Referenzen konnten aufgelöst werden.',
+        unresolvedAfter.map((x) => x.itemId).join(', '),
+        400
+      ),
+    };
+  }
+  return { ok: true, remap, newItems, completion };
 }
 
 /**
@@ -235,21 +429,15 @@ function assessQuestStepQuality(steps, prompt) {
  */
 function buildFallbackClarifyQuestions(prompt, clarifyRounds) {
   if (clarifyRounds >= MAX_CLARIFY_ROUNDS) return [];
-  const p = prompt.toLowerCase();
-  /** @type {string[]} */
-  const out = [];
-  if (/studium|study|uni/.test(p)) {
-    out.push('Welche konkreten Studiengänge oder Felder stehen aktuell realistisch zur Auswahl?');
-    out.push('Bis wann musst du dich entscheiden oder bewerben?');
-  }
-  if (/raspberry|pi|hardware|display|tutor|assist/.test(p)) {
-    out.push('Welche Hardware ist bereits vorhanden und was muss noch gekauft werden?');
-    out.push('Soll der Assistent offline/lokal laufen oder mit Cloud-Anbindung?');
-  }
-  if (out.length === 0) {
-    out.push('Welche 2-3 konkreten Randbedingungen sind fix (Zeit, Budget, Ort)?');
-  }
-  return out.slice(0, 6);
+  const hasDate = /\b\d{4}-\d{2}-\d{2}\b/.test(prompt);
+  const out = [
+    'Welches konkrete Ergebnis muss am Ende vorliegen (Dokument, Abgabe, Entscheidung, Termin)?',
+    'Welche festen Rahmenbedingungen gelten bereits (Zeit, Budget, Ort, vorhandene Mittel)?',
+    hasDate
+      ? 'Welche Teile sind bis zum genannten Datum zwingend fertig?'
+      : 'Gibt es eine feste Frist oder einen Stichtag?',
+  ];
+  return out.slice(0, 3);
 }
 
 /**
@@ -395,52 +583,26 @@ export async function POST({ request, cookies }) {
   const systemContent =
     SYSTEM_PROMPT +
     JSON_OBJECT_INSTRUCTION +
-    (usePackageMode ? JSON_OBJECT_INSTRUCTION_PACKAGE : '') +
-    formatCatalogInstruction(catalogRows);
-
-  let upstream;
-  try {
-    upstream = await fetch(chatCompletionsUrl(baseUrl), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.45,
-        messages: [
-          { role: 'system', content: systemContent },
-          { role: 'user', content: userContent },
-        ],
-        response_format: { type: 'json_object' },
-      }),
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Netzwerkfehler';
-    return new Response(JSON.stringify({ error: 'KI-Anbieter nicht erreichbar', detail: msg }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  const rawText = await upstream.text();
-  if (!upstream.ok) {
-    return new Response(
-      JSON.stringify({
-        error: 'KI-Anbieter-Fehler',
-        detail: rawText.slice(0, 500),
-        status: upstream.status,
-      }),
-      { status: 502, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+    (usePackageMode ? JSON_OBJECT_INSTRUCTION_PACKAGE : '');
 
   let completion;
+  let parsed;
   try {
-    completion = JSON.parse(rawText);
-  } catch {
-    return new Response(JSON.stringify({ error: 'Ungültige API-Antwort' }), {
+    const first = await requestJsonCompletion(
+      apiKey,
+      baseUrl,
+      model,
+      [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: userContent },
+      ],
+      0.45
+    );
+    completion = first.completion;
+    parsed = first.parsed;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Netzwerkfehler';
+    return new Response(JSON.stringify({ error: 'KI-Anbieter nicht erreichbar', detail: String(msg).slice(0, 500) }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -448,30 +610,15 @@ export async function POST({ request, cookies }) {
 
   await logRpgAiUsage(username, model, completion);
 
-  const content = completion?.choices?.[0]?.message?.content;
-  if (typeof content !== 'string' || !content.trim()) {
-    return new Response(JSON.stringify({ error: 'Leere Modell-Antwort' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return new Response(JSON.stringify({ error: 'Konnte Quest-JSON nicht parsen' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   const stepLabels = Array.isArray(parsed.stepLabels) ? parsed.stepLabels : [];
   /** @type {unknown[]} */
   let stepsRaw = coerceStepsArray(parsed.steps);
   const hasStepPayload = stepsRaw.length > 0 || stepLabels.length > 0;
   const questionsFromAi = Array.isArray(parsed.questions)
     ? parsed.questions.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  const lookupRequests = Array.isArray(parsed.itemLookupRequests)
+    ? parsed.itemLookupRequests.map((x) => normalizeLookupRequest(x)).filter(Boolean).slice(0, MAX_LOOKUP_REQUESTS)
     : [];
 
   if (!hasStepPayload) {
@@ -591,19 +738,27 @@ export async function POST({ request, cookies }) {
     /** @type {{ id: string; category: string; title: string; description: string }[]} */
     let questmakerItemsOut = [];
     if (needsNewDefinition.length > 0) {
-      const rawQm = Array.isArray(parsed.questmakerItems) ? parsed.questmakerItems : [];
-      const normalizedQm = rawQm.map((x) => normalizeQuestmakerCatalogPayloadItem(x)).filter(Boolean);
-      const qmById = new Map(normalizedQm.map((x) => [x.id, x]));
-      const missingQm = needsNewDefinition.filter((id) => !qmById.has(id));
-      if (missingQm.length > 0) {
-        return jsonError(
-          'missing_package_questmaker_items',
-          'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
-          missingQm.join(', '),
-          502
-        );
+      const unresolved = needsNewDefinition.map((id) => ({
+        itemId: id,
+        name: id.replace(/-/g, ' '),
+        keywords: [],
+        reason: 'package-reward-item',
+      }));
+      const resolved = await resolveUnknownItemsForResponse({
+        unresolved,
+        lookupRequests,
+        apiKey,
+        baseUrl,
+        model,
+      });
+      if (!resolved.ok) return resolved.error;
+      await logRpgAiUsage(username, model, resolved.completion);
+      for (const q of outQuests) {
+        const qRows = normalizeQuestRewardRows(q.questRewards || []);
+        remapItemIdsInQuest(q.steps || [], qRows, resolved.remap);
+        q.questRewards = qRows.map(questRewardRowToStored);
       }
-      questmakerItemsOut = needsNewDefinition.map((id) => /** @type {any} */ (qmById.get(id)));
+      questmakerItemsOut = resolved.newItems;
     }
     return new Response(
       JSON.stringify({
@@ -717,21 +872,25 @@ export async function POST({ request, cookies }) {
   /** @type {{ id: string; category: string; title: string; description: string }[]} */
   let questmakerItemsOut = [];
   if (needsNewDefinition.length > 0) {
-    const rawQm = Array.isArray(parsed.questmakerItems) ? parsed.questmakerItems : [];
-    const normalizedQm = rawQm
-      .map((x) => normalizeQuestmakerCatalogPayloadItem(x))
-      .filter(Boolean);
-    const qmById = new Map(normalizedQm.map((x) => [x.id, x]));
-    const missingQm = needsNewDefinition.filter((id) => !qmById.has(id));
-    if (missingQm.length > 0) {
-      return jsonError(
-        'missing_questmaker_items',
-        'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
-        missingQm.join(', '),
-        502
-      );
-    }
-    questmakerItemsOut = needsNewDefinition.map((id) => /** @type {any} */ (qmById.get(id)));
+    const unresolved = needsNewDefinition.map((id) => ({
+      itemId: id,
+      name: id.replace(/-/g, ' '),
+      keywords: [],
+      reason: 'quest-reward-item',
+    }));
+    const resolved = await resolveUnknownItemsForResponse({
+      unresolved,
+      lookupRequests,
+      apiKey,
+      baseUrl,
+      model,
+    });
+    if (!resolved.ok) return resolved.error;
+    await logRpgAiUsage(username, model, resolved.completion);
+    remapItemIdsInQuest(steps, questRewardRows, resolved.remap);
+    questRewards.length = 0;
+    for (const row of questRewardRows.map(questRewardRowToStored)) questRewards.push(row);
+    questmakerItemsOut = resolved.newItems;
   }
 
   return new Response(
