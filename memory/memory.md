@@ -20,6 +20,8 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | RPG — kommende Features (Backup, …) | [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc) |
 | RPG — vielleicht kommend (Default-Graph, …) | [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc) |
 | Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
+| Site — Theme-System (global, Light/Dark, Storage, Init) | [`site-theme-system.mdc`](site-theme-system.mdc) |
+| RPG — Theme-System (RPG-Ableitung vom Site-Theme) | [`rpg-theme-system.mdc`](rpg-theme-system.mdc) |
 | Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
 
 Weitere Themen: bei Bedarf neue Dateien unter `memory/` anlegen und in dieser Tabelle verlinken.

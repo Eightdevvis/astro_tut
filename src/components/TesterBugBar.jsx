@@ -1,47 +1,63 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
-const shellStyle = {
+const floatingButtonStyle = {
   position: 'fixed',
-  left: 0,
-  right: 0,
-  bottom: 0,
+  right: 'max(12px, calc(env(safe-area-inset-right, 0px) + 10px))',
+  bottom: 'max(12px, calc(env(safe-area-inset-bottom, 0px) + 10px))',
   zIndex: 1200,
-  padding: '8px max(10px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px))',
-  background: 'rgba(0, 0, 0, 0.72)',
-  backdropFilter: 'blur(5px)',
-  borderTop: '1px solid rgba(255,255,255,0.22)',
+  width: 56,
+  height: 56,
+  borderRadius: '999px',
+  border: '1px solid rgba(255,255,255,0.5)',
+  background: 'rgba(0, 0, 0, 0.42)',
+  backdropFilter: 'blur(6px)',
   color: '#fff',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
 };
 
-const innerStyle = {
+const overlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 1250,
+  background: 'rgba(0,0,0,0.46)',
   display: 'flex',
-  gap: 8,
-  flexDirection: 'column',
-  alignItems: 'stretch',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 12,
 };
 
-const actionBtn = {
+const modalStyle = {
+  width: 'min(420px, 100%)',
+  background: 'rgba(16,16,20,0.95)',
+  border: '1px solid rgba(255,255,255,0.2)',
+  borderRadius: 12,
+  boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+  color: '#fff',
+  padding: 14,
+};
+
+const modalActionStyle = {
   border: '1px solid rgba(255,255,255,0.35)',
   borderRadius: 8,
-  padding: '8px 10px',
+  padding: '8px 12px',
   background: 'rgba(255,255,255,0.1)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '0.85rem',
-};
-
-const topRowStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
+  fontSize: '0.86rem',
 };
 
 export default function TesterBugBar() {
   const [user, setUser] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [comment, setComment] = useState('');
   const [message, setMessage] = useState('');
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState('');
 
   useEffect(() => {
     fetch('/api/user', { credentials: 'same-origin' })
@@ -53,8 +69,8 @@ export default function TesterBugBar() {
   const showBar = useMemo(() => Boolean(user?.isTester && user?.testerUiEnabled), [user]);
   if (!showBar) return null;
 
-  async function captureAndSend() {
-    setBusy(true);
+  async function openCaptureDialog() {
+    setCapturing(true);
     setMessage('');
     try {
       const { default: html2canvas } = await import('html2canvas');
@@ -86,7 +102,30 @@ export default function TesterBugBar() {
           });
         },
       });
-      const screenshotDataUrl = canvas.toDataURL('image/png', 0.95);
+      setScreenshotDataUrl(canvas.toDataURL('image/png', 0.95));
+      setShowModal(true);
+    } catch (err) {
+      setMessage(err?.message || 'Screenshot fehlgeschlagen');
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  function closeModal() {
+    if (sending) return;
+    setShowModal(false);
+    setComment('');
+    setScreenshotDataUrl('');
+  }
+
+  async function sendReport() {
+    if (!screenshotDataUrl) {
+      setMessage('Kein Screenshot vorhanden');
+      return;
+    }
+    setSending(true);
+    setMessage('');
+    try {
       const res = await fetch('/api/tester-bug-reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,40 +138,95 @@ export default function TesterBugBar() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Upload fehlgeschlagen');
+      closeModal();
       setComment('');
       setMessage('Screenshot wurde gesendet.');
     } catch (err) {
       setMessage(err?.message || 'Screenshot fehlgeschlagen');
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   }
 
   return (
-    <aside style={shellStyle}>
-      <div style={innerStyle}>
-        <div style={topRowStyle}>
-          <button type="button" style={actionBtn} disabled={busy} onClick={() => void captureAndSend()}>
-            {busy ? 'Sende…' : '📷 Bug-Screenshot senden'}
-          </button>
-          {message ? <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>{message}</span> : null}
-        </div>
-        <input
-          type="text"
-          value={comment}
-          onInput={(e) => setComment(e.currentTarget.value)}
-          placeholder="Optionaler Kommentar zum Bug"
+    <>
+      {message ? (
+        <div
           style={{
-            border: '1px solid rgba(255,255,255,0.3)',
+            position: 'fixed',
+            right: 'max(12px, calc(env(safe-area-inset-right, 0px) + 10px))',
+            bottom: 'max(74px, calc(env(safe-area-inset-bottom, 0px) + 70px))',
+            zIndex: 1201,
+            maxWidth: 260,
             borderRadius: 8,
-            background: 'rgba(255,255,255,0.12)',
+            border: '1px solid rgba(255,255,255,0.22)',
+            background: 'rgba(0,0,0,0.72)',
             color: '#fff',
-            padding: '8px 10px',
-            width: '100%',
-            boxSizing: 'border-box',
+            padding: '6px 10px',
+            fontSize: '0.8rem',
           }}
-        />
-      </div>
-    </aside>
+        >
+          {message}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        style={floatingButtonStyle}
+        disabled={capturing || sending}
+        onClick={() => void openCaptureDialog()}
+        aria-label="Bug-Screenshot aufnehmen"
+        title="Bug-Screenshot aufnehmen"
+      >
+        {capturing ? (
+          <span style={{ fontSize: '0.78rem' }}>…</span>
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M8.5 6.5 9.8 5h4.4l1.3 1.5H18A3 3 0 0 1 21 9.5v7A3.5 3.5 0 0 1 17.5 20h-11A3.5 3.5 0 0 1 3 16.5v-7A3 3 0 0 1 6 6.5h2.5zm3.5 2A4.5 4.5 0 1 0 12 17a4.5 4.5 0 0 0 0-9zm0 2A2.5 2.5 0 1 1 12 15a2.5 2.5 0 0 1 0-5z"
+            />
+          </svg>
+        )}
+      </button>
+      {showModal ? (
+        <div style={overlayStyle} onClick={closeModal}>
+          <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 8 }}>
+              Bug-Screenshot senden
+            </div>
+            <textarea
+              value={comment}
+              onInput={(e) => setComment(e.currentTarget.value)}
+              placeholder="Optionale Nachricht"
+              rows={4}
+              style={{
+                width: '100%',
+                border: '1px solid rgba(255,255,255,0.26)',
+                borderRadius: 8,
+                background: 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                padding: '8px 10px',
+                boxSizing: 'border-box',
+                resize: 'vertical',
+                marginBottom: 10,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" style={modalActionStyle} onClick={closeModal} disabled={sending}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                style={{ ...modalActionStyle, background: 'rgba(72, 176, 255, 0.22)' }}
+                onClick={() => void sendReport()}
+                disabled={sending}
+              >
+                {sending ? 'Speichere…' : 'Speichern'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

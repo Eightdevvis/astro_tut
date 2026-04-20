@@ -2,7 +2,7 @@
  * Schema-Version des gespeicherten RPG-Payloads (`rpg_user_state.payload`).
  * Bei inkompatiblen Strukturänderungen hochzählen und Migration im API-Lesen/Speichern ergänzen.
  */
-export const RPG_PAYLOAD_SCHEMA_VERSION = 2;
+export const RPG_PAYLOAD_SCHEMA_VERSION = 3;
 
 /**
  * @param {unknown} v

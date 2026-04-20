@@ -14,6 +14,7 @@ import { migrateRpgGraphToV2 } from './rpg-quest-steps.js';
 import { questmakerCatalogToDisplayMap } from './rpg-questmaker-sync.js';
 import { normalizeRpgVitalsState } from './rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from './rpg-location.js';
+import { normalizeRpgStructure, buildDefaultRpgStructureFromGraph } from './rpg-structure.js';
 
 export { isValidGraphShape };
 
@@ -21,7 +22,7 @@ const RPG_SESSION_CACHE_KEY = 'rpg-bootstrap-v1';
 
 /**
  * Letzter bekannter Stand (Tab-Session): sofortige Anzeige ohne auf GET zu warten.
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[] } | null}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; addedIds: string[]; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; structure: ReturnType<typeof normalizeRpgStructure> } | null}
  */
 export function loadSessionCachedPayload() {
   if (typeof sessionStorage === 'undefined') return null;
@@ -41,13 +42,14 @@ export function loadSessionCachedPayload() {
     const location = normalizeRpgLocationState(parsed.location);
     const locationCatalog = normalizeRpgLocationCatalog(parsed.locationCatalog);
     const locations = Array.isArray(parsed.locations) ? parsed.locations : [];
-    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals, location, locationCatalog, locations };
+    const structure = normalizeRpgStructure(parsed.structure);
+    return { graph: parsed.graph, addedIds, stepDone, itemCatalog, vitals, location, locationCatalog, locations, structure };
   } catch {
     return null;
   }
 }
 
-/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations?: unknown[]; itemCatalog?: Record<string, unknown> }} payload */
+/** @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations?: unknown[]; itemCatalog?: Record<string, unknown>; structure?: unknown }} payload */
 export function saveSessionCachedPayload(payload) {
   if (typeof sessionStorage === 'undefined') return;
   try {
@@ -62,6 +64,7 @@ export function saveSessionCachedPayload(payload) {
         locationCatalog: normalizeRpgLocationCatalog(payload.locationCatalog),
         locations: Array.isArray(payload.locations) ? payload.locations : [],
         itemCatalog: payload.itemCatalog && typeof payload.itemCatalog === 'object' ? payload.itemCatalog : {},
+        structure: normalizeRpgStructure(payload.structure),
       })
     );
   } catch {
@@ -76,8 +79,8 @@ export async function fetchRpgBootstrap() {
 }
 
 /**
- * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
- * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; locationCatalog?: { cityIds: string[]; placeIds: string[] }; locations?: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; status?: number; error?: string; missing?: string[] }>}
+ * @param {{ graph: object; addedIds: string[]; stepDone: object; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; structure?: unknown; questmakerItems?: { id: string; category: string; title: string; description: string }[] }} payload
+ * @returns {Promise<{ ok: boolean; itemCatalog?: Record<string, { title: string; category: string; description: string }>; locationCatalog?: { cityIds: string[]; placeIds: string[] }; locations?: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; structure?: ReturnType<typeof normalizeRpgStructure>; status?: number; error?: string; missing?: string[] }>}
  */
 export async function persistRpgState(payload) {
   const res = await fetch('/api/rpg/quests', {
@@ -109,10 +112,12 @@ export async function persistRpgState(payload) {
       : undefined;
   const locationCatalog = normalizeRpgLocationCatalog(data.locationCatalog);
   const locations = Array.isArray(data.locations) ? data.locations : undefined;
+  const structure = normalizeRpgStructure(data.structure);
   const out = { ok: true };
   if (itemCatalog) out.itemCatalog = itemCatalog;
   out.locationCatalog = locationCatalog;
   if (locations) out.locations = locations;
+  out.structure = structure;
   return out;
 }
 
@@ -146,6 +151,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
     vitals: normalizeRpgVitalsState(data?.vitals),
     location: normalizeRpgLocationState(data?.location),
     locationCatalog: normalizeRpgLocationCatalog(data?.locationCatalog),
+    structure: data?.structure ? normalizeRpgStructure(data.structure) : buildDefaultRpgStructureFromGraph(graph),
   });
   if (result.ok) {
     clearAllRpgLocalStorage();
@@ -160,6 +166,7 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
       vitals: normalizeRpgVitalsState(data?.vitals),
       location: normalizeRpgLocationState(data?.location),
       locationCatalog: normalizeRpgLocationCatalog(data?.locationCatalog),
+      structure: data?.structure ? normalizeRpgStructure(data.structure) : buildDefaultRpgStructureFromGraph(graph),
     };
   }
   return data;
@@ -175,6 +182,7 @@ export function pickRpgPayloadFromResponse(data) {
   const location = normalizeRpgLocationState(data?.location);
   const locationCatalog = normalizeRpgLocationCatalog(data?.locationCatalog);
   const locations = Array.isArray(data?.locations) ? data.locations : [];
+  const structure = data?.structure ? normalizeRpgStructure(data.structure) : buildDefaultRpgStructureFromGraph(graph);
   /** @type {Record<string, { title: string; category: string; description: string }>} */
   let itemCatalog = {};
   if (data?.questmakerItems && Array.isArray(data.questmakerItems)) {
@@ -186,15 +194,27 @@ export function pickRpgPayloadFromResponse(data) {
   ) {
     itemCatalog = /** @type {typeof itemCatalog} */ (data.itemCatalog);
   }
-  return { graph, addedIds, stepDone, vitals, location, locationCatalog, locations, persisted: !!data?.persisted, itemCatalog };
+  return {
+    graph,
+    addedIds,
+    stepDone,
+    vitals,
+    location,
+    locationCatalog,
+    locations,
+    structure,
+    persisted: !!data?.persisted,
+    itemCatalog,
+  };
 }
 
 /**
  * @param {any} data GET-Antwort oder null (leerer Graph als Fallback)
- * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
+ * @returns {{ graph: import('./rpg-quests-data.js').RpgGraph; added: Set<string>; stepDone: Record<string, Record<string, boolean>>; vitals: import('./rpg-vitals.js').RpgVitalsState; location: { city: string; place: string }; locationCatalog: { cityIds: string[]; placeIds: string[] }; locations: { id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]; structure: ReturnType<typeof normalizeRpgStructure>; itemCatalog: Record<string, { title: string; category: string; description: string }> }}
  */
 export function deriveRpgUiStateFromPayload(data) {
-  const { graph, addedIds, stepDone: sd, vitals, location, locationCatalog, locations, itemCatalog } = pickRpgPayloadFromResponse(data);
+  const { graph, addedIds, stepDone: sd, vitals, location, locationCatalog, locations, structure, itemCatalog } =
+    pickRpgPayloadFromResponse(data);
   const stepDone = mergeStepDoneBase(buildInitialStepMapFromGraph(graph), sd);
-  return { graph, added: new Set(addedIds), stepDone, vitals, location, locationCatalog, locations, itemCatalog };
+  return { graph, added: new Set(addedIds), stepDone, vitals, location, locationCatalog, locations, structure, itemCatalog };
 }

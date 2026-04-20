@@ -63,6 +63,29 @@ html:not(.dark) .rpg-hub {
   background: rgba(126, 184, 218, 0.12);
 }
 
+.rpg-hub__structure-mini {
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--rpg-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rpg-void) 40%, var(--rpg-page-bg));
+}
+
+.rpg-hub__structure-mini p {
+  margin: 0 0 0.25rem;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--rpg-ink) 45%, var(--rpg-page-bg));
+}
+
+.rpg-hub__structure-mini ul {
+  margin: 0;
+  padding-left: 0.95rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--rpg-ink) 76%, var(--rpg-page-bg));
+}
+
 .rpg-hub__rail-label {
   font-size: 0.65rem;
   letter-spacing: 0.16em;

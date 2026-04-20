@@ -32,7 +32,7 @@ export function syncThemeColorMeta() {
   const m = document.querySelector('meta[name="theme-color"]');
   if (!m) return;
   const dark = document.documentElement.classList.contains('dark');
-  m.setAttribute('content', dark ? '#0a0a0c' : '#f4f1ea');
+  m.setAttribute('content', dark ? '#0a0a0c' : '#ffffff');
 }
 
 export function syncThemeToggleButtons() {

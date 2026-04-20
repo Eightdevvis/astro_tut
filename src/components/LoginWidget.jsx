@@ -84,7 +84,7 @@ function LoginWidget() {
         <div style={popupStyle}>
           <div style={{ marginBottom: 12, textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--site-soft-muted)' }}>EINGELOGGT ALS</div>
-            <div style={{ fontWeight: 'bold', fontSize: 16 }}>{user.username.toUpperCase()}</div>
+            <div style={{ fontWeight: 'bold', fontSize: 16 }}>{user.username}</div>
             <div style={{ fontSize: 13, color: 'var(--site-soft-muted)' }}>{user.birthday}</div>
           </div>
           <a
@@ -235,7 +235,6 @@ const popupStyle = {
   padding: 16,
   minWidth: 220,
   zIndex: 1000,
-  textTransform: 'uppercase',
 };
 
 const inputStyle = {
@@ -245,7 +244,6 @@ const inputStyle = {
   border: '1px solid var(--site-control-border)',
   background: 'var(--site-card-bg)',
   color: 'var(--site-body-text)',
-  textTransform: 'uppercase',
   boxSizing: 'border-box',
 };
 

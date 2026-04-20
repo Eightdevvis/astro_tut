@@ -1,0 +1,10 @@
+# Site Theme-System (global)
+
+- Zentrale Quelle: `src/styles/themes.css` definiert globale Light/Dark-Tokens; Umschaltung erfolgt über `html.dark`.
+- Initialisierung ohne Flash: `src/components/ThemeInit.astro` setzt das Schema synchron im `<head>` vor dem ersten Paint.
+- Laufzeit-Umschaltung: `src/lib/site-theme.js` steuert `color-scheme` in `localStorage`, toggelt `html.dark` und synchronisiert UI (`site-theme-change` Event).
+- Client-Bindung: `src/components/ThemeClient.astro` aktiviert die Delegation für Theme-Toggle-Buttons (`data-site-theme-toggle`).
+- Persistenz/Kompatibilität: Storage-Key ist `color-scheme`; Legacy-Key `theme` wird gelesen/migriert.
+- Root-Verwendung: Seiten (z. B. RPG) konsumieren globale Root-Tokens wie `--rpg-root-bg`/`--rpg-root-fg` aus `themes.css`.
+- Light-Profile (E-Ink/High-Contrast): `:root`-Tokens in `src/styles/themes.css` auf Weiß/Schwarz mit stärkeren Borders/Muted-Werten gehärtet und dekorative Effekte entfernt (`--site-card-shadow*`, Verlaufstokens, Glow/Inset-Soft) — Anpassungen zentral nur über Tokens.
+- Pflege-Regel: neue siteweite Farben zuerst in `themes.css` als semantische Variablen (light + dark) anlegen; Komponenten sollen nur Variablen referenzieren.

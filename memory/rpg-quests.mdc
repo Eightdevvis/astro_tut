@@ -37,11 +37,12 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`l
 - **Sinn:** Beim Lesen aus der DB weiß der Server (und später der Client), **welches Payload-Format** gemeint ist. Bei strukturellen Änderungen: Konstante `RPG_PAYLOAD_SCHEMA_VERSION` in `src/lib/rpg-payload-schema.js` **erhöhen** und eine **Migration** einbauen (alte `schemaVersion` einlesen → Daten umbauen → mit neuer Version speichern).
 - **GET:** liefert immer `schemaVersion` (bei neuem Nutzer / nur Sample: aktuelle Konstante; bei persistiertem State: gespeicherter Wert, mindestens 1).
 - **PUT:** setzt `schemaVersion` auf `max(RPG_PAYLOAD_SCHEMA_VERSION, bisher gespeicherte Version)` — damit bleibt ein aus **neuerer** Deploy-Version geschriebener Stand nicht durch ein Rollback auf älteren Code „heruntergezählt“.
+- **v3 (neu):** zusätzliches Top-Level-Feld **`structure`** für Kapitel/Abschnitt/Unterabschnitt + Container-Unlocks (Hybrid), während `graph` weiter Quest-Kanten/Abfolge modelliert.
 
 ### PUT `/api/rpg/quests` (Superuser)
 
 - **`{ "resetToDefault": true }`** — löscht den gespeicherten State; nächstes GET liefert wieder den Sample-Graph. *(Derzeit nur API; UI-Button „Standard“ bewusst entfernt — Wiederverwendung siehe [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc).)*
-- **`{ "graph", "addedIds", "stepDone" }`** — Client-Snapshot; serverseitig **Merge** mit vorherigem JSON (siehe unten). `schemaVersion` wird beim Speichern gesetzt (nicht vom Client abhängig).
+- **`{ "graph", "addedIds", "stepDone", "structure?" }`** — Client-Snapshot; serverseitig **Merge** mit vorherigem JSON (siehe unten). `schemaVersion` wird beim Speichern gesetzt (nicht vom Client abhängig).
 
 ### POST `/api/rpg/quests-normalize-payload` (Superuser)
 
@@ -58,6 +59,12 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`l
 | `questRewards` | gespeicherte Reward-Objekte + optional `unlockAtPercent` | Quest-Rewards (`RewardEntry`); Legacy `rewards[]` wird beim Laden migriert |
 
 **Kanten:** gerichtet von **Voraussetzung** (`from`) zu **abhängiger** Quest (`to`). Der Baum wächst **von unten nach oben** (Roots = keine eingehenden Kanten, gelten als **freigeschaltet**).
+
+**Hybrid-Unlock (neu):**
+
+- **`graph.edges`**: nur Quest-Reihenfolge/Parallelität.
+- **`payload.structure.*.unlock.requires`**: grobe Container-Sichtbarkeit/Freigabe (Kapitel/Abschnitt/Unterabschnitt, Brücken).
+- Server validiert: jede Quest hat genau einen Container-Ref (`questContainerRefs`), keine doppelten IDs, keine widersprüchlichen Referenzen, keine direkte Lock/Kanten-Duplikation.
 
 **Freigeschaltet:** alle direkten Vorgänger-Quests sind zu **100 %** abgeschlossen (alle Schritte erledigt).
 
@@ -88,7 +95,9 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`l
 - **Kanten:** von der Quell-Quest aus: wenn Quelle **fertig** → durchgehend **weiß** (kein Prozent-Glow mehr); wenn Quelle **aktiv** mit Fortschritt → Anteil der Kante leuchtet entsprechend **Prozent** der Quell-Quest; sonst dunkel.
 - **Panel:** fix **unten am Viewport** bei Auswahl einer Node: Titel, Beschreibung, **eingeklappte** `<details>` für Schritte (nur Anzeige), Rewards. Rundbutton **Add** / **Weg** (Remove) — kein Cross-Page-Drag; reine Button-Aktion. Add nur wenn freigeschaltet und nicht fertig; gesperrt = Button deaktiviert. Im **Bearbeiten-Modus** des Baums: **Quest bearbeiten** öffnet den Editor mit **manuell+** / **questmaker+** (Details: [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc)).
 - **Location-Status:** unter den Vessels ein kleiner Streifen `Location: <city[/place]>` aus persistentem `location`-State.
-- **Location-Editor (immer sichtbar):** fester Strip oben rechts in Hub + Baum; Klick öffnet Dropdown-Editor (City/Place wählen, Suche, `+` für neue Orte).
+- **Location-Editor (immer sichtbar):** als kompakter Kompass-Button; Klick klappt den Strip mit City/Place-Auswahl auf, erneut Klick/Outside/Escape klappt ihn zu.
+- **Neuer Ort im Location-Modal:** Beim Hinzufügen eines **Orts** sind `Stadt` und `Land` als Dropdown auf bereits vorhandene Einträge begrenzt (`locations`/`rpg_locations`), inkl. Auto-Übernahme des Landes bei Stadtwahl.
+- **Location-Modal (neu):** Zwei Modi: **Suchen** (eine zentrale Suchleiste, `GET /api/rpg/locations?q=…` matcht Land/Stadt/Ort gemeinsam, `suggestions` nach Relevanz sortiert) und **Neu anlegen** (drei Zeilen Ort/Stadt/Land, je Zeile Autocomplete: `GET …&kind=country|city|place&q=…`, optional `inCountry`/`inCity`; Ort-Leiste matcht nur Ortsnamen; Speichern per `upsertHierarchy`).
 
 ## Hub (UI)
 
@@ -111,6 +120,7 @@ Antwort enthält **`graph`**, **`addedIds`**, **`stepDone`**, **`vitals`**, **`l
 | Manuelle Quest-Entwürfe (localStorage) | `src/lib/rpg-quest-manual-drafts.js` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
 | API | `src/pages/api/rpg/quests.js` (GET + PUT), `src/pages/api/rpg/quests-generate.js` (POST, KI-Entwurf), `rpg-state-db.js`, `rpg-payload-schema.js` |
+| Struktur/Hybrid-Unlock | `src/lib/rpg-structure.js` |
 | Quest-Form-Helfer (ID, Schritte, Rewards) | `src/lib/rpg-quest-form-helpers.js` (von Editor + KI-API genutzt) |
 | Veranda-Link | `src/components/VerandaRpgLink.jsx` in `Veranda.astro` |
 

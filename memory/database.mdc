@@ -34,3 +34,4 @@ Vollständiges DDL nur in **`db.js`** / Init-Skripten; hier nur Namen:
 | `ai_usage_log` | KI-Token/Kosten pro User (`feature` z. B. `rpg`); siehe `src/lib/ai-usage-db.js`, UI `/settings` Tab KI-Nutzung |
 
 **Auth** (JWT, Session-Cookie) ist getrennt dokumentiert im Code (`session.js`, `login.js`); die **User-Daten** liegen aber in derselben DB wie oben.
+- `src/components/LoginWidget.jsx`: Username wird im Login/Register-Feld und im "eingeloggt als"-Block in Original-Schreibweise angezeigt (kein erzwungenes Uppercase per CSS/JS); Speicherung bleibt exakt wie eingegeben.

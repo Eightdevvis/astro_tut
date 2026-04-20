@@ -4,15 +4,15 @@
 
 :root {
   color-scheme: light;
-  --color-bg: #f4f1ea;
-  --color-nav-start: #2c241f;
-  --color-nav-end: #201a16;
+  --color-bg: #ffffff;
+  --color-nav-start: #151515;
+  --color-nav-end: #050505;
   --color-text: #000000;
-  --color-accent: #0f5db8;
-  --color-menu-bg: #2f1717;
-  --color-menu-text: #fff1f1;
-  --color-link: #123f86;
-  --color-link-hover: #081f44;
+  --color-accent: #003d8a;
+  --color-menu-bg: #111111;
+  --color-menu-text: #ffffff;
+  --color-link: #003a8c;
+  --color-link-hover: #001a40;
   --font-family: CrazyCurlz;
   --font-weight: 200;
   --font-weight-bold: 500;
@@ -22,68 +22,64 @@
   --font-quote: 'Black Spiral';
 
   /* Shell / Nav2 */
-  --nav2-fg: #161412;
-  --nav2-drawer-bg: rgba(252, 250, 246, 0.99);
-  --nav2-drawer-border: rgba(0, 0, 0, 0.2);
-  --nav2-drawer-text: rgba(18, 16, 14, 0.96);
-  --nav2-drawer-hover: rgba(0, 0, 0, 0.1);
+  --nav2-fg: #0a0a0a;
+  --nav2-drawer-bg: #ffffff;
+  --nav2-drawer-border: rgba(0, 0, 0, 0.42);
+  --nav2-drawer-text: rgba(10, 10, 10, 0.98);
+  --nav2-drawer-hover: rgba(0, 0, 0, 0.16);
 
   /* Region pages */
-  --site-body-bg: #f4f1ea;
-  --site-body-text: rgba(12, 10, 8, 0.96);
-  --site-link: rgba(16, 57, 122, 0.98);
-  --site-link-hover: #081f44;
-  --site-muted: rgba(12, 10, 8, 0.72);
-  --site-soft-muted: rgba(12, 10, 8, 0.58);
+  --site-body-bg: #ffffff;
+  --site-body-text: rgba(0, 0, 0, 0.98);
+  --site-link: rgba(0, 58, 140, 0.98);
+  --site-link-hover: #001a40;
+  --site-muted: rgba(0, 0, 0, 0.84);
+  --site-soft-muted: rgba(0, 0, 0, 0.72);
   --site-card-bg: #ffffff;
-  --site-card-text: #121212;
-  --site-card-border: rgba(0, 0, 0, 0.24);
-  --site-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
-  --site-card-shadow-hover: 0 14px 36px rgba(0, 0, 0, 0.24);
-  --site-card-inset-strong: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
-  --site-card-inset-soft: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+  --site-card-text: #090909;
+  --site-card-border: rgba(0, 0, 0, 0.48);
+  --site-card-shadow: none;
+  --site-card-shadow-hover: none;
+  --site-card-inset-strong: inset 0 0 0 1px rgba(0, 0, 0, 0.34);
+  --site-card-inset-soft: none;
 
-  --site-control-bg: rgba(255, 255, 255, 0.78);
-  --site-control-border: rgba(0, 0, 0, 0.28);
-  --site-control-fg: rgba(10, 10, 10, 0.95);
-  --site-control-bg-strong: rgba(16, 16, 16, 0.92);
+  --site-control-bg: rgba(255, 255, 255, 0.96);
+  --site-control-border: rgba(0, 0, 0, 0.52);
+  --site-control-fg: rgba(0, 0, 0, 0.98);
+  --site-control-bg-strong: rgba(10, 10, 10, 0.96);
   --site-control-fg-strong: #ffffff;
 
-  --home-page-bg: #f3f0e9;
+  --home-page-bg: #ffffff;
   --home-hero-text: #111111;
-  --home-tail-opacity: 0.72;
-  --home-quote-text: rgba(20, 18, 16, 0.92);
-  --home-quote-author: rgba(20, 57, 118, 0.86);
-  --home-quote-muted: rgba(20, 18, 16, 0.58);
+  --home-tail-opacity: 0.78;
+  --home-quote-text: rgba(0, 0, 0, 0.94);
+  --home-quote-author: rgba(0, 0, 0, 0.9);
+  --home-quote-muted: rgba(0, 0, 0, 0.68);
   --home-quote-error: rgba(160, 55, 45, 0.92);
-  --home-minigame-card-bg: linear-gradient(145deg, #eef5ff 0%, #d8e8ff 48%, #bcd3f2 100%);
-  --home-minigame-card-fg: #12233f;
-  --home-minigame-card-shadow:
-    inset 0 0 0 1px rgba(16, 34, 62, 0.24),
-    inset 0 0 22px 5px rgba(255, 255, 255, 0.62);
-  --home-minigame-card-hover:
-    inset 0 0 0 1px rgba(16, 34, 62, 0.3),
-    0 10px 24px rgba(0, 0, 0, 0.2);
+  --home-minigame-card-bg: #ffffff;
+  --home-minigame-card-fg: #000000;
+  --home-minigame-card-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.44);
+  --home-minigame-card-hover: inset 0 0 0 1px rgba(0, 0, 0, 0.64);
 
-  --mg-page-bg: #f4f1ea;
-  --mg-card-fg: #121212;
-  --mg-card-muted: rgba(0, 0, 0, 0.82);
-  --mg-card-icon: #101820;
+  --mg-page-bg: #ffffff;
+  --mg-card-fg: #0a0a0a;
+  --mg-card-muted: rgba(0, 0, 0, 0.88);
+  --mg-card-icon: #000000;
 
-  --fp-body-bg: #ebe6dc;
-  --fp-canvas-border: rgba(0, 0, 0, 0.12);
-  --fp-canvas-bg: #d4dce8;
+  --fp-body-bg: #ffffff;
+  --fp-canvas-border: rgba(0, 0, 0, 0.2);
+  --fp-canvas-bg: #f5f5f5;
 
-  --lv-body-gradient: linear-gradient(180deg, #dbe8f8 0%, #c9d8ef 48%, #a8bdd8 100%);
+  --lv-body-gradient: #ffffff;
 
-  --fs-page-bg: #ebe6dc;
-  --fs-canvas-chrome: #e4e0d8;
-  --fs-panel-fg: rgba(22, 20, 18, 0.9);
-  --fs-muted: rgba(22, 20, 18, 0.55);
+  --fs-page-bg: #ffffff;
+  --fs-canvas-chrome: #f4f4f4;
+  --fs-panel-fg: rgba(0, 0, 0, 0.94);
+  --fs-muted: rgba(0, 0, 0, 0.72);
 
   /* RPG root (html.rpg-root-html) */
-  --rpg-root-bg: #ebe6dc;
-  --rpg-root-fg: rgba(28, 26, 22, 0.92);
+  --rpg-root-bg: #ffffff;
+  --rpg-root-fg: rgba(0, 0, 0, 0.94);
 }
 
 html.dark {

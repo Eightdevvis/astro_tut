@@ -21,9 +21,54 @@ function effectivePerm(perms, p) {
 }
 
 const box = {
-  maxWidth: 720,
-  margin: '0 auto',
+  width: '100%',
   padding: '0 1rem 3rem',
+  boxSizing: 'border-box',
+};
+
+const panelLayout = {
+  display: 'grid',
+  gridTemplateColumns: '220px minmax(0, 1fr)',
+  gap: '1.2rem',
+  alignItems: 'start',
+};
+
+const panelContent = {
+  gridColumn: '2 / 3',
+  minWidth: 0,
+};
+
+const menuBox = {
+  position: 'fixed',
+  top: 'calc(var(--nav-strip-h) + 1rem)',
+  left: '1rem',
+  width: '220px',
+  border: '1px solid rgba(0,0,0,0.12)',
+  borderRadius: 10,
+  background: 'rgba(255,255,255,0.65)',
+  padding: '0.7rem',
+  maxHeight: 'calc(100vh - var(--nav-strip-h) - 2rem)',
+  overflowY: 'auto',
+  zIndex: 5,
+};
+
+const menuBtn = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  border: '1px solid transparent',
+  borderRadius: 8,
+  background: 'transparent',
+  padding: '0.45rem 0.55rem',
+  cursor: 'pointer',
+  fontSize: '0.86rem',
+  lineHeight: 1.2,
+};
+
+const menuBtnActive = {
+  background: 'rgba(0,0,0,0.08)',
+  borderColor: 'rgba(0,0,0,0.16)',
+  fontWeight: 600,
 };
 
 const section = {
@@ -107,6 +152,7 @@ function mergeCatalogOptions(saved, options) {
 }
 
 export default function SuperSettings() {
+  const [activeSection, setActiveSection] = useState('permissions');
   const [users, setUsers] = useState([]);
   const [knownPermissions, setKnownPermissions] = useState([]);
   const [fonts, setFonts] = useState(() => {
@@ -371,6 +417,21 @@ export default function SuperSettings() {
     }
   }
 
+  const sections = [
+    { id: 'permissions', label: 'Nutzer-Rechte' },
+    { id: 'tester-ui', label: 'Eigene Testeroberfläche' },
+    { id: 'tester-bugs', label: 'Tester-Übersicht & Bugs' },
+    { id: 'questmaker', label: 'Questmaker-Katalog' },
+    { id: 'fonts', label: 'Schriften (global)' },
+  ];
+
+  function jumpToSection(id) {
+    setActiveSection(id);
+    const el = document.getElementById(`super-sec-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   if (loading) {
     return (
       <div style={box}>
@@ -387,10 +448,46 @@ export default function SuperSettings() {
       {fontPreviewCss ? (
         <style dangerouslySetInnerHTML={{ __html: fontPreviewCss }} />
       ) : null}
+      <style>{`
+        @media (max-width: 900px) {
+          .super-panel-layout {
+            grid-template-columns: 1fr !important;
+          }
+          .super-panel-content {
+            grid-column: auto !important;
+          }
+          .super-panel-menu {
+            position: static !important;
+            left: auto !important;
+            width: auto !important;
+          }
+        }
+      `}</style>
       {error ? <div style={errStyle}>{error}</div> : null}
       {saveMsg ? <div style={okStyle}>{saveMsg}</div> : null}
 
-      <section style={section}>
+      <div style={panelLayout} className="super-panel-layout">
+        <aside style={menuBox} className="super-panel-menu" aria-label="Themen-Menü">
+          <div style={{ ...labelStyle, marginBottom: 8 }}>Themen</div>
+          <nav>
+            {sections.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                style={{
+                  ...menuBtn,
+                  ...(activeSection === entry.id ? menuBtnActive : null),
+                }}
+                onClick={() => jumpToSection(entry.id)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main style={panelContent} className="super-panel-content">
+      <section style={section} id="super-sec-permissions">
         <h2 style={h2}>Nutzer-Rechte</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
           <code>super_access</code> = Vollzugriff (alle Rechte aus dieser Liste).{' '}
@@ -447,7 +544,7 @@ export default function SuperSettings() {
         </div>
       </section>
 
-      <section style={section}>
+      <section style={section} id="super-sec-tester-ui">
         <h2 style={h2}>Eigene Testeroberfläche</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
           Dieser Schalter blendet nur deine eigene Testerleiste ein/aus. Rechte und Testerstatus bleiben gleich.
@@ -491,7 +588,7 @@ export default function SuperSettings() {
         {testerUiMsg ? <p style={{ ...okStyle, marginTop: 10 }}>{testerUiMsg}</p> : null}
       </section>
 
-      <section style={section}>
+      <section style={section} id="super-sec-tester-bugs">
         <h2 style={h2}>Tester-Übersicht & Bug-Screenshots</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
           Letzte Einsendungen der Tester mit Screenshot, Kommentar und Quelle.
@@ -563,7 +660,7 @@ export default function SuperSettings() {
         )}
       </section>
 
-      <section style={section}>
+      <section style={section} id="super-sec-questmaker">
         <h2 style={h2}>Questmaker — Item-Katalog</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1rem' }}>
           Belohnungen vom Typ „Item“ nutzen Titel und Kurzbeschreibung aus diesem Katalog. Neue Item-IDs müssen
@@ -680,7 +777,7 @@ export default function SuperSettings() {
         </div>
       </section>
 
-      <section style={section}>
+      <section style={section} id="super-sec-fonts">
         <h2 style={h2}>Schriften (global)</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1.2rem' }}>
           Schriftfamilien aus der Liste wählen — jede Zeile in ihrer Schrift. Leer =
@@ -785,6 +882,8 @@ export default function SuperSettings() {
           {uploadMsg ? <p style={{ ...okStyle, marginTop: 12 }}>{uploadMsg}</p> : null}
         </div>
       </section>
+        </main>
+      </div>
     </div>
   );
 }

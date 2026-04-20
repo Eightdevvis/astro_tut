@@ -4,7 +4,7 @@ import { buildRpgLocationId } from './rpg-location.js';
 /**
  * @typedef {{
  *   id: string;
- *   kind: 'city' | 'place';
+ *   kind: 'country' | 'city' | 'place';
  *   name: string;
  *   description: string;
  *   city: string;
@@ -27,7 +27,8 @@ function clean(raw) {
  */
 function rowFromDb(o) {
   const id = clean(o.id);
-  const kind = clean(o.kind) === 'place' ? 'place' : 'city';
+  const rawKind = clean(o.kind);
+  const kind = rawKind === 'country' ? 'country' : rawKind === 'place' ? 'place' : 'city';
   const name = clean(o.name);
   if (!id || !name) return null;
   return {
@@ -61,15 +62,15 @@ export async function listRpgLocations() {
 }
 
 /**
- * @param {{ kind: 'city' | 'place'; name: string; description?: string; city?: string; country?: string }} input
+ * @param {{ kind: 'country' | 'city' | 'place'; name: string; description?: string; city?: string; country?: string }} input
  * @returns {Promise<RpgLocationRow | null>}
  */
 export async function upsertRpgLocation(input) {
-  const kind = input.kind === 'place' ? 'place' : 'city';
+  const kind = input.kind === 'country' ? 'country' : input.kind === 'place' ? 'place' : 'city';
   const name = clean(input.name);
   if (!name) return null;
+  const country = clean(input.country) || (kind === 'country' ? name : '');
   const city = clean(input.city) || (kind === 'city' ? name : '');
-  const country = clean(input.country);
   const description = clean(input.description);
   const id = buildRpgLocationId(kind, name, city, country);
   const db = getDb();

@@ -18,6 +18,7 @@ import {
 } from '../lib/rpg-server-sync.js';
 import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
+import { normalizeRpgStructure } from '../lib/rpg-structure.js';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
@@ -108,6 +109,7 @@ export default function RpgQuestHub() {
   const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
   const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
   const [locations, setLocations] = useState(() => []);
+  const [structure, setStructure] = useState(() => normalizeRpgStructure(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
   const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
@@ -138,6 +140,7 @@ export default function RpgQuestHub() {
         location,
         locationCatalog,
         locations,
+        structure,
         itemCatalog: m,
       });
     };
@@ -175,6 +178,7 @@ export default function RpgQuestHub() {
       setLocation(d.location);
       setLocationCatalog(d.locationCatalog);
       setLocations(d.locations);
+      setStructure(d.structure);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -185,6 +189,7 @@ export default function RpgQuestHub() {
         location: d.location,
         locationCatalog: d.locationCatalog,
         locations: d.locations,
+        structure: d.structure,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -199,7 +204,16 @@ export default function RpgQuestHub() {
   useEffect(() => {
     if (!bootstrapped || !canPersist || !dirtySinceBootstrap) return;
     const t = setTimeout(() => {
-      const payload = { graph, addedIds: [...added], stepDone, vitals, location, locationCatalog, locations };
+      const payload = {
+        graph,
+        addedIds: [...added],
+        stepDone,
+        vitals,
+        location,
+        locationCatalog,
+        locations,
+        structure,
+      };
       void (async () => {
         const r = await persistRpgState(payload);
         if (r.ok) {
@@ -211,6 +225,7 @@ export default function RpgQuestHub() {
           }
           if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
           if (Array.isArray(r.locations)) setLocations(r.locations);
+          if (r.structure) setStructure(r.structure);
         } else if (r.error) {
           const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
           if (persistFailFingerprintRef.current !== fp) {
@@ -224,6 +239,7 @@ export default function RpgQuestHub() {
           ...payload,
           locationCatalog: r.locationCatalog ?? locationCatalog,
           locations: Array.isArray(r.locations) ? r.locations : locations,
+          structure: r.structure || structure,
           itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
         });
       })();
@@ -240,6 +256,7 @@ export default function RpgQuestHub() {
     location,
     locationCatalog,
     locations,
+    structure,
   ]);
 
   useEffect(() => {
@@ -352,6 +369,16 @@ export default function RpgQuestHub() {
         <a class="rpg-hub__tree-link" href="/rpg/tree">
           Quest-Baum
         </a>
+        {structure?.chapters?.length ? (
+          <div class="rpg-hub__structure-mini">
+            <p>Kapitel</p>
+            <ul>
+              {structure.chapters.slice(0, 4).map((ch) => (
+                <li key={ch.id}>{ch.title}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </aside>
 
       <main class="rpg-hub__main">

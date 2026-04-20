@@ -26,6 +26,11 @@ import {
   listQuestmakerCatalogRows,
   upsertQuestmakerCatalogItems,
 } from '../../../lib/rpg-questmaker-catalog-db.js';
+import {
+  normalizeRpgStructure,
+  buildDefaultRpgStructureFromGraph,
+  validateRpgStructureAgainstGraph,
+} from '../../../lib/rpg-structure.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -53,6 +58,7 @@ export async function GET({ cookies }) {
   let vitals = normalizeRpgVitalsState(null);
   let location = normalizeRpgLocationState(null);
   let locationCatalog = normalizeRpgLocationCatalog(null);
+  let structure = buildDefaultRpgStructureFromGraph(EMPTY_RPG_GRAPH);
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
@@ -64,10 +70,14 @@ export async function GET({ cookies }) {
     vitals = normalizeRpgVitalsState(stored.vitals);
     location = normalizeRpgLocationState(stored.location);
     locationCatalog = normalizeRpgLocationCatalog(stored.locationCatalog);
+    structure = normalizeRpgStructure(stored.structure);
   }
 
   graph = migrateRpgGraphToV2(graph);
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
+  if (!stored?.structure) {
+    structure = buildDefaultRpgStructureFromGraph(graph);
+  }
 
   const questmakerItems = await listQuestmakerCatalogRows();
   const globalLocs = await listRpgLocations();
@@ -88,6 +98,7 @@ export async function GET({ cookies }) {
       location,
       locationCatalog,
       locations,
+      structure,
       persisted,
       schemaVersion,
       questmakerItems,
@@ -148,6 +159,10 @@ export async function PUT({ request, cookies }) {
   const vitals = normalizeRpgVitalsState(body.vitals);
   const location = normalizeRpgLocationState(body.location);
   let locationCatalog = normalizeRpgLocationCatalog(body.locationCatalog);
+  const nextStructure =
+    body?.structure && typeof body.structure === 'object'
+      ? normalizeRpgStructure(body.structure)
+      : buildDefaultRpgStructureFromGraph(body.graph);
 
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
@@ -180,6 +195,7 @@ export async function PUT({ request, cookies }) {
     vitals,
     location,
     locationCatalog,
+    structure: nextStructure,
     locations: Array.isArray(body.locations)
       ? normalizeRpgUserLocationRows(body.locations)
       : normalizeRpgUserLocationRows(base.locations),
@@ -220,11 +236,24 @@ export async function PUT({ request, cookies }) {
   const toUpsert = [...proposedMap.values()].filter((row) => needed.has(row.id));
   await upsertQuestmakerCatalogItems(toUpsert);
 
+  const structureCheck = validateRpgStructureAgainstGraph(payload.graph, payload.structure);
+  if (!structureCheck.ok) {
+    return new Response(
+      JSON.stringify({
+        errorCode: structureCheck.errorCode,
+        error: structureCheck.message,
+        detail: structureCheck.detail || '',
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   const graphLocations = collectLocationEntriesFromGraph(body.graph);
   for (const loc of graphLocations) {
     const row = await upsertRpgLocation(loc);
     if (!row) continue;
-    if (row.kind === 'city') locationCatalog.cityIds.push(row.id);
+    if (row.kind === 'country') locationCatalog.countryIds.push(row.id);
+    else if (row.kind === 'city') locationCatalog.cityIds.push(row.id);
     else locationCatalog.placeIds.push(row.id);
   }
   locationCatalog = normalizeRpgLocationCatalog(locationCatalog);
@@ -239,7 +268,7 @@ export async function PUT({ request, cookies }) {
     globalLocsAfter
   );
 
-  return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog }), {
+  return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog, structure: payload.structure }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });

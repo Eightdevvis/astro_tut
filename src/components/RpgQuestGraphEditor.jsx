@@ -92,6 +92,10 @@ export default function RpgQuestGraphEditor({
   /** @type {string[] | null} */
   const [clarifyPendingQs, setClarifyPendingQs] = useState(null);
   const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
+  const [aiPackageDraft, setAiPackageDraft] = useState(
+    /** @type {{ title: string; description: string; quests: any[]; edges: { from: string; to: string }[] } | null} */ (null)
+  );
+  const [aiPackageFocusQuestId, setAiPackageFocusQuestId] = useState('');
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftListTick, setDraftListTick] = useState(0);
   const itemCatalogRef = useRef(itemCatalog);
@@ -109,6 +113,43 @@ export default function RpgQuestGraphEditor({
     setClarifyPendingQs(null);
     setClarifyAnswerBuf([]);
     setAiError(null);
+    setAiPackageDraft(null);
+    setAiPackageFocusQuestId('');
+  };
+
+  /**
+   * @param {{ errorCode?: unknown; error?: unknown; message?: unknown; hint?: unknown; detail?: unknown; status?: unknown }} data
+   * @param {number} status
+   */
+  const formatAiError = (data, status) => {
+    const code = typeof data?.errorCode === 'string' ? data.errorCode.trim() : '';
+    const msg =
+      typeof data?.message === 'string'
+        ? data.message.trim()
+        : typeof data?.error === 'string'
+          ? data.error.trim()
+          : `Generierung fehlgeschlagen (${status})`;
+    const hint = typeof data?.hint === 'string' ? data.hint.trim() : '';
+    const detail = typeof data?.detail === 'string' ? data.detail.trim() : '';
+    const byCode = {
+      clarify_limit_reached:
+        'Zu viele Rückfragen hintereinander. Bitte ergänze deinen Prompt mit festen Fakten (Zeit, Budget, vorhandene Ressourcen).',
+      quality_placeholder_steps:
+        'Die KI hat zu generische Schritte erzeugt. Bitte gib konkrete Teilaufgaben und erwartete Ergebnisse an.',
+      quality_too_flat:
+        'Die Struktur ist für das Vorhaben zu flach. Bitte nenne die Hauptblöcke (z. B. Beschaffung, Setup, Implementierung, Test).',
+      quality_leaf_not_concrete:
+        'Mindestens ein Schritt war nicht konkret genug. Bitte formuliere überprüfbare Handlungen.',
+      missing_questmaker_items:
+        'Für neue Item-IDs fehlen vollständige Item-Definitionen. Bitte Prompt konkretisieren oder Item-Namen angeben.',
+      invalid_package_payload:
+        'Das KI-Paket war unvollständig. Bitte den Unterabschnitt enger und konkreter beschreiben.',
+      package_placeholder_steps:
+        'Das KI-Paket enthält Platzhalter-Schritte. Bitte konkrete Schritte und Substeps angeben.',
+    };
+    const mapped = code && byCode[code] ? byCode[code] : msg;
+    const rest = hint || detail;
+    return rest ? `${mapped}\n\nHinweis: ${rest.slice(0, 500)}` : mapped;
   };
 
   /** Baum setzt createEntry / editEntry; Defaults: neue Quest = manuell, Bearbeiten = Formular */
@@ -123,6 +164,8 @@ export default function RpgQuestGraphEditor({
       aiSeedRef.current = '';
       lastQmPromptRef.current = '';
       aiQuestmakerItemsRef.current = [];
+      setAiPackageDraft(null);
+      setAiPackageFocusQuestId('');
       return;
     }
     lastQmPromptRef.current = '';
@@ -306,6 +349,46 @@ export default function RpgQuestGraphEditor({
   const handleSubmit = (e) => {
     e.preventDefault();
     const nid = mode === 'create' ? normalizeQuestId(id) : questId;
+    if (
+      mode === 'create' &&
+      onlyQuestmaker &&
+      qmPhase === 'result' &&
+      aiPackageDraft &&
+      Array.isArray(aiPackageDraft.quests) &&
+      aiPackageDraft.quests.length > 0
+    ) {
+      const byId = new Map(graph.quests.map((q) => [q.id, q]));
+      const pkgQuests = aiPackageDraft.quests.filter((q) => q && typeof q.id === 'string' && q.id.trim());
+      for (const q of pkgQuests) {
+        if (byId.has(q.id)) {
+          window.alert(`Paket kann nicht gespeichert werden: Quest-ID „${q.id}“ ist bereits vorhanden.`);
+          return;
+        }
+      }
+      const nextQuests = [...graph.quests, ...pkgQuests];
+      const existingEdgeKeys = new Set((graph.edges || []).map((e) => `${e.from}=>${e.to}`));
+      const pkgEdges = Array.isArray(aiPackageDraft.edges) ? aiPackageDraft.edges : [];
+      const mergedEdges = [...(graph.edges || [])];
+      for (const e of pkgEdges) {
+        const from = String(e?.from || '').trim();
+        const to = String(e?.to || '').trim();
+        if (!from || !to || from === to) continue;
+        if (!pkgQuests.some((q) => q.id === from) || !pkgQuests.some((q) => q.id === to)) continue;
+        const k = `${from}=>${to}`;
+        if (existingEdgeKeys.has(k)) continue;
+        existingEdgeKeys.add(k);
+        mergedEdges.push({ from, to });
+      }
+      const nextGraph = { quests: nextQuests, edges: mergedEdges };
+      if (graphHasCycle(nextGraph)) {
+        window.alert('Paket erzeugt einen Kreis in den Quest-Kanten. Bitte neu generieren.');
+        return;
+      }
+      onApply(nextGraph);
+      setDraftsOpen(false);
+      onClose();
+      return;
+    }
     if (!nid) {
       window.alert('Bitte eine gültige ID angeben (Buchstaben, Zahlen, Bindestrich).');
       return;
@@ -421,6 +504,7 @@ export default function RpgQuestGraphEditor({
           existingQuestIds: graph.quests.map((q) => q.id),
           lockedQuestId: mode === 'edit' && questId ? questId : undefined,
           clarification: pairs.length > 0 ? { pairs } : undefined,
+          responseMode: mode === 'create' && onlyQuestmaker ? 'package' : undefined,
         }),
       });
       let data = {};
@@ -430,14 +514,7 @@ export default function RpgQuestGraphEditor({
         data = {};
       }
       if (!res.ok) {
-        let msg =
-          typeof data.error === 'string'
-            ? data.error
-            : `Generierung fehlgeschlagen (${res.status})`;
-        if (typeof data.detail === 'string' && data.detail.trim()) {
-          msg += `: ${data.detail.trim().slice(0, 400)}`;
-        }
-        setAiError(msg);
+        setAiError(formatAiError(data, res.status));
         return;
       }
       if (data.responseType === 'clarify' && Array.isArray(data.questions) && data.questions.length > 0) {
@@ -445,8 +522,37 @@ export default function RpgQuestGraphEditor({
         setClarifyAnswerBuf(data.questions.map(() => ''));
         return;
       }
+      if (data.responseType === 'package' && Array.isArray(data.quests) && data.quests.length > 0) {
+        const quests = data.quests.filter((q) => q && typeof q === 'object');
+        const edges = Array.isArray(data.edges)
+          ? data.edges
+              .map((e) => ({ from: String(e?.from || '').trim(), to: String(e?.to || '').trim() }))
+              .filter((e) => e.from && e.to && e.from !== e.to)
+          : [];
+        setAiPackageDraft({
+          title: typeof data.title === 'string' ? data.title : '',
+          description: typeof data.description === 'string' ? data.description : '',
+          quests,
+          edges,
+        });
+        const firstQuest = quests[0];
+        if (firstQuest) {
+          setAiPackageFocusQuestId(String(firstQuest.id || ''));
+          applyGeneratedQuestPayload(firstQuest);
+        }
+        const usedPromptSnapshotPkg = aiSeedRef.current.trim();
+        setClarifyHistoryPairs([]);
+        setClarifyPendingQs(null);
+        setClarifyAnswerBuf([]);
+        setAiError(null);
+        if (usedPromptSnapshotPkg) lastQmPromptRef.current = usedPromptSnapshotPkg;
+        setQmPhase('result');
+        return;
+      }
       const usedPromptSnapshot = aiSeedRef.current.trim();
       resetAiSession();
+      setAiPackageDraft(null);
+      setAiPackageFocusQuestId('');
       applyGeneratedQuestPayload(data);
       if (usedPromptSnapshot) lastQmPromptRef.current = usedPromptSnapshot;
       if (onlyQuestmaker) setQmPhase('result');
@@ -676,6 +782,38 @@ export default function RpgQuestGraphEditor({
         {showQmResult ? (
           <form class="rpg-graph-editor__form rpg-graph-editor__qm-result" onSubmit={handleSubmit}>
             <div class="rpg-graph-editor__qm-preview">
+              {aiPackageDraft && aiPackageDraft.quests.length > 0 ? (
+                <div class="rpg-graph-editor__qm-package-review">
+                  <p class="rpg-graph-editor__label">Paket-Review (Unterabschnitt)</p>
+                  {aiPackageDraft.title ? (
+                    <p class="rpg-graph-editor__hint">{aiPackageDraft.title}</p>
+                  ) : null}
+                  <div class="rpg-graph-editor__qm-package-list">
+                    {aiPackageDraft.quests.map((q, i) => {
+                      const qid = String(q.id || '');
+                      const active = qid === aiPackageFocusQuestId;
+                      return (
+                        <button
+                          key={`pkg-${qid || i}`}
+                          type="button"
+                          class={`rpg-graph-editor__btn rpg-graph-editor__btn--tiny${
+                            active ? ' rpg-graph-editor__btn--primary' : ' rpg-graph-editor__btn--ghost'
+                          }`}
+                          onClick={() => {
+                            setAiPackageFocusQuestId(qid);
+                            applyGeneratedQuestPayload(q);
+                          }}
+                        >
+                          {q.title || qid || 'Quest'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p class="rpg-graph-editor__hint">
+                    Speichern übernimmt das komplette Paket ({aiPackageDraft.quests.length} Quests).
+                  </p>
+                </div>
+              ) : null}
               <p class="rpg-graph-editor__qm-kind">
                 {kind === 'main' ? 'Main (Sechseck)' : 'Side (Kreis)'}
               </p>

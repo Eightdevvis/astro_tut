@@ -5,6 +5,7 @@ export const RPG_DEFAULT_LOCATION = Object.freeze({
 
 export const RPG_LOCATION_KIND_CITY = 'city';
 export const RPG_LOCATION_KIND_PLACE = 'place';
+export const RPG_LOCATION_KIND_COUNTRY = 'country';
 
 function cleanPart(v) {
   if (typeof v !== 'string') return '';
@@ -49,7 +50,7 @@ function slug(s) {
 }
 
 /**
- * @param {'city' | 'place'} kind
+ * @param {'country' | 'city' | 'place'} kind
  * @param {string} name
  * @param {string} city
  * @param {string} country
@@ -64,15 +65,19 @@ export function buildRpgLocationId(kind, name, city = '', country = '') {
 
 /**
  * @param {unknown} raw
- * @returns {{ cityIds: string[]; placeIds: string[] }}
+ * @returns {{ countryIds: string[]; cityIds: string[]; placeIds: string[] }}
  */
 export function normalizeRpgLocationCatalog(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { cityIds: [], placeIds: [] };
+    return { countryIds: [], cityIds: [], placeIds: [] };
   }
+  const countryIds = Array.isArray(raw.countryIds)
+    ? raw.countryIds.map((x) => cleanPart(x)).filter(Boolean)
+    : [];
   const cityIds = Array.isArray(raw.cityIds) ? raw.cityIds.map((x) => cleanPart(x)).filter(Boolean) : [];
   const placeIds = Array.isArray(raw.placeIds) ? raw.placeIds.map((x) => cleanPart(x)).filter(Boolean) : [];
   return {
+    countryIds: [...new Set(countryIds)],
     cityIds: [...new Set(cityIds)],
     placeIds: [...new Set(placeIds)],
   };
@@ -130,11 +135,11 @@ const MAX_USER_LOCATION_PICKER_ROWS = 400;
 /**
  * Gespeicherte Orts-Zeilen im User-Payload (Picker/Dropdown), begrenzt und bereinigt.
  * @param {unknown} raw
- * @returns {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]}
+ * @returns {{ id: string; kind: 'country' | 'city' | 'place'; name: string; description: string; city: string; country: string }[]}
  */
 export function normalizeRpgUserLocationRows(raw) {
   if (!Array.isArray(raw)) return [];
-  /** @type {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string }[]} */
+  /** @type {{ id: string; kind: 'country' | 'city' | 'place'; name: string; description: string; city: string; country: string }[]} */
   const out = [];
   for (let i = 0; i < raw.length && out.length < MAX_USER_LOCATION_PICKER_ROWS; i++) {
     const x = raw[i];
@@ -142,7 +147,8 @@ export function normalizeRpgUserLocationRows(raw) {
     const o = /** @type {Record<string, unknown>} */ (x);
     const id = cleanPart(o.id);
     if (!id) continue;
-    const kind = cleanPart(o.kind) === 'place' ? 'place' : 'city';
+    const rawKind = cleanPart(o.kind);
+    const kind = rawKind === 'country' ? 'country' : rawKind === 'place' ? 'place' : 'city';
     const name = cleanPart(o.name);
     if (!name) continue;
     out.push({
@@ -162,17 +168,17 @@ export function normalizeRpgUserLocationRows(raw) {
  * mit Kanonisierung aus dem globalen Katalog (`globalRows`).
  *
  * @param {{ locationCatalog?: unknown; locations?: unknown } | null | undefined} storedSlice
- * @param {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} globalRows
+ * @param {{ id: string; kind: 'country' | 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} globalRows
  */
 export function resolveRpgUserPickerLocations(storedSlice, globalRows) {
   const catalog = normalizeRpgLocationCatalog(storedSlice?.locationCatalog);
   /** @type {Set<string>} */
-  const wanted = new Set([...catalog.cityIds, ...catalog.placeIds]);
+  const wanted = new Set([...catalog.countryIds, ...catalog.cityIds, ...catalog.placeIds]);
   const storedRows = normalizeRpgUserLocationRows(storedSlice?.locations);
   for (const r of storedRows) wanted.add(r.id);
 
   const byId = new Map(globalRows.map((r) => [r.id, r]));
-  /** @type {{ id: string; kind: 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} */
+  /** @type {{ id: string; kind: 'country' | 'city' | 'place'; name: string; description: string; city: string; country: string; updatedAt: string }[]} */
   const out = [];
   for (const id of wanted) {
     const g = byId.get(id);

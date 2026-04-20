@@ -11,5 +11,12 @@ if (!username || !(await hasPermission(username, 'super_access'))) {
 ---
 
 <BaseLayout pageTitle="Super-Einstellungen">
+  <style>
+    :global(html.site-subpage .subpage-main) {
+      max-width: none;
+      margin: 0;
+      width: 100%;
+    }
+  </style>
   <SuperSettings client:load />
 </BaseLayout>

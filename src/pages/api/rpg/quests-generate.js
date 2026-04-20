@@ -16,6 +16,22 @@ import { AI_FEATURE_RPG, recordAiUsage } from '../../../lib/ai-usage-db.js';
 
 const MAX_PROMPT_LEN = 6000;
 const DEFAULT_MODEL = 'gpt-4o-mini';
+const MAX_CLARIFY_ROUNDS = 2;
+const MAX_PACKAGE_QUESTS = 16;
+
+const PLACEHOLDER_PATTERNS = [
+  /\betc\b/i,
+  /\bund so weiter\b/i,
+  /\birgendwie\b/i,
+  /\bspäter mal\b/i,
+  /\bgather all\b/i,
+  /\bget all\b/i,
+  /\bschreibe die software\b/i,
+  /\bresearch options\b/i,
+  /\bcollect components\b/i,
+  /\bdo setup\b/i,
+  /\bmake progress\b/i,
+];
 
 /** @param {string | undefined} raw */
 function chatCompletionsUrl(raw) {
@@ -55,7 +71,41 @@ Schritt-Objekt (rekursiv, "substeps" optional):
 
 Nutze "substeps" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste ist. **Inhalt** immer echtes Leben des Nutzers — keine erfundene Quest, keine Spielwelt. **Sprache** darf Alltag als bedeutsam, spannend oder fast magisch rahmen (Metaphern, leichte Mystik), aber ohne RPG-Klischees wie „Held“, „Dungeon“, „NPC“. Die internen Reward-Typen "heart"/"mana" bei "points" sind erlaubt (Symbole in der UI).
 
-Wenn ein passendes Item schon in ITEM_KATALOG steht, nutze dieselbe itemId. Wenn du ein neues Item brauchst: erfinde eine stabile slug-artige itemId und liefere die vollständige Zeile in "questmakerItems". Weder neue Items ohne questmakerItems noch leere description/title bei neuen Items.`;
+Qualitätsregeln (verbindlich):
+- Keine Platzhalter-Schritte wie "gather all components", "write software", "research options", "etc.".
+- Jeder Leaf-Step muss eine überprüfbare Handlung enthalten (Verb + konkretes Objekt/Ziel).
+- Wenn ein Schritt ein Sammelpunkt ist (z. B. "Komponenten beschaffen"), dann als Gruppen-Step mit konkreten Substeps.
+- Bei mehrdeutigen Kernfakten (Budget, vorhandene Teile, Ort, Frist, Zielniveau) zuerst **clarify** statt raten.
+
+Negativbeispiele (verboten):
+- "Gather all components needed"
+- "Get a display and a raspberry pi and all other components"
+- "Write the software"
+- "Do setup"
+- "Research options and decide from your heart"
+- "Plan it somehow and continue later"
+
+Positivbeispiele (gewünscht):
+- "Komponenten beschaffen" + Substeps: "Display 24'' auswählen", "Raspberry Pi 5 (8GB) bestellen", "USB-Mikrofon auswählen", ...
+- "Basis-Software entwickeln" + Substeps: "Main loop starten", "Speech-to-text anbinden", "Lokales Prompt-Routing", "Smoke-Test auf Deutsch"
+- "Studienentscheidung eingrenzen" + Substeps mit klaren Quellen, Fristen, Rückmeldung von 2 konkreten Personen
+- "Tutor-Modul testen" + Substeps: "15-Minuten-Lernsession", "Fehlerprotokoll", "Nächste Iteration priorisieren"
+- "Bewerbungsfrist absichern" mit \`timeDueAt\`
+- "Entscheidung dokumentieren" mit konkretem Output (eine Liste, ein Sheet, ein Final-Entscheid)`;
+
+const JSON_OBJECT_INSTRUCTION_PACKAGE = `
+
+Optional kannst du bei komplexen Vorhaben statt einer Einzelquest ein Paket liefern:
+- "responseType":"package"
+- "packageType":"subsection"
+- "title": Titel des Unterabschnitt-Pakets
+- "description": kurze Paketbeschreibung
+- "quests": Array von 1 bis ${MAX_PACKAGE_QUESTS} Quest-Objekten (gleiches Quest-Shape wie bei responseType "quest")
+- "edges": optionale Array von { "from":"questId", "to":"questId" } zwischen Quests im Paket
+- "unlockHints": optionales Array kurzer Hinweise für grobe Container-Unlocks (nur Hinweise, keine persistenten Regeln)
+
+Wenn ein passendes Item schon in ITEM_KATALOG steht, nutze dieselbe itemId. Wenn du ein neues Item brauchst: erfinde eine stabile slug-artige itemId und liefere die vollständige Zeile in "questmakerItems". Weder neue Items ohne questmakerItems noch leere description/title bei neuen Items.
+`;
 
 /** @param {{ id: string; category: string; title: string; description: string }[]} rows */
 function formatCatalogInstruction(rows) {
@@ -81,6 +131,126 @@ Priorität:
 2) Wenn genug Kontext da ist oder der Nutzer Rückfragen beantwortet hat, liefere responseType "quest" mit strukturierten steps (Gruppen/Unterschritte/Abhängigkeiten wo sinnvoll). Jeder Schritt muss sich im echten Leben so umsetzen lassen, wie beschrieben.
 
 **Ton:** Ermunternd. Quest-Titel, Beschreibung und Schritt-Labels dürfen **metaphorisch, leicht mystisch oder wie ein schöner Buchrand** klingen — bedeutungsvoll, expressiv, manchmal seltsam-im Bild (z. B. ironischer Titel, der die echte Situation trifft). So wird Alltag als lebendig und erwähnenswert gerahmt, ohne nüchtern zu wirken. Vermeide RPG-/Spielwelt-Klischees („Held“, „Dungeon“, „NPC“) und reine Verwaltungssprache.`;
+
+/**
+ * @param {string} code
+ * @param {string} message
+ * @param {string} [hint]
+ * @param {number} [status]
+ */
+function jsonError(code, message, hint, status = 400) {
+  return new Response(
+    JSON.stringify({
+      errorCode: code,
+      error: message,
+      message,
+      ...(hint ? { hint } : {}),
+    }),
+    { status, headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+/**
+ * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ */
+function countLeafSteps(steps) {
+  let n = 0;
+  const walk = (arr) => {
+    for (const s of arr || []) {
+      if (Array.isArray(s.substeps) && s.substeps.length > 0) walk(s.substeps);
+      else n += 1;
+    }
+  };
+  walk(steps);
+  return n;
+}
+
+/**
+ * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ */
+function hasNestedSubsteps(steps) {
+  const walk = (arr, depth) => {
+    for (const s of arr || []) {
+      const subs = Array.isArray(s.substeps) ? s.substeps : [];
+      if (subs.length > 0 && depth >= 1) return true;
+      if (walk(subs, depth + 1)) return true;
+    }
+    return false;
+  };
+  return walk(steps, 0);
+}
+
+/**
+ * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ */
+function collectLeafLabels(steps) {
+  /** @type {string[]} */
+  const out = [];
+  const walk = (arr) => {
+    for (const s of arr || []) {
+      const subs = Array.isArray(s.substeps) ? s.substeps : [];
+      if (subs.length > 0) walk(subs);
+      else out.push(String(s.label || '').trim());
+    }
+  };
+  walk(steps);
+  return out;
+}
+
+/**
+ * @param {string} prompt
+ */
+function promptLooksComplex(prompt) {
+  const p = prompt.toLowerCase();
+  return (
+    p.includes('projekt') ||
+    p.includes('study') ||
+    p.includes('studium') ||
+    p.includes('raspberry') ||
+    p.includes('software') ||
+    p.includes('hardware') ||
+    p.includes('assist') ||
+    p.includes('tutor') ||
+    p.includes('reise')
+  );
+}
+
+/**
+ * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {string} prompt
+ */
+function assessQuestStepQuality(steps, prompt) {
+  const leaves = collectLeafLabels(steps);
+  const hasPlaceholder = leaves.some((label) => PLACEHOLDER_PATTERNS.some((re) => re.test(label)));
+  const noConcreteLeaf = leaves.some((label) => label.split(/\s+/).length < 3);
+  const complexPrompt = promptLooksComplex(prompt);
+  const tooFlatForComplex = complexPrompt && !hasNestedSubsteps(steps) && countLeafSteps(steps) < 5;
+  const hasOnlyGeneric = leaves.length > 0 && leaves.every((label) => /plan|setup|research|gather|collect|write/i.test(label));
+  return { hasPlaceholder, noConcreteLeaf, tooFlatForComplex, hasOnlyGeneric };
+}
+
+/**
+ * @param {string} prompt
+ * @param {number} clarifyRounds
+ */
+function buildFallbackClarifyQuestions(prompt, clarifyRounds) {
+  if (clarifyRounds >= MAX_CLARIFY_ROUNDS) return [];
+  const p = prompt.toLowerCase();
+  /** @type {string[]} */
+  const out = [];
+  if (/studium|study|uni/.test(p)) {
+    out.push('Welche konkreten Studiengänge oder Felder stehen aktuell realistisch zur Auswahl?');
+    out.push('Bis wann musst du dich entscheiden oder bewerben?');
+  }
+  if (/raspberry|pi|hardware|display|tutor|assist/.test(p)) {
+    out.push('Welche Hardware ist bereits vorhanden und was muss noch gekauft werden?');
+    out.push('Soll der Assistent offline/lokal laufen oder mit Cloud-Anbindung?');
+  }
+  if (out.length === 0) {
+    out.push('Welche 2-3 konkreten Randbedingungen sind fix (Zeit, Budget, Ort)?');
+  }
+  return out.slice(0, 6);
+}
 
 /**
  * @param {string} prompt
@@ -206,6 +376,15 @@ export async function POST({ request, cookies }) {
 
   const lockedRaw = typeof body?.lockedQuestId === 'string' ? body.lockedQuestId.trim() : '';
   const lockedQuestId = lockedRaw ? normalizeQuestId(lockedRaw) : '';
+  const clarificationPairs =
+    body?.clarification &&
+    typeof body.clarification === 'object' &&
+    Array.isArray(body.clarification.pairs)
+      ? body.clarification.pairs.filter((x) => x && typeof x === 'object')
+      : [];
+  const clarifyRounds = clarificationPairs.length;
+  const allowPackage = body?.mode === 'subsection' || body?.responseMode === 'package';
+  const usePackageMode = allowPackage && !lockedQuestId;
 
   const model = String(env.RPG_OPENAI_MODEL ?? '').trim() || DEFAULT_MODEL;
   const baseUrl = env.OPENAI_BASE_URL;
@@ -213,7 +392,11 @@ export async function POST({ request, cookies }) {
   await ensureDbSchema();
   const catalogRows = await listQuestmakerCatalogRows();
   const userContent = buildUserMessage(prompt, body?.clarification);
-  const systemContent = SYSTEM_PROMPT + JSON_OBJECT_INSTRUCTION + formatCatalogInstruction(catalogRows);
+  const systemContent =
+    SYSTEM_PROMPT +
+    JSON_OBJECT_INSTRUCTION +
+    (usePackageMode ? JSON_OBJECT_INSTRUCTION_PACKAGE : '') +
+    formatCatalogInstruction(catalogRows);
 
   let upstream;
   try {
@@ -293,6 +476,14 @@ export async function POST({ request, cookies }) {
 
   if (!hasStepPayload) {
     if (questionsFromAi.length > 0) {
+      if (clarifyRounds >= MAX_CLARIFY_ROUNDS) {
+        return jsonError(
+          'clarify_limit_reached',
+          'Maximale Anzahl an Rückfragen erreicht. Bitte mehr konkrete Details im Prompt angeben.',
+          'Nenne feste Randbedingungen (Zeit, Budget, vorhandene Ressourcen), damit direkt eine Quest erzeugt werden kann.',
+          400
+        );
+      }
       return new Response(
         JSON.stringify({
           responseType: 'clarify',
@@ -302,11 +493,133 @@ export async function POST({ request, cookies }) {
       );
     }
     if (parsed?.responseType === 'clarify') {
-      return new Response(JSON.stringify({ error: 'KI hat keine gültigen Rückfragen geliefert.' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError(
+        'invalid_clarify_payload',
+        'KI hat keine gültigen Rückfragen geliefert.',
+        'Bitte Prompt präzisieren und erneut generieren.',
+        502
+      );
     }
+  }
+
+  if (parsed?.responseType === 'package' && usePackageMode) {
+    const rawQuests = Array.isArray(parsed.quests) ? parsed.quests : [];
+    if (rawQuests.length === 0) {
+      return jsonError(
+        'invalid_package_payload',
+        'KI-Paket enthält keine Quests.',
+        'Beschreibe den Unterabschnitt konkreter und gib Ziel, Umfang und vorhandene Ressourcen an.',
+        502
+      );
+    }
+    if (rawQuests.length > MAX_PACKAGE_QUESTS) {
+      return jsonError(
+        'package_too_large',
+        `KI-Paket enthält zu viele Quests (max. ${MAX_PACKAGE_QUESTS}).`,
+        'Bitte den Unterabschnitt enger fassen.',
+        400
+      );
+    }
+    /** @type {any[]} */
+    const outQuests = [];
+    /** @type {Map<string, any>} */
+    const byId = new Map();
+    const allNeedItemIds = new Set();
+    for (let i = 0; i < rawQuests.length; i++) {
+      const q = rawQuests[i] && typeof rawQuests[i] === 'object' ? rawQuests[i] : {};
+      const qTitle = typeof q.title === 'string' ? q.title.trim() : '';
+      const qDesc = typeof q.description === 'string' ? q.description.trim() : '';
+      const qKind = q.kind === 'main' ? 'main' : 'side';
+      const qStepLabels = Array.isArray(q.stepLabels) ? q.stepLabels : [];
+      let qStepsRaw = coerceStepsArray(q.steps);
+      if (qStepsRaw.length === 0 && qStepLabels.length > 0) {
+        qStepsRaw = labelsToSteps(qStepLabels.map((x) => String(x)));
+      }
+      const qSteps = normalizeQuestStepsTree(qStepsRaw);
+      if (qSteps.length === 0) {
+        return jsonError(
+          'package_invalid_steps',
+          `Quest ${i + 1} im Paket enthält keine gültigen Schritte.`,
+          'Erzeuge pro Quest konkrete Leaf-Steps oder Substeps.',
+          502
+        );
+      }
+      const qQuality = assessQuestStepQuality(qSteps, prompt);
+      if (qQuality.hasPlaceholder || qQuality.hasOnlyGeneric) {
+        return jsonError(
+          'package_placeholder_steps',
+          `Quest ${i + 1} im Paket enthält Platzhalter-Schritte.`,
+          'Nutze konkrete Handlungen statt generischer Sammelphrasen.',
+          400
+        );
+      }
+      const qRewardStrings = Array.isArray(q.rewards)
+        ? q.rewards.map((r) => String(r).trim()).filter(Boolean)
+        : [];
+      const qRewardRows =
+        Array.isArray(q.questRewards) && q.questRewards.length > 0
+          ? normalizeQuestRewardRows(q.questRewards)
+          : qRewardStrings.map((text) => ({ entry: { type: 'text', text } }));
+      const qQuestRewards = qRewardRows.map(questRewardRowToStored);
+      const qQuestRewardEntries = qRewardRows.map((r) => r.entry);
+      const qCatalogNeed = collectItemIdsFromStepsAndQuestRewards(qSteps, qQuestRewardEntries);
+      for (const id of qCatalogNeed) allNeedItemIds.add(id);
+      const rawId = normalizeQuestId(typeof q.id === 'string' ? q.id : '');
+      const uniqueId =
+        rawId && !byId.has(rawId) ? rawId : ensureUniqueQuestId(rawId || `pkg-quest-${i + 1}`, new Set(byId.keys()));
+      const outQuest = {
+        id: uniqueId,
+        title: qTitle || uniqueId,
+        description: qDesc,
+        kind: qKind,
+        stepLabels: qSteps.map((s) => s.label),
+        steps: qSteps,
+        rewards: qRewardStrings,
+        questRewards: qQuestRewards,
+      };
+      byId.set(uniqueId, outQuest);
+      outQuests.push(outQuest);
+    }
+    const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+    const outEdges = rawEdges
+      .map((e) => (e && typeof e === 'object' ? e : null))
+      .filter(Boolean)
+      .map((e) => ({ from: String(e.from || '').trim(), to: String(e.to || '').trim() }))
+      .filter((e) => e.from && e.to && byId.has(e.from) && byId.has(e.to) && e.from !== e.to);
+    const catalogIds = new Set(catalogRows.map((r) => r.id));
+    const needsNewDefinition = [...allNeedItemIds].filter((id) => !catalogIds.has(id));
+    /** @type {{ id: string; category: string; title: string; description: string }[]} */
+    let questmakerItemsOut = [];
+    if (needsNewDefinition.length > 0) {
+      const rawQm = Array.isArray(parsed.questmakerItems) ? parsed.questmakerItems : [];
+      const normalizedQm = rawQm.map((x) => normalizeQuestmakerCatalogPayloadItem(x)).filter(Boolean);
+      const qmById = new Map(normalizedQm.map((x) => [x.id, x]));
+      const missingQm = needsNewDefinition.filter((id) => !qmById.has(id));
+      if (missingQm.length > 0) {
+        return jsonError(
+          'missing_package_questmaker_items',
+          'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
+          missingQm.join(', '),
+          502
+        );
+      }
+      questmakerItemsOut = needsNewDefinition.map((id) => /** @type {any} */ (qmById.get(id)));
+    }
+    return new Response(
+      JSON.stringify({
+        responseType: 'package',
+        packageType: 'subsection',
+        title: typeof parsed.title === 'string' ? parsed.title.trim() : '',
+        description: typeof parsed.description === 'string' ? parsed.description.trim() : '',
+        quests: outQuests,
+        edges: outEdges,
+        unlockHints: Array.isArray(parsed.unlockHints)
+          ? parsed.unlockHints.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+          : [],
+        questmakerItems: questmakerItemsOut,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 
   if (stepsRaw.length === 0 && stepLabels.length > 0) {
@@ -319,10 +632,58 @@ export async function POST({ request, cookies }) {
   }
 
   if (steps.length === 0) {
-    return new Response(JSON.stringify({ error: 'Die KI hat keine gültigen Schritte geliefert.' }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError(
+      'invalid_steps',
+      'Die KI hat keine gültigen Schritte geliefert.',
+      'Bitte gib Ziel, Kontext und konkrete Randbedingungen an.',
+      502
+    );
+  }
+
+  const quality = assessQuestStepQuality(steps, prompt);
+  if (quality.hasPlaceholder || quality.hasOnlyGeneric) {
+    const fallbackQuestions = buildFallbackClarifyQuestions(prompt, clarifyRounds);
+    if (fallbackQuestions.length > 0) {
+      return new Response(
+        JSON.stringify({
+          responseType: 'clarify',
+          questions: fallbackQuestions,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return jsonError(
+      'quality_placeholder_steps',
+      'Die KI hat zu generische Platzhalter-Schritte geliefert.',
+      'Bitte nenne konkrete Teilaufgaben, vorhandene Ressourcen und gewünschte Ergebnisse.',
+      400
+    );
+  }
+  if (quality.tooFlatForComplex) {
+    const fallbackQuestions = buildFallbackClarifyQuestions(prompt, clarifyRounds);
+    if (fallbackQuestions.length > 0) {
+      return new Response(
+        JSON.stringify({
+          responseType: 'clarify',
+          questions: fallbackQuestions,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return jsonError(
+      'quality_too_flat',
+      'Die Quest-Struktur ist für das Vorhaben zu flach.',
+      'Bitte fordere Substeps pro Hauptblock (z. B. Beschaffung, Setup, Implementierung, Test).',
+      400
+    );
+  }
+  if (quality.noConcreteLeaf) {
+    return jsonError(
+      'quality_leaf_not_concrete',
+      'Mindestens ein Schritt ist nicht konkret genug.',
+      'Formuliere Leaf-Steps mit überprüfbarer Aktion und klarem Objekt/Ziel.',
+      400
+    );
   }
 
   const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
@@ -363,12 +724,11 @@ export async function POST({ request, cookies }) {
     const qmById = new Map(normalizedQm.map((x) => [x.id, x]));
     const missingQm = needsNewDefinition.filter((id) => !qmById.has(id));
     if (missingQm.length > 0) {
-      return new Response(
-        JSON.stringify({
-          error: 'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
-          detail: missingQm.join(', '),
-        }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } }
+      return jsonError(
+        'missing_questmaker_items',
+        'KI muss für neue Item-IDs vollständige questmakerItems liefern.',
+        missingQm.join(', '),
+        502
       );
     }
     questmakerItemsOut = needsNewDefinition.map((id) => /** @type {any} */ (qmById.get(id)));

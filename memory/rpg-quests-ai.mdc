@@ -16,11 +16,11 @@ Superuser kann Quest-Inhalte per **KI** befüllen. **Graph-Kanten** (Vorgänger-
 
 Die Route `POST /api/rpg/quests-generate` nutzt:
 
-1. **`SYSTEM_PROMPT` + angehängte JSON-Anweisung** — Realitätsbezug; bei fehlenden Fakten **Rückfragen** statt Halluzination; bei ausreichendem Kontext strukturierte Quest mit **`steps`**-Baum; Ton: expressiv/metaphorisch möglich, Schritte konkret umsetzbar.
+1. **`SYSTEM_PROMPT` + angehängte JSON-Anweisung** — Realitätsbezug; bei fehlenden Fakten **Rückfragen** statt Halluzination; bei ausreichendem Kontext strukturierte Quest mit **`steps`**-Baum; Ton: expressiv/metaphorisch möglich, Schritte konkret umsetzbar. Prompt enthält explizite **Negativ-/Positivbeispiele** gegen generische Platzhalter.
 
 2. **`response_format: { type: 'json_object' }`** — Einheitlich für alle OpenAI-kompatiblen Endpunkte (kein `json_schema`+strict mehr in dieser Route: zu starr für rekursive Step-Strukturen und `clarify`/`quest`-Variante). Validierung und Normalisierung erfolgen **serverseitig** nach dem Parsen.
 
-3. **Server nach dem Call** — `normalizeQuestStepsTree` für `steps`; Fallback auf flache **`stepLabels`** → `labelsToSteps`; **`normalizeQuestId`**, **`ensureUniqueQuestId`** für neue IDs; bei **Bearbeitung** bleibt die ID über **`lockedQuestId`** fix.
+3. **Server nach dem Call** — `normalizeQuestStepsTree` für `steps`; Fallback auf flache **`stepLabels`** → `labelsToSteps`; **`normalizeQuestId`**, **`ensureUniqueQuestId`** für neue IDs; bei **Bearbeitung** bleibt die ID über **`lockedQuestId`** fix. Zusätzlich Quality-Gates: Platzhalter-/Generik-Erkennung, Mindestkonkretheit je Leaf-Step, „zu flach für komplexen Prompt“.
 
 4. **Item-Katalog** — Vor dem Modellaufruf: `listQuestmakerCatalogRows()` aus der DB; angehängter Block **`ITEM_KATALOG`**. Bestehende **`itemId`** wiederverwenden, wo es passt; für **neue** Items liefert die KI vollständige **`questmakerItems`**-Zeilen (keine Platzhalter in der DB).
 
@@ -30,6 +30,7 @@ Kurz: **Semantik** = System- + User-Nachricht + optional Katalog, **JSON** = fre
 
 - Antwort mit **`responseType`: `"clarify"`** und **`questions`**: string[] — Client zeigt Felder; Nutzer sendet **„Antworten senden & weiter“**.
 - Request-Body enthält dann zusätzlich **`clarification`**: `{ "pairs": [ { "question": "…", "answer": "…" }, … ] }` — kumulativ über alle bisherigen Runden. Der Server baut daraus den erweiterten User-Text (`buildUserMessage`).
+- **Limit:** max. **2 Clarify-Runden** (`MAX_CLARIFY_ROUNDS`), danach Fehler `errorCode: "clarify_limit_reached"` statt weiterer Endlosschleife.
 
 ## Voraussetzungen
 
@@ -56,6 +57,7 @@ Lokal: `.env`; Production: `import.meta.env` (wie bei JWT/Turso), nach Änderung
   "prompt": "Freitext (max. 6000 Zeichen)",
   "existingQuestIds": ["optional", "alle", "vergebenen", "quest-ids"],
   "lockedQuestId": "optional — bei Bearbeitung: Quest-ID bleibt unverändert",
+  "responseMode": "optional: \"package\" für Unterabschnitt-Pakete",
   "clarification": {
     "pairs": [{ "question": "…", "answer": "…" }]
   }
@@ -88,13 +90,28 @@ Lokal: `.env`; Production: `import.meta.env` (wie bei JWT/Turso), nach Änderung
 }
 ```
 
+**Erfolg 200 — Variante Unterabschnitt-Paket (neu):**
+
+```json
+{
+  "responseType": "package",
+  "packageType": "subsection",
+  "title": "…",
+  "description": "…",
+  "quests": [{ "id": "…", "title": "…", "steps": [] }],
+  "edges": [{ "from": "…", "to": "…" }],
+  "unlockHints": ["…"],
+  "questmakerItems": [{ "id": "…", "category": "…", "title": "…", "description": "…" }]
+}
+```
+
 `questmakerItems` nur bei neuen Item-IDs (nicht im bestehenden Katalog); sonst weglassen oder leeres Array.
 
 `questRewards` werden mit **`normalizeQuestRewardRows`** eingelesen (Text-, Item- und **Punkte**-Typen, optional **`unlockAtPercent`**). **`rewards`** als String-Liste ist weiterhin möglich, wenn **`questRewards`** fehlt. Freischaltung: explizites Prozent oder **`resolveQuestRewardRowsWithUnlocks`** (Auto-Slots via **`resolveQuestRewardUnlockSchedule`**) in `rpg-quest-steps.js`.
 
 **Katalog verwalten:** Super-Settings → Abschnitt Questmaker; API **`GET`/`PUT /api/rpg/questmaker-items`**. Beim **`PUT /api/rpg/quests`** optional **`questmakerItems`**: vollständige Zeilen `{ id, category, title, description }` für alle im Graph neu referenzierten Item-IDs, die noch nicht in der DB stehen — sonst **400** mit **`missing`**. Keine automatischen Platzhalter-Zeilen mehr.
 
-**Fehler:** **400**, **403**, **503**, **502** (u. a. leere/ungültige Schritte nach Normalisierung).
+**Fehler:** **400**, **403**, **503**, **502**; maschinenlesbar mit `errorCode` (u. a. `quality_placeholder_steps`, `quality_too_flat`, `quality_leaf_not_concrete`, `clarify_limit_reached`, `missing_questmaker_items`).
 
 ## Was die KI nicht macht
 

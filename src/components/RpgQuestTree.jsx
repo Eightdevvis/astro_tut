@@ -25,6 +25,7 @@ import {
   RPG_VITAL_MAX_POINTS,
 } from '../lib/rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
+import { normalizeRpgStructure } from '../lib/rpg-structure.js';
 import RpgQuestGraphEditor from './RpgQuestGraphEditor.jsx';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import LiquidVessels from './LiquidVessels.jsx';
@@ -92,6 +93,7 @@ export default function RpgQuestTree() {
   const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
   const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
   const [locations, setLocations] = useState(() => []);
+  const [structure, setStructure] = useState(() => normalizeRpgStructure(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
   /** Kein Debounce-PUT, bis der erste GET abgeschlossen ist (nach Session-Cache: bis GET fertig). */
@@ -152,6 +154,7 @@ export default function RpgQuestTree() {
         location,
         locationCatalog,
         locations,
+        structure,
         itemCatalog: m,
       });
     };
@@ -230,6 +233,7 @@ export default function RpgQuestTree() {
       setLocation(d.location);
       setLocationCatalog(d.locationCatalog);
       setLocations(d.locations);
+      setStructure(d.structure);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -240,6 +244,7 @@ export default function RpgQuestTree() {
         location: d.location,
         locationCatalog: d.locationCatalog,
         locations: d.locations,
+        structure: d.structure,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -264,6 +269,7 @@ export default function RpgQuestTree() {
         location,
         locationCatalog,
         locations,
+        structure,
         ...(batch.length ? { questmakerItems: batch } : {}),
       };
       void (async () => {
@@ -277,6 +283,7 @@ export default function RpgQuestTree() {
           }
           if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
           if (Array.isArray(r.locations)) setLocations(r.locations);
+          if (r.structure) setStructure(r.structure);
         } else if (r.error) {
           const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
           if (persistFailFingerprintRef.current !== fp) {
@@ -290,6 +297,7 @@ export default function RpgQuestTree() {
           ...payload,
           locationCatalog: r.locationCatalog ?? locationCatalog,
           locations: Array.isArray(r.locations) ? r.locations : locations,
+          structure: r.structure || structure,
           itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
         });
       })();
@@ -306,6 +314,7 @@ export default function RpgQuestTree() {
     location,
     locationCatalog,
     locations,
+    structure,
   ]);
 
   useEffect(() => {
@@ -732,6 +741,38 @@ export default function RpgQuestTree() {
     </header>
   );
 
+  const structurePanel =
+    structure?.chapters?.length > 0 ? (
+      <aside class="rpg-tree__structure" aria-label="Lebens-Karte">
+        <p class="rpg-tree__structure-title">Lebens-Karte</p>
+        <ul class="rpg-tree__structure-list">
+          {structure.chapters.map((ch) => (
+            <li key={ch.id}>
+              <strong>{ch.title}</strong>
+              {ch.sections?.length ? (
+                <ul>
+                  {ch.sections.map((sec) => (
+                    <li key={sec.id}>
+                      <span>{sec.title}</span>
+                      {sec.subsections?.length ? (
+                        <ul>
+                          {sec.subsections.map((sub) => (
+                            <li key={sub.id}>
+                              {sub.title} <em>({sub.role})</em>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </aside>
+    ) : null;
+
   const graphEditor = (
     <RpgQuestGraphEditor
       open={editorOpen}
@@ -775,6 +816,7 @@ export default function RpgQuestTree() {
   return (
     <div class={rootTreeClass}>
       {topBar}
+      {structurePanel}
       {manaHeartDeko}
       {mobileManaDock}
       {mobileManaOverlay}
