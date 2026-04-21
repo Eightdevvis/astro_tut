@@ -161,6 +161,7 @@ const SCHEMA_DDL = `
     fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
     source_feed_url TEXT,
     domain          TEXT,
+    image_url       TEXT,
     UNIQUE(feed_id, stable_id)
   );
   CREATE INDEX IF NOT EXISTS idx_user_feed_items_feed_published ON user_feed_items (feed_id, published_at DESC, fetched_at DESC);
@@ -213,6 +214,16 @@ async function ensureQuotesAuthorColumn() {
   }
 }
 
+async function ensureUserFeedItemsImageUrlColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE user_feed_items ADD COLUMN image_url TEXT');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     const db = createDbClient();
@@ -223,6 +234,7 @@ export async function ensureDbSchema() {
   }
   await schemaPromise;
   await ensureQuotesAuthorColumn();
+  await ensureUserFeedItemsImageUrlColumn();
   const db = createDbClient();
   await seedFeedPolicyDefaults(db);
 }

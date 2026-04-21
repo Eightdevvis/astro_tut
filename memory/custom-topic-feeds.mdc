@@ -3,3 +3,5 @@
 - **UI:** Home-Grid (`index.astro`) `UserFeedHomeGrid.jsx` wenn Session; Einstellungen Tab „Feed“ + `UserSettingsFeeds.jsx`; Detail `/feeds/[id]` + `FeedDetailView.jsx` (`noindex`).
 - **API:** `/api/user/feeds`, `/api/user/feeds/plan`, `/api/user/feeds/[id]`, Pins unter `.../pins` und `.../pins/[pinId]`; KI-Plan `feed-plan-ai.js`, Summary `feed-summary-ai.js`.
 - **Trust:** Nur https; Quellen außerhalb Allowlist nur mit Nutzerbestätigung; Pins außerhalb mit `acknowledge_untrusted`.
+- **Vorschaubilder:** `user_feed_items.image_url` — zuerst RSS (`enclosure`, `itunes:image`, `media:*`), sonst optional ein `og:image`/`twitter:image` nur bei Allowlist-Artikel-URL, Host-Abgleich + Anti-Ad-Host-Liste; kein zufälliges `<img>` aus HTML.
+- **KI-Plan:** `topic_anchor` + `drift_guard` im JSON (siehe `feed-plan-ai.js`); Zusammenfassung nutzt Anker (`feed-summary-ai.js`).

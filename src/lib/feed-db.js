@@ -59,7 +59,7 @@ export async function listUserFeeds(username, opts = {}) {
     };
     if (preview) {
       const items = await db.execute({
-        sql: `SELECT title, url, published_at FROM user_feed_items
+        sql: `SELECT title, url, published_at, image_url FROM user_feed_items
               WHERE feed_id = ? ORDER BY datetime(COALESCE(published_at, fetched_at)) DESC LIMIT ?`,
         args: [id, MAX_PREVIEW_HEADLINES],
       });
@@ -69,6 +69,7 @@ export async function listUserFeeds(username, opts = {}) {
           title: String(t.title || ''),
           url: String(t.url || ''),
           published_at: t.published_at == null ? null : String(t.published_at),
+          image_url: t.image_url == null || t.image_url === '' ? null : String(t.image_url),
         };
       });
     }
@@ -115,7 +116,7 @@ export async function getFeedDetailBundle(username, feedId) {
   const db = getDb();
 
   const itemsRes = await db.execute({
-    sql: `SELECT id, title, url, summary, published_at, fetched_at, source_feed_url, domain
+    sql: `SELECT id, title, url, summary, published_at, fetched_at, source_feed_url, domain, image_url
           FROM user_feed_items WHERE feed_id = ?
           ORDER BY datetime(COALESCE(published_at, fetched_at)) DESC LIMIT ?`,
     args: [feedId, MAX_ITEMS_DETAIL],
@@ -131,6 +132,7 @@ export async function getFeedDetailBundle(username, feedId) {
       fetched_at: String(t.fetched_at || ''),
       source_feed_url: t.source_feed_url == null ? null : String(t.source_feed_url),
       domain: String(t.domain || ''),
+      image_url: t.image_url == null || t.image_url === '' ? null : String(t.image_url),
     };
   });
 

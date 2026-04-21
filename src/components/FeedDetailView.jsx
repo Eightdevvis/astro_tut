@@ -12,6 +12,11 @@ function pickFeedHeadline(meta) {
   } catch {
     plan = {};
   }
+  const anchor = String(plan.topic_anchor || '').trim();
+  if (anchor.length >= 4) {
+    const line = anchor.split(/\n+/)[0].trim();
+    return line.length > 88 ? `${line.slice(0, 85)}…` : line;
+  }
   const kw = Array.isArray(plan.keywords) ? plan.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
   if (kw.length) {
     const s = kw.slice(0, 5).join(' · ');
@@ -163,20 +168,45 @@ export default function FeedDetailView({ feedId, initial }) {
                 <li
                   key={it.id}
                   style={{
+                    display: 'flex',
+                    gap: 12,
+                    alignItems: 'flex-start',
                     marginBottom: '0.85rem',
                     paddingBottom: '0.85rem',
                     borderBottom: '1px solid rgba(0,0,0,0.08)',
                   }}
                 >
-                  <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, color: 'inherit' }}>
-                    {it.title}
-                  </a>
-                  {it.summary ? (
-                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', opacity: 0.82 }}>{it.summary}</p>
+                  {it.image_url ? (
+                    <img
+                      src={it.image_url}
+                      alt=""
+                      width={88}
+                      height={56}
+                      style={{
+                        objectFit: 'cover',
+                        borderRadius: 6,
+                        flexShrink: 0,
+                        background: 'rgba(0,0,0,0.06)',
+                      }}
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
                   ) : null}
-                  <div style={{ fontSize: '0.72rem', opacity: 0.65, marginTop: 4 }}>
-                    Quelle: {it.domain || '—'}
-                    {it.published_at ? ` · ${it.published_at}` : ''}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, color: 'inherit' }}>
+                      {it.title}
+                    </a>
+                    {it.summary ? (
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', opacity: 0.82 }}>{it.summary}</p>
+                    ) : null}
+                    <div style={{ fontSize: '0.72rem', opacity: 0.65, marginTop: 4 }}>
+                      Quelle: {it.domain || '—'}
+                      {it.published_at ? ` · ${it.published_at}` : ''}
+                    </div>
                   </div>
                 </li>
               ))}

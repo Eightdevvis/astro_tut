@@ -6,6 +6,7 @@ import Parser from 'rss-parser';
 import { ensureDbSchema, getDb } from './db.js';
 import { domainFromUrl, stableFeedItemId, setFeedLastIngest, updateSourceFetchStatus } from './feed-db.js';
 import { isHostBlockedDb } from './feed-policy.js';
+import { extractRssItemImage, fetchOgPreviewImage, MAX_OG_IMAGE_FETCHES_PER_FEED } from './feed-item-image.js';
 
 const FETCH_TIMEOUT_MS = 12000;
 const MAX_ITEMS_PER_SOURCE = 40;
@@ -29,6 +30,7 @@ export async function ingestOneFeed(feedId) {
     args: [feedId],
   });
   const sources = srcRes.rows || [];
+  let ogFetchesForFeed = 0;
   for (const row of sources) {
     const r = /** @type {any} */ (row);
     const sourceId = Number(r.id);
@@ -62,17 +64,28 @@ export async function ingestOneFeed(feedId) {
         }
         const dom = domainFromUrl(useLink);
         if (dom && (await isHostBlockedDb(db, dom))) continue;
+
+        let imageUrl = extractRssItemImage(it, useLink);
+        if (!imageUrl && ogFetchesForFeed < MAX_OG_IMAGE_FETCHES_PER_FEED) {
+          const og = await fetchOgPreviewImage(db, useLink);
+          if (og) {
+            imageUrl = og;
+            ogFetchesForFeed += 1;
+          }
+        }
+
         await db.execute({
-          sql: `INSERT INTO user_feed_items (feed_id, stable_id, title, url, summary, published_at, fetched_at, source_feed_url, domain)
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)
+          sql: `INSERT INTO user_feed_items (feed_id, stable_id, title, url, summary, published_at, fetched_at, source_feed_url, domain, image_url)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
                 ON CONFLICT(feed_id, stable_id) DO UPDATE SET
                   title = excluded.title,
                   url = excluded.url,
                   summary = excluded.summary,
                   published_at = COALESCE(excluded.published_at, user_feed_items.published_at),
                   fetched_at = excluded.fetched_at,
-                  domain = excluded.domain`,
-          args: [feedId, sid, title, useLink, summary, published_at, url, dom],
+                  domain = excluded.domain,
+                  image_url = COALESCE(NULLIF(excluded.image_url, ''), user_feed_items.image_url)`,
+          args: [feedId, sid, title, useLink, summary, published_at, url, dom, imageUrl],
         });
       }
       await updateSourceFetchStatus(sourceId, { ok: true });

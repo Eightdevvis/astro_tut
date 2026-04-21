@@ -14,10 +14,10 @@ const MAX_HEADLINES = 18;
 
 const SYSTEM = `Du schreibst eine kurze, nüchterne Zusammenfassung auf Deutsch für einen persönlichen News-Feed.
 Antworte NUR mit JSON: { "body_md": string, "covers_note": string }
-- body_md: Markdown, 2–6 Absätze oder Aufzählungen. Fasse die **angegebenen Schlagzeilen** zusammen — keine neuen Fakten erfinden. Nenne am Ende eine Zeile „Quellen (Domains): …“ mit den genannten Domains.
-- covers_note: ein kurzer Satz, welcher Zeitraum/ welche Meldungen grob abgedeckt sind (z. B. „Fokus auf die jüngsten 15 Einträge“).
+- body_md: Markdown, 2–6 Absätze oder Aufzählungen. Nutze **nur** Schlagzeilen, die zum mitgelieferten **Themen-Anker** passen; ignoriere off-topic Einträge still (keine Meta-Klage). Keine neuen Fakten erfinden. Am Ende eine Zeile „Quellen (Domains): …“.
+- covers_note: ein kurzer Satz zu Zeitraum/Umfang (z. B. „Fokus auf die jüngsten 15 Einträge“).
 
-Disclaimer-Hinweis kurz einbauen: keine Rechts-/Medizin-/Anlageberatung; Nutzer soll Primärquellen prüfen.`;
+Disclaimer-Hinweis kurz: keine Rechts-/Medizin-/Anlageberatung; Nutzer soll Primärquellen prüfen.`;
 
 /**
  * @param {string} username
@@ -44,6 +44,16 @@ export async function maybeGenerateFeedSummary(username, feedId, opts = {}) {
   }));
   const domains = [...new Set(headlines.map((h) => h.domain).filter(Boolean))];
 
+  let topic_anchor = '';
+  let drift_guard = [];
+  try {
+    const p = JSON.parse(String(bundle.meta.ai_plan_json || '{}'));
+    if (typeof p.topic_anchor === 'string') topic_anchor = p.topic_anchor.trim();
+    if (Array.isArray(p.drift_guard)) drift_guard = p.drift_guard.map((x) => String(x).trim()).filter(Boolean);
+  } catch {
+    /* ignore */
+  }
+
   const lastSum = bundle.summary;
   if (!opts.force && lastSum?.generated_at) {
     const genAt = Date.parse(String(lastSum.generated_at));
@@ -57,6 +67,8 @@ export async function maybeGenerateFeedSummary(username, feedId, opts = {}) {
     {
       feed_title: bundle.meta.title,
       user_prompt: bundle.meta.user_prompt,
+      topic_anchor: topic_anchor || null,
+      drift_guard: drift_guard.length ? drift_guard : null,
       headlines,
       domains,
     },

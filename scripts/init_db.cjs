@@ -209,6 +209,7 @@ db.serialize(() => {
       fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
       source_feed_url TEXT,
       domain TEXT,
+      image_url TEXT,
       UNIQUE(feed_id, stable_id)
     )
   `);

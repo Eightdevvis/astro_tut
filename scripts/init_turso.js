@@ -155,6 +155,7 @@ await db.executeMultiple(`
     fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
     source_feed_url TEXT,
     domain TEXT,
+    image_url TEXT,
     UNIQUE(feed_id, stable_id)
   );
   CREATE INDEX IF NOT EXISTS idx_user_feed_items_feed_published ON user_feed_items (feed_id, published_at DESC, fetched_at DESC);

@@ -95,8 +95,37 @@ export default function UserFeedHomeGrid() {
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
           {preview.map((p) => (
-            <li key={p.url}>
-              <a href={p.url} target="_blank" rel="noopener noreferrer" style={linkOut}>
+            <li
+              key={p.url}
+              style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 6 }}
+            >
+              {p.image_url ? (
+                <img
+                  src={p.image_url}
+                  alt=""
+                  width={40}
+                  height={28}
+                  style={{
+                    objectFit: 'cover',
+                    borderRadius: 4,
+                    flexShrink: 0,
+                    marginTop: 2,
+                    background: 'rgba(0,0,0,0.06)',
+                  }}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : null}
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ ...linkOut, marginBottom: 0, flex: 1, minWidth: 0 }}
+              >
                 {p.title || p.url}
               </a>
             </li>

@@ -4,8 +4,15 @@ const muted = { fontSize: '0.85rem', opacity: 0.75, marginBottom: 8 };
 const errStyle = { color: 'crimson', marginBottom: 12, fontSize: '0.9rem' };
 const box = { border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, padding: '1rem', marginBottom: 12, background: 'rgba(255,255,255,0.45)' };
 
-/** Kurzer Feed-Titel: Stichwörter > erste Zeile Prompt — nicht der lange KI-„verstanden“-Text. */
+/** Kurzer Feed-Titel: topic_anchor > Stichwörter > erste Zeile Prompt. */
 function defaultFeedTitle(plan, userPrompt) {
+  const anchor = String(plan?.topic_anchor || '').trim();
+  if (anchor) {
+    const first = anchor.split(/\n+/)[0].trim();
+    const sentence = /[.!?]\s/.test(first) ? first.split(/(?<=[.!?])\s+/)[0].trim() : first;
+    const use = sentence.length > 72 ? `${sentence.slice(0, 69)}…` : sentence;
+    if (use.length >= 4) return use;
+  }
   const kw = Array.isArray(plan?.keywords) ? plan.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
   if (kw.length) {
     const s = kw.slice(0, 5).join(', ');
@@ -125,7 +132,9 @@ export default function UserSettingsFeeds() {
           title: title.trim(),
           user_prompt: prompt.trim(),
           ai_plan_json: {
+            topic_anchor: plan.topic_anchor,
             understood: plan.understood,
+            drift_guard: plan.drift_guard,
             keywords: plan.keywords,
             rationale: plan.rationale,
             deep_links: plan.deep_links,
@@ -263,9 +272,27 @@ export default function UserSettingsFeeds() {
             ) : (
               <>
                 <h3 style={{ marginTop: 0 }}>Vorschlag prüfen</h3>
-                <p style={{ fontSize: '0.9rem' }}>
-                  <strong>Verstanden:</strong> {plan?.understood}
+                {plan?.topic_anchor ? (
+                  <>
+                    <p style={{ fontSize: '0.72rem', letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.7, marginBottom: 4 }}>
+                      Themen-Anker
+                    </p>
+                    <p style={{ fontSize: '0.95rem', marginTop: 0, marginBottom: 10 }}>{plan.topic_anchor}</p>
+                  </>
+                ) : null}
+                <p style={{ fontSize: '0.88rem', marginBottom: 8 }}>
+                  <strong>Kurzfassung:</strong> {plan?.understood}
                 </p>
+                {(plan?.drift_guard || []).length > 0 ? (
+                  <details style={{ fontSize: '0.82rem', marginBottom: 10 }}>
+                    <summary style={{ cursor: 'pointer' }}>Nicht-Ziele (soll der Feed nicht verlassen)</summary>
+                    <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem' }}>
+                      {plan.drift_guard.map((d) => (
+                        <li key={d}>{d}</li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
                 {plan?.rationale ? <p style={muted}>{plan.rationale}</p> : null}
                 <label style={{ display: 'block', marginBottom: 6, fontSize: '0.88rem' }}>
                   Kurztitel (Tabs und Navigation)
