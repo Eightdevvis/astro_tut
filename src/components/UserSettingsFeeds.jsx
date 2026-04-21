@@ -4,6 +4,22 @@ const muted = { fontSize: '0.85rem', opacity: 0.75, marginBottom: 8 };
 const errStyle = { color: 'crimson', marginBottom: 12, fontSize: '0.9rem' };
 const box = { border: '1px solid rgba(0,0,0,0.12)', borderRadius: 8, padding: '1rem', marginBottom: 12, background: 'rgba(255,255,255,0.45)' };
 
+/** Kurzer Feed-Titel: Stichwörter > erste Zeile Prompt — nicht der lange KI-„verstanden“-Text. */
+function defaultFeedTitle(plan, userPrompt) {
+  const kw = Array.isArray(plan?.keywords) ? plan.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
+  if (kw.length) {
+    const s = kw.slice(0, 5).join(', ');
+    if (s.length <= 80) return s;
+    return `${s.slice(0, 77)}…`;
+  }
+  const line = String(userPrompt || '')
+    .trim()
+    .split(/\n+/)[0]
+    .trim();
+  if (line) return line.length > 72 ? `${line.slice(0, 72)}…` : line;
+  return 'Mein Feed';
+}
+
 export default function UserSettingsFeeds() {
   const [feeds, setFeeds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +75,7 @@ export default function UserSettingsFeeds() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || data.detail || 'Plan fehlgeschlagen');
       setPlan(data);
-      setTitle((data.understood || '').slice(0, 120) || 'Mein Feed');
+      setTitle(defaultFeedTitle(data, prompt));
       setConfirmUrls(new Set());
       const autoN = (data.rss_classified_auto || []).length;
       const needN = (data.rss_classified_needs_confirm || []).length;
@@ -177,7 +193,7 @@ export default function UserSettingsFeeds() {
       {!loading &&
         feeds.map((f) => (
           <div key={f.id} style={box}>
-            <strong>{f.title}</strong>
+            <strong>{f.title && f.title.length > 56 ? `${f.title.slice(0, 53)}…` : f.title}</strong>
             <p style={{ ...muted, marginBottom: 8 }}>{f.user_prompt?.slice(0, 200)}{f.user_prompt?.length > 200 ? '…' : ''}</p>
             <a href={`/feeds/${f.id}`} style={{ marginRight: 12, fontSize: '0.9rem' }}>
               Öffnen
@@ -251,14 +267,18 @@ export default function UserSettingsFeeds() {
                   <strong>Verstanden:</strong> {plan?.understood}
                 </p>
                 {plan?.rationale ? <p style={muted}>{plan.rationale}</p> : null}
-                <label style={{ display: 'block', marginBottom: 12, fontSize: '0.88rem' }}>
-                  Feed-Titel
+                <label style={{ display: 'block', marginBottom: 6, fontSize: '0.88rem' }}>
+                  Kurztitel (Tabs und Navigation)
                   <input
                     value={title}
                     onInput={(e) => setTitle(e.currentTarget.value)}
                     style={{ display: 'block', width: '100%', marginTop: 4, padding: 6, boxSizing: 'border-box' }}
                   />
                 </label>
+                <p style={{ ...muted, marginTop: 0, marginBottom: 12 }}>
+                  Vorschlag aus Stichwörtern — bei Bedarf kürzen. Die ausführliche KI-Formulierung bleibt im
+                  KI-Überblick auf der Feed-Seite.
+                </p>
                 <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Automatische Quellen (Allowlist)</p>
                 <ul style={{ fontSize: '0.85rem' }}>
                   {(plan?.rss_classified_auto || []).map((x) => (

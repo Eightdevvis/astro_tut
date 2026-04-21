@@ -32,6 +32,12 @@ const linkOut = {
   textUnderlineOffset: 2,
 };
 
+function shortTabLabel(title) {
+  const t = String(title || '').trim();
+  if (t.length <= 22) return t;
+  return `${t.slice(0, 19)}…`;
+}
+
 export default function UserFeedHomeGrid() {
   const [feeds, setFeeds] = useState([]);
   const [active, setActive] = useState(0);
@@ -77,7 +83,7 @@ export default function UserFeedHomeGrid() {
       <div style={tabs}>
         {feeds.map((feed, i) => (
           <button key={feed.id} type="button" style={tab(i === idx)} onClick={() => setActive(i)}>
-            {feed.title}
+            {shortTabLabel(feed.title)}
           </button>
         ))}
         <a href="/settings" style={{ ...tab(false), textDecoration: 'none', color: 'inherit', marginLeft: 'auto' }}>

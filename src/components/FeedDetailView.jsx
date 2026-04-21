@@ -1,5 +1,50 @@
 import { useState } from 'preact/hooks';
 
+/**
+ * Überschrift: bevorzugt Stichwörter aus dem gespeicherten Plan, sonst erste Zeile der Nutzereingabe;
+ * vermeidet lange KI-Formulierungen wie „Der Nutzer interessiert sich …“ als H1.
+ * @param {{ title?: string; user_prompt?: string; ai_plan_json?: string }} meta
+ */
+function pickFeedHeadline(meta) {
+  let plan = {};
+  try {
+    plan = JSON.parse(String(meta?.ai_plan_json || '{}'));
+  } catch {
+    plan = {};
+  }
+  const kw = Array.isArray(plan.keywords) ? plan.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
+  if (kw.length) {
+    const s = kw.slice(0, 5).join(' · ');
+    return s.length > 88 ? `${s.slice(0, 85)}…` : s;
+  }
+  const rawTitle = String(meta?.title || '').trim();
+  const promptFirst = String(meta?.user_prompt || '')
+    .trim()
+    .split(/\n+/)[0]
+    .trim();
+  const looksLikeAiNarration = /^der nutzer /i.test(rawTitle) || /^die nutzerin /i.test(rawTitle);
+  if (looksLikeAiNarration && promptFirst) {
+    return promptFirst.length > 88 ? `${promptFirst.slice(0, 85)}…` : promptFirst;
+  }
+  if (rawTitle.length > 88) return `${rawTitle.slice(0, 85)}…`;
+  if (rawTitle) return rawTitle;
+  if (promptFirst) return promptFirst.length > 88 ? `${promptFirst.slice(0, 85)}…` : promptFirst;
+  return 'Feed';
+}
+
+const newsScrollBox = {
+  maxHeight: 'min(52vh, 440px)',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  WebkitOverflowScrolling: 'touch',
+  marginTop: 8,
+  padding: '10px 12px',
+  border: '1px solid rgba(0,0,0,0.1)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.35)',
+  overscrollBehavior: 'contain',
+};
+
 /** @param {{ feedId: number; initial: any }} p */
 export default function FeedDetailView({ feedId, initial }) {
   const [pins, setPins] = useState(initial?.pins || []);
@@ -13,6 +58,15 @@ export default function FeedDetailView({ feedId, initial }) {
   const items = initial?.items || [];
   const summary = initial?.summary;
   const sources = initial?.sources || [];
+  const meta = initial?.meta || {};
+  const headline = pickFeedHeadline(meta);
+  let understoodFromPlan = '';
+  try {
+    const p = JSON.parse(String(meta.ai_plan_json || '{}'));
+    if (typeof p.understood === 'string' && p.understood.trim()) understoodFromPlan = p.understood.trim();
+  } catch {
+    /* ignore */
+  }
 
   async function addPin(e) {
     e.preventDefault();
@@ -81,37 +135,53 @@ export default function FeedDetailView({ feedId, initial }) {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 1rem 3rem' }}>
-      <h1 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '0.5rem' }}>{initial?.meta?.title}</h1>
-      <p style={{ fontSize: '0.88rem', opacity: 0.78, marginBottom: '1.25rem' }}>{initial?.meta?.user_prompt}</p>
+      <h1 style={{ fontSize: '1.35rem', fontWeight: 600, marginBottom: '0.35rem', lineHeight: 1.25 }}>{headline}</h1>
+      {meta.user_prompt ? (
+        <p style={{ fontSize: '0.88rem', opacity: 0.78, marginBottom: '1rem' }}>
+          <span style={{ fontSize: '0.72rem', letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.7 }}>
+            Deine Eingabe
+          </span>
+          <br />
+          {String(meta.user_prompt).trim()}
+        </p>
+      ) : null}
+      {understoodFromPlan && understoodFromPlan !== headline ? (
+        <details style={{ fontSize: '0.82rem', opacity: 0.8, marginBottom: '1rem' }}>
+          <summary style={{ cursor: 'pointer' }}>KI-Überblick (ausführlicher)</summary>
+          <p style={{ margin: '0.5rem 0 0', whiteSpace: 'pre-wrap' }}>{understoodFromPlan}</p>
+        </details>
+      ) : null}
 
       <section aria-label="Neuigkeiten">
         <h2 style={{ fontSize: '0.95rem', letterSpacing: '0.08em', textTransform: 'uppercase', opacity: 0.85 }}>Neu</h2>
         {items.length === 0 ? (
           <p style={{ fontSize: '0.9rem', opacity: 0.75 }}>Noch keine Einträge. Quellen werden regelmäßig abgerufen.</p>
         ) : (
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {items.map((it) => (
-              <li
-                key={it.id}
-                style={{
-                  marginBottom: '0.85rem',
-                  paddingBottom: '0.85rem',
-                  borderBottom: '1px solid rgba(0,0,0,0.08)',
-                }}
-              >
-                <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, color: 'inherit' }}>
-                  {it.title}
-                </a>
-                {it.summary ? (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', opacity: 0.82 }}>{it.summary}</p>
-                ) : null}
-                <div style={{ fontSize: '0.72rem', opacity: 0.65, marginTop: 4 }}>
-                  Quelle: {it.domain || '—'}
-                  {it.published_at ? ` · ${it.published_at}` : ''}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div style={newsScrollBox} tabindex={0} role="region" aria-label="Neue Artikel, scrollbar">
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+              {items.map((it) => (
+                <li
+                  key={it.id}
+                  style={{
+                    marginBottom: '0.85rem',
+                    paddingBottom: '0.85rem',
+                    borderBottom: '1px solid rgba(0,0,0,0.08)',
+                  }}
+                >
+                  <a href={it.url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600, color: 'inherit' }}>
+                    {it.title}
+                  </a>
+                  {it.summary ? (
+                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', opacity: 0.82 }}>{it.summary}</p>
+                  ) : null}
+                  <div style={{ fontSize: '0.72rem', opacity: 0.65, marginTop: 4 }}>
+                    Quelle: {it.domain || '—'}
+                    {it.published_at ? ` · ${it.published_at}` : ''}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </section>
 
