@@ -1,0 +1,48 @@
+# RPG Memory — Navigation nach Aufgabe
+
+Diese Seite beantwortet die Frage: **"Ich will X aendern, wo lese ich zuerst?"**
+
+## API / Payload / Persistenz aendern
+
+- Start: `memory/rpg/data-persistence.mdc`
+- Danach: `memory/database.mdc` (DB-Tabellen, Init, Schema-Handling)
+- Bei Strukturfragen: `memory/rpg/architecture.mdc`
+
+## Questmaker+ / KI-Verhalten aendern
+
+- Start: `memory/rpg/ai.mdc`
+- Relevant fuer Datenfluss: `memory/rpg/data-persistence.mdc`
+- Steps-/Reward-Shape der KI-Ausgabe: `memory/rpg/steps-rewards.mdc`
+
+## Steps / Rewards / Fortschritt aendern
+
+- Start: `memory/rpg/steps-rewards.mdc`
+- Hub/Tree-Auswirkungen: `memory/rpg/ui.mdc`
+- Persistenzfolgen: `memory/rpg/data-persistence.mdc`, `memory/database.mdc`
+
+## Hub / Tree / Editor-UX aendern
+
+- Start: `memory/rpg/ui.mdc`
+- KI-spezifische Editor-Pfade: `memory/rpg/ai.mdc`
+- Themes/Lesbarkeit: `memory/rpg/theme.mdc`
+- Mobile-Verhalten (Detailmodus, Gesten-Block, Dock/Overlay) und Draft-Subsystem immer mitpruefen.
+
+## Location-Flow aendern
+
+- Start: `memory/rpg/ui.mdc`
+- Datenbank-/Katalog-Kontext: `memory/database.mdc`, `memory/rpg/data-persistence.mdc`
+- Rollenpruefung beachten: Location-Create (`POST /api/rpg/locations`) ist an `super_access` gebunden.
+
+## Theme / Tokens aendern
+
+- RPG-spezifisch: `memory/rpg/theme.mdc`
+- Globales Basissystem: `memory/site-theme-system.mdc`
+
+## Roadmap / Zukunftsplanung
+
+- Fachliche Planung: `memory/rpg/roadmap.mdc`
+- Gesamtkontext: `memory/rpg/architecture.mdc`
+
+## Wenn du etwas nicht findest
+
+- `memory/rpg/source-map.mdc` zeigt fuer jeden Bereich die aktuell gueltige Quelle.

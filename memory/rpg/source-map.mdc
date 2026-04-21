@@ -1,0 +1,26 @@
+# RPG Memory — Source Map
+
+Diese Datei ordnet bestehende RPG-Memory-Inhalte auf stabile Fachbereiche zu.
+Ziel: schnelle Orientierung, ohne Informationsverlust durch Umbenennungen oder neue Features.
+
+## Source-of-Truth pro Bereich
+
+| Bereich | Primaere Datei(en) | Sekundaere Datei(en) |
+|--------|---------------------|----------------------|
+| Gesamtueberblick RPG | `memory/rpg/architecture.mdc` | `memory/rpg/index.mdc` |
+| Routen, Zugriff, Hub, Tree, Editor-Interaktion | `memory/rpg/ui.mdc` | `memory/rpg/by-task.mdc` |
+| Datenmodell (`graph`, `addedIds`, `stepDone`, `vitals`, `location`, `structure`) | `memory/rpg/data-persistence.mdc` | `memory/database.mdc` |
+| API `GET/PUT /api/rpg/quests`, Normalisierung, Import | `memory/rpg/data-persistence.mdc` | `memory/database.mdc` |
+| Location-API/Katalog (`/api/rpg/locations`, `rpg_locations`) | `memory/rpg/data-persistence.mdc` | `memory/rpg/ui.mdc` |
+| Questmaker+ API/Flow/Clarify/Fehlercodes | `memory/rpg/ai.mdc` | `memory/rpg/data-persistence.mdc` |
+| KI-Item-Retrieval-Flow | `memory/rpg/ai.mdc` | `memory/rpg/roadmap.mdc` |
+| Steps/Groups/dependsOn/optional/timeDueAt | `memory/rpg/steps-rewards.mdc` | `memory/rpg/ui.mdc` |
+| Reward-Modell (Step/Quest/Points) | `memory/rpg/steps-rewards.mdc` | `memory/rpg/data-persistence.mdc` |
+| Theme-System RPG | `memory/rpg/theme.mdc` | `memory/site-theme-system.mdc` |
+| Roadmap (kommend) | `memory/rpg/roadmap.mdc` | `memory/rpg/architecture.mdc` |
+
+## Konsolidierungsregel
+
+- Bei Konflikten oder Dopplungen gilt zuerst die **primaere Datei** des Bereichs.
+- Sekundaere Dateien duerfen kontextualisieren, aber keine abweichende Kernregel setzen.
+- Neue Inhalte werden in der primaeren Datei gepflegt und nur verlinkt, nicht mehrfach dupliziert.

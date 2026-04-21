@@ -10,6 +10,7 @@
  */
 
 import { createClient } from '@libsql/client';
+import { seedFeedPolicyDefaults } from './feed-policy.js';
 
 function createDbClient() {
   return createClient({
@@ -122,6 +123,81 @@ const SCHEMA_DDL = `
     enabled     INTEGER NOT NULL DEFAULT 1,
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS user_feeds (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL,
+    title         TEXT NOT NULL,
+    user_prompt   TEXT NOT NULL DEFAULT '',
+    ai_plan_json  TEXT NOT NULL DEFAULT '{}',
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_ingest_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_feeds_username ON user_feeds (username, sort_order ASC, id ASC);
+
+  CREATE TABLE IF NOT EXISTS user_feed_sources (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_id         INTEGER NOT NULL,
+    kind            TEXT NOT NULL DEFAULT 'rss',
+    url             TEXT NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    added_by        TEXT NOT NULL DEFAULT 'user',
+    user_confirmed  INTEGER NOT NULL DEFAULT 0,
+    last_fetch_at   TEXT,
+    last_error      TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_feed_sources_feed ON user_feed_sources (feed_id);
+
+  CREATE TABLE IF NOT EXISTS user_feed_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_id         INTEGER NOT NULL,
+    stable_id       TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    url             TEXT NOT NULL,
+    summary         TEXT,
+    published_at    TEXT,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    source_feed_url TEXT,
+    domain          TEXT,
+    UNIQUE(feed_id, stable_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_feed_items_feed_published ON user_feed_items (feed_id, published_at DESC, fetched_at DESC);
+
+  CREATE TABLE IF NOT EXISTS user_feed_pins (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_id         INTEGER NOT NULL,
+    url             TEXT NOT NULL,
+    title_override  TEXT,
+    note            TEXT NOT NULL DEFAULT '',
+    sort_order      INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_feed_pins_feed ON user_feed_pins (feed_id);
+
+  CREATE TABLE IF NOT EXISTS user_feed_summaries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    feed_id         INTEGER NOT NULL,
+    body_md         TEXT NOT NULL,
+    covers_through  TEXT,
+    generated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    model           TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_feed_summaries_feed ON user_feed_summaries (feed_id, generated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS feed_allowlist (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    category    TEXT NOT NULL DEFAULT '',
+    trust_tier  INTEGER NOT NULL DEFAULT 2,
+    UNIQUE(kind, value)
+  );
+
+  CREATE TABLE IF NOT EXISTS feed_blocklist (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_pattern  TEXT NOT NULL UNIQUE
+  );
 `;
 
 let schemaPromise = null;
@@ -147,6 +223,8 @@ export async function ensureDbSchema() {
   }
   await schemaPromise;
   await ensureQuotesAuthorColumn();
+  const db = createDbClient();
+  await seedFeedPolicyDefaults(db);
 }
 
 export function getDb() {

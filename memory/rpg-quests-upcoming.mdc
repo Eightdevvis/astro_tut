@@ -1,7 +1,0 @@
-# RPG Quests — kommende Features
-
-Geplante oder naheliegende Erweiterungen (Priorität offen).
-
-- **DB-Backup** für `rpg_user_state` bzw. gesamte App-DB in Prod (Snapshots/Export; Git sichert nur Code).
-- **Evolutions-Metapunkte (Idee, noch nicht umgesetzt):** getrennt von den **drainbaren** Energien (`heart` / `mana` als `points.amount`). Geplant: **Mana-Evolutionspunkte** für Lernen, starke Erfahrungen, lange Quests, Level-ups, neue Orte/Kontakte; **Herz-/Immun-Evo** z. B. durch viele Orte, Schlaf, wenig Stress, Sport-Konsistenz — braucht **Zwischenspeicher**, Zeitverläufe und Regeln; erst später anbinden.
-- **Und andere** — z. B. Monitoring bei fehlgeschlagenem Persist, Kategorien/Filter, Automatik, KI-Anbindung (siehe Haupt-Doku [`rpg-quests.mdc`](rpg-quests.mdc)).

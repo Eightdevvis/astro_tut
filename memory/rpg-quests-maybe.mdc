@@ -1,5 +1,0 @@
-# RPG Quests — vielleicht kommend
-
-Ideen ohne festen Zeitplan.
-
-- **Eigener Default-Graph** statt des fest eingebauten Sample-Graphen: z. B. kuratierter Startzustand + optionaler UI-Button („Standard“), der darauf zurücksetzt (aktuell absichtlich nicht in der UI; API `resetToDefault` kann später wieder angebunden werden).

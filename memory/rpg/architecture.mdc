@@ -1,0 +1,40 @@
+# RPG Memory — Architektur
+
+## Zweck
+
+- Beschreibt das RPG-System auf hoher Ebene: Hub, Tree, Editor, Persistenz und KI-unterstuetzte Inhalte.
+- Dient als stabile Referenz fuer Kernregeln, unabhaengig von Implementierungszeitpunkt.
+
+## Systemkern
+
+- Hub (`/rpg`) zeigt relevante aktive Quests.
+- Tree (`/rpg/tree`) zeigt den gerichteten Quest-Graphen, Fortschritt und Bearbeitungszugriffe.
+- Persistenz liegt serverseitig in `rpg_user_state` (Payload-basiert).
+- KI unterstuetzt Inhalte (Questmaker+); im Package-Flow kann sie zusaetzlich Quest-Kanten vorschlagen, die vor dem Anwenden validiert werden.
+
+## Nicht verhandelbare Invarianten
+
+- Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
+- `addedIds` repraesentiert Hub-Auswahl; Zustand "added aber gelockt" wird bereinigt.
+- `schemaVersion` steuert Strukturkompatibilitaet und Migrationen.
+- Steps/Rewards folgen eigener Spezifikation (rekursiv, optional, dependsOn, timeDueAt).
+- Rollen-/Rechtegrenzen sind Teil der Systemlogik (z. B. `rpg_access` fuer RPG-Operationen, `super_access` fuer bestimmte Katalog-Schreiboperationen wie Location-Create).
+
+## Fachliche Verantwortungsbereiche
+
+- **Datenmodell/Persistenz:** `memory/rpg/data-persistence.mdc` + `memory/database.mdc`
+- **Questmaker+/KI:** `memory/rpg/ai.mdc`
+- **Steps/Rewards:** `memory/rpg/steps-rewards.mdc`
+- **UI (Hub/Tree/Editor/Location):** `memory/rpg/ui.mdc`
+- **Theme:** `memory/rpg/theme.mdc`
+- **Roadmap:** `memory/rpg/roadmap.mdc`
+
+## Code-Anker (Einstieg)
+
+- `src/pages/api/rpg/quests.js`
+- `src/pages/api/rpg/quests-generate.js`
+- `src/lib/rpg-quest-graph.js`
+- `src/lib/rpg-quest-steps.js`
+- `src/components/RpgQuestHub.jsx`
+- `src/components/RpgQuestTree.jsx`
+- `src/components/RpgQuestGraphEditor.jsx`

@@ -169,6 +169,90 @@ db.serialize(() => {
   `);
   console.log('✓ tester_ui_preferences-Tabelle bereit.');
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feeds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL,
+      title TEXT NOT NULL,
+      user_prompt TEXT NOT NULL DEFAULT '',
+      ai_plan_json TEXT NOT NULL DEFAULT '{}',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_ingest_at TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_feeds_username ON user_feeds (username, sort_order ASC, id ASC)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feed_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id INTEGER NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'rss',
+      url TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      added_by TEXT NOT NULL DEFAULT 'user',
+      user_confirmed INTEGER NOT NULL DEFAULT 0,
+      last_fetch_at TEXT,
+      last_error TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_feed_sources_feed ON user_feed_sources (feed_id)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feed_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id INTEGER NOT NULL,
+      stable_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      summary TEXT,
+      published_at TEXT,
+      fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+      source_feed_url TEXT,
+      domain TEXT,
+      UNIQUE(feed_id, stable_id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_feed_items_feed_published ON user_feed_items (feed_id, published_at DESC, fetched_at DESC)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feed_pins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      title_override TEXT,
+      note TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_feed_pins_feed ON user_feed_pins (feed_id)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_feed_summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id INTEGER NOT NULL,
+      body_md TEXT NOT NULL,
+      covers_through TEXT,
+      generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      model TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_feed_summaries_feed ON user_feed_summaries (feed_id, generated_at DESC)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS feed_allowlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '',
+      trust_tier INTEGER NOT NULL DEFAULT 2,
+      UNIQUE(kind, value)
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS feed_blocklist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      host_pattern TEXT NOT NULL UNIQUE
+    )
+  `);
+  console.log('✓ Topic-Feed-Tabellen bereit.');
+
 });
 
 db.close();

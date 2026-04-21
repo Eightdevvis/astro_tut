@@ -1,0 +1,35 @@
+# RPG Memory — Theme
+
+## Zweck
+
+- Einheitliches Theme-System fuer RPG-Baum/Editor auf Basis globaler Site-Tokens.
+
+## Scope und Basis
+
+- RPG-Baum/Editor in `src/components/rpg-quest-tree.css` basiert auf globalem Site-Theme plus RPG-spezifischen `--rpg-*` Tokens.
+- Seitenhintergrund bleibt ueber `--rpg-root-bg`/`--rpg-root-fg` in `src/styles/themes.css` angebunden.
+
+## Tokenisierung und Mapping
+
+- Editor nutzt `--rpg-editor-*` statt harter High-Contrast-Overrides.
+- Node-States (`locked`, `unlocked-not-added`, `active`) nutzen tokenbasierte `color-mix(...)`.
+- Semantische Farbtokens:
+  - Accent, Danger, Warning, Invalid
+  - Heart, Mana, Urgent
+  - (`--rpg-accent-*`, `--rpg-danger-*`, `--rpg-warning-*`, `--rpg-invalid-*`, `--rpg-heart-*`, `--rpg-mana-*`, `--rpg-urgent-dot`)
+- Komponenten-Mapping umfasst Top-/Panel-/Edit-Buttons, Reward-Pills, Warning/Invalid-States, Danger-Action und Back-Link.
+
+## Pflege-Regeln
+
+- Neue RPG-UI-Farben zuerst als `--rpg-*` Token (dark + light) definieren.
+- Danach erst in Selektoren referenzieren.
+- Zielzustand: keine neuen harten Hex/RGBA-Werte in Komponentenbloecken; bestehende Legacy-Werte in `rpg-quest-tree.css`/`rpg-quest-hub.css` werden schrittweise tokenisiert.
+
+## Abhaengigkeit zum globalen Theme
+
+- Globale Light/Dark-Tokens, Init, Runtime-Umschaltung und Storage-Regeln liegen in `memory/site-theme-system.mdc`.
+
+## Siehe auch
+
+- `memory/rpg/ui.mdc`
+- `memory/rpg/architecture.mdc`

@@ -1,0 +1,50 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
+import FeedDetailView from '../../components/FeedDetailView.jsx';
+import { getUsernameFromCookies } from '../../lib/session.js';
+import { getFeedDetailBundle } from '../../lib/feed-db.js';
+import '../../styles/global.css';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+if (!username) {
+  return Astro.redirect('/');
+}
+
+const raw = Astro.params.id;
+const feedId = Number.parseInt(String(raw || ''), 10);
+if (!Number.isFinite(feedId) || feedId <= 0) {
+  return new Response(null, { status: 404 });
+}
+
+const bundle = await getFeedDetailBundle(username, feedId);
+if (!bundle) {
+  return new Response(null, { status: 404 });
+}
+
+const initial = {
+  meta: bundle.meta,
+  items: bundle.items,
+  pins: bundle.pins,
+  summary: bundle.summary,
+  sources: bundle.sources,
+};
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{bundle.meta.title} — Feed</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="home" />
+    <FeedDetailView client:load feedId={feedId} initial={initial} />
+    <ThemeClient />
+  </body>
+</html>

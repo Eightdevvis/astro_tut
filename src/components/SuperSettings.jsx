@@ -179,6 +179,14 @@ export default function SuperSettings() {
   const [qmBusy, setQmBusy] = useState(false);
   const [rpgNormMsg, setRpgNormMsg] = useState('');
   const [rpgNormBusy, setRpgNormBusy] = useState(false);
+  const [feedPolicy, setFeedPolicy] = useState({ allowlist: [], blocklist: [] });
+  const [fpKind, setFpKind] = useState('host_suffix');
+  const [fpValue, setFpValue] = useState('');
+  const [fpCategory, setFpCategory] = useState('');
+  const [fpTier, setFpTier] = useState(2);
+  const [fpBlock, setFpBlock] = useState('');
+  const [fpMsg, setFpMsg] = useState('');
+  const [fpBusy, setFpBusy] = useState(false);
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -208,6 +216,28 @@ export default function SuperSettings() {
       .catch((e) => setError(e.message || String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (loading || activeSection !== 'feed-policy') return;
+    let cancelled = false;
+    fetch('/api/admin/feed-policy', { credentials: 'same-origin' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Feed-Policy');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setFeedPolicy({
+          allowlist: Array.isArray(data.allowlist) ? data.allowlist : [],
+          blocklist: Array.isArray(data.blocklist) ? data.blocklist : [],
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, activeSection]);
 
   useEffect(() => {
     if (loading) return;
@@ -422,6 +452,7 @@ export default function SuperSettings() {
     { id: 'tester-ui', label: 'Eigene Testeroberfläche' },
     { id: 'tester-bugs', label: 'Tester-Übersicht & Bugs' },
     { id: 'questmaker', label: 'Questmaker-Katalog' },
+    { id: 'feed-policy', label: 'Topic-Feed Vertrauen' },
     { id: 'fonts', label: 'Schriften (global)' },
   ];
 
@@ -774,6 +805,205 @@ export default function SuperSettings() {
             {rpgNormBusy ? 'Normalisiere…' : 'RPG-Payloads in DB normalisieren'}
           </button>
           {rpgNormMsg ? <span style={okStyle}>{rpgNormMsg}</span> : null}
+        </div>
+      </section>
+
+      <section style={section} id="super-sec-feed-policy">
+        <h2 style={h2}>Topic-Feed Vertrauen</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78, marginBottom: '1rem' }}>
+          Allowlist (RSS-URL exakt oder Host-Suffix): automatische Ingestion ohne Nutzer-Bestätigung. Blocklist:
+          Domains werden gefiltert. Ergänze z. B. <code>arxiv.org</code> als Host oder konkrete{' '}
+          <code>https://…/feed</code>-URLs. IEEE/Nature nur nutzen, wenn der jeweilige RSS-Link öffentlich und stabil
+          ist.
+        </p>
+        {fpMsg ? <p style={okStyle}>{fpMsg}</p> : null}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          <div>
+            <h3 style={{ fontSize: '0.95rem' }}>Allowlist</h3>
+            <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid rgba(0,0,0,0.12)', marginBottom: 10 }}>
+              <table style={tableStyle}>
+                <tbody>
+                  {feedPolicy.allowlist.map((row) => (
+                    <tr key={row.id}>
+                      <td style={thtd}>
+                        <code style={{ fontSize: '0.75rem' }}>{row.kind}</code>
+                      </td>
+                      <td style={thtd}>
+                        <span style={{ fontSize: '0.8rem' }}>{row.value}</span>
+                      </td>
+                      <td style={thtd}>
+                        <button
+                          type="button"
+                          style={{ fontSize: '0.72rem' }}
+                          disabled={fpBusy}
+                          onClick={async () => {
+                            setFpBusy(true);
+                            setFpMsg('');
+                            try {
+                              const res = await fetch('/api/admin/feed-policy', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'same-origin',
+                                body: JSON.stringify({ action: 'remove_allow', id: row.id }),
+                              });
+                              const d = await res.json().catch(() => ({}));
+                              if (!res.ok) throw new Error(d.error || 'Fehler');
+                              setFeedPolicy((p) => ({ ...p, allowlist: p.allowlist.filter((x) => x.id !== row.id) }));
+                              setFpMsg('Entfernt.');
+                            } catch (e) {
+                              setError(e?.message || String(e));
+                            } finally {
+                              setFpBusy(false);
+                            }
+                          }}
+                        >
+                          Entf.
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setFpBusy(true);
+                setFpMsg('');
+                try {
+                  const res = await fetch('/api/admin/feed-policy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                      action: 'add_allow',
+                      kind: fpKind,
+                      value: fpValue.trim(),
+                      category: fpCategory.trim(),
+                      trust_tier: Number(fpTier) || 2,
+                    }),
+                  });
+                  const d = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(d.error || 'Fehler');
+                  setFpValue('');
+                  setFpMsg('Allowlist-Eintrag hinzugefügt.');
+                  const r2 = await fetch('/api/admin/feed-policy', { credentials: 'same-origin' });
+                  const d2 = await r2.json();
+                  if (r2.ok) setFeedPolicy({ allowlist: d2.allowlist || [], blocklist: d2.blocklist || [] });
+                } catch (err) {
+                  setError(err?.message || String(err));
+                } finally {
+                  setFpBusy(false);
+                }
+              }}
+            >
+              <select value={fpKind} onChange={(e) => setFpKind(e.currentTarget.value)} style={selectStyle}>
+                <option value="host_suffix">host_suffix</option>
+                <option value="rss_url">rss_url</option>
+              </select>
+              <input
+                placeholder="z. B. arxiv.org oder https://…/rss"
+                value={fpValue}
+                onInput={(e) => setFpValue(e.currentTarget.value)}
+                style={{ ...selectStyle, display: 'block', width: '100%', marginTop: 6, boxSizing: 'border-box' }}
+              />
+              <input
+                placeholder="Kategorie (optional)"
+                value={fpCategory}
+                onInput={(e) => setFpCategory(e.currentTarget.value)}
+                style={{ ...selectStyle, display: 'block', width: '100%', marginTop: 6, boxSizing: 'border-box' }}
+              />
+              <input
+                type="number"
+                title="trust_tier"
+                value={fpTier}
+                onInput={(e) => setFpTier(Number(e.currentTarget.value))}
+                style={{ ...selectStyle, display: 'block', width: 100, marginTop: 6 }}
+              />
+              <button type="submit" style={{ ...btnPrimary, marginTop: 8 }} disabled={fpBusy}>
+                Hinzufügen
+              </button>
+            </form>
+          </div>
+          <div>
+            <h3 style={{ fontSize: '0.95rem' }}>Blocklist</h3>
+            <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid rgba(0,0,0,0.12)', marginBottom: 10 }}>
+              <table style={tableStyle}>
+                <tbody>
+                  {feedPolicy.blocklist.map((row) => (
+                    <tr key={row.id}>
+                      <td style={thtd}>{row.host_pattern}</td>
+                      <td style={thtd}>
+                        <button
+                          type="button"
+                          style={{ fontSize: '0.72rem' }}
+                          disabled={fpBusy}
+                          onClick={async () => {
+                            setFpBusy(true);
+                            setFpMsg('');
+                            try {
+                              const res = await fetch('/api/admin/feed-policy', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'same-origin',
+                                body: JSON.stringify({ action: 'remove_block', id: row.id }),
+                              });
+                              const d = await res.json().catch(() => ({}));
+                              if (!res.ok) throw new Error(d.error || 'Fehler');
+                              setFeedPolicy((p) => ({ ...p, blocklist: p.blocklist.filter((x) => x.id !== row.id) }));
+                              setFpMsg('Entfernt.');
+                            } catch (e) {
+                              setError(e?.message || String(e));
+                            } finally {
+                              setFpBusy(false);
+                            }
+                          }}
+                        >
+                          Entf.
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setFpBusy(true);
+                setFpMsg('');
+                try {
+                  const res = await fetch('/api/admin/feed-policy', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ action: 'add_block', host_pattern: fpBlock.trim() }),
+                  });
+                  const d = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(d.error || 'Fehler');
+                  setFpBlock('');
+                  setFpMsg('Blocklist-Eintrag hinzugefügt.');
+                  const r2 = await fetch('/api/admin/feed-policy', { credentials: 'same-origin' });
+                  const d2 = await r2.json();
+                  if (r2.ok) setFeedPolicy({ allowlist: d2.allowlist || [], blocklist: d2.blocklist || [] });
+                } catch (err) {
+                  setError(err?.message || String(err));
+                } finally {
+                  setFpBusy(false);
+                }
+              }}
+            >
+              <input
+                placeholder="Host-Substring z. B. example-spam.com"
+                value={fpBlock}
+                onInput={(e) => setFpBlock(e.currentTarget.value)}
+                style={{ ...selectStyle, display: 'block', width: '100%', boxSizing: 'border-box' }}
+              />
+              <button type="submit" style={{ ...btnPrimary, marginTop: 8 }} disabled={fpBusy}>
+                Blocken
+              </button>
+            </form>
+          </div>
         </div>
       </section>
 

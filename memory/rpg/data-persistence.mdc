@@ -1,0 +1,96 @@
+# RPG Memory — Datenmodell & Persistenz
+
+## Zweck
+
+- Beschreibt Datenmodell, API-Payloads, Persistenz und Migrationen fuer den RPG-Teil.
+
+## Routen & Zugriff
+
+- Hub: `/rpg`
+- Quest-Baum: `/rpg/tree`
+- Deep-Link: `/rpg/tree?focus=<questId>`
+- Zugriff auf RPG-Seiten/Funktionen ueber `rpg_access` (Superuser weiterhin implizit erlaubt).
+
+## Datenmodell
+
+### GET `/api/rpg/quests`
+
+Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locationCatalog`, `questmakerItems`, `persisted`, `schemaVersion` sowie Legacy-Felder `main`/`side` als leer.
+
+### `schemaVersion` (Pflicht ab Speicherung)
+
+- Sinn: Payload-Format eindeutig versionieren.
+- Bei Strukturwechsel: `RPG_PAYLOAD_SCHEMA_VERSION` erhoehen und Migration einbauen.
+- GET liefert immer `schemaVersion`.
+- PUT setzt `schemaVersion` auf `max(aktueller Code, gespeicherte Version)`.
+- v3 fuehrt Top-Level-Feld `structure` fuer Kapitel/Abschnitt/Unterabschnitt + Container-Unlocks ein; `graph` bleibt fuer Quest-Kanten.
+
+### PUT `/api/rpg/quests`
+
+- `{ "resetToDefault": true }`: loescht gespeicherten State; naechstes GET liefert Sample-Graph.
+- `{ "graph", "addedIds", "stepDone", "structure?" }`: Client-Snapshot; serverseitig Merge mit vorhandenem JSON.
+- Optional `questmakerItems`: neue, vollstaendige Katalog-Eintraege fuer bislang unbekannte referenzierte `itemId`s; ohne passende Eintraege antwortet der Server mit `400` (`missing`).
+
+### POST `/api/rpg/quests-normalize-payload`
+
+- Einmal-Bulk: normalisiert `graph` in allen `rpg_user_state`-Zeilen via `migrateRpgGraphToV2`; schreibt nur bei Aenderung zurueck.
+
+### POST `/api/rpg/quests-import`
+
+- Restore-/Import-Endpoint fuer bestehende Nutzer (superuser-only).
+- Erwartet Zielnutzer + Payload und validiert u. a. `graph`, `addedIds`, `stepDone` vor dem Speichern.
+
+### API `/api/rpg/locations`
+
+- `GET`: Suche/Suggestions fuer Country/City/Place inkl. Filter (`kind`, `inCountry`, `inCity`).
+- `POST`: Upsert-Hierarchie (`country/city/place`) fuer Katalogpflege (superuser-only).
+
+## Graph- und Unlock-Regeln
+
+- `GraphQuest.kind`: `"main"` oder `"side"`.
+- Kanten laufen von Voraussetzung (`from`) zu abhaengiger Quest (`to`).
+- Freigeschaltet: alle direkten Vorgaenger sind zu 100 % abgeschlossen.
+- Hybrid-Unlock:
+  - `graph.edges`: Quest-Reihenfolge/Parallelitaet.
+  - `payload.structure.*.unlock.requires`: Container-Sichtbarkeit/Freigabe.
+  - Server validiert eindeutige Container-Refs und widerspruchsfreie Referenzen.
+
+## Persistenz (Server)
+
+- Tabelle `rpg_user_state`: `username` (PK), `payload` (JSON), `updated_at`.
+- RPG-spezifischer DB-Zugriff: `src/lib/rpg-state-db.js`.
+- Client-Sync: `src/lib/rpg-server-sync.js` (`fetchRpgBootstrap`, `persistRpgState`, Migration).
+- Location-Katalog in Tabelle `rpg_locations`; User-spezifische Auswahl in `payload.locationCatalog` (`cityIds`, `placeIds`).
+
+## Persistenz (Client, Legacy-Migration)
+
+- Alte Keys (`rpg-quest-graph-custom`, `rpg-quest-added-ids`, `rpg-quest-step-done`) werden nach erfolgreicher Migration entfernt.
+- Modul: `src/lib/rpg-persistence.js`.
+- Zusaetzlich Session-Bootstrap-Cache in `sessionStorage` (`rpg-bootstrap-v1`) fuer schnellen Initialzustand pro Tab.
+
+## Datenintegritaet und Ausbau
+
+- PUT-Merge schuetzt unbekannte Felder vor stillem Verlust.
+- Beim Quest-Edit wird `{ ...prev, ...fromEditor }` gemerged, damit Meta-Felder erhalten bleiben.
+- Graph mit 0 Quests ist grundsaetzlich gueltig; Schutzregel: wenn vorher Quests existierten und der neue Stand leer ist, blockiert `PUT` mit `409` (Safety gegen versehentliches Leeren).
+- Persist-Fehler zeigen `console.warn` mit Status/Fehlerbody.
+- Grenzen: kein Versions-/Locking fuer parallele Tabs; `resetToDefault` loescht weiterhin gespeicherten State.
+
+## Code-Pfade
+
+| Teil | Pfade |
+|------|-------|
+| API | `src/pages/api/rpg/quests.js`, `src/pages/api/rpg/quests-normalize-payload`, `src/pages/api/rpg/quests-import.js`, `src/pages/api/rpg/locations.js` |
+| Schema | `src/lib/rpg-payload-schema.js` |
+| Struktur/Hybrid-Unlock | `src/lib/rpg-structure.js` |
+| Server-DB | `src/lib/rpg-state-db.js` |
+| Location-Katalog | `src/lib/rpg-location-catalog-db.js`, `src/lib/rpg-location.js` |
+| Questmaker-Katalog-Sync | `src/lib/rpg-questmaker-sync.js`, `src/lib/rpg-questmaker-catalog-db.js` |
+| Client-Sync | `src/lib/rpg-server-sync.js` |
+| DB-Grundlagen | `memory/database.mdc` |
+
+## Siehe auch
+
+- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/ui.mdc`
+- `memory/rpg/architecture.mdc`

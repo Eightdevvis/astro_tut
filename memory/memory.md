@@ -4,24 +4,22 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 
 ## Dokumentation (Pflicht, knapp)
 
-- **Ort:** Sachverhalt unter `memory/` ablegen — bestehende `.mdc` erweitern oder **neue** Datei + **eine Zeile** in der Tabelle unten.
+- **Ort:** Sachverhalt unter `memory/` ablegen — bestehende `.mdc` erweitern oder **neue** Datei + **eine Zeile** in der Übersicht unten.
 - **Inhalt:** Verhalten, **Pfade/Dateien**; API, Keys, Migration nur wenn betroffen — **kein** Code abschreiben.
 - **Form:** Stichpunkte, möglichst **eine Zeile** pro Fakt; ausufernde Specs in eigene Datei auslagern und verlinken.
 
-| Thema | Details |
-|--------|---------|
-| Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |
-| Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
-| RPG Quest-Hub (Main/Side, Fokus, Graph) | [`rpg-quests.mdc`](rpg-quests.mdc) |
-| RPG — strukturierte Steps, Fristen, Rewards (Spez + Code-Pfade) | [`rpg-quests-steps-rewards.mdc`](rpg-quests-steps-rewards.mdc) |
-| RPG — Questmaker+, API, Rückfragen, Env | [`rpg-quests-ai.mdc`](rpg-quests-ai.mdc) |
-| KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
-| Tester-Modus (Tester-Freigaben, Screenshot-Bugs, Feature-Toggles) | [`tester-features.mdc`](tester-features.mdc) |
-| RPG — kommende Features (Backup, …) | [`rpg-quests-upcoming.mdc`](rpg-quests-upcoming.mdc) |
-| RPG — vielleicht kommend (Default-Graph, …) | [`rpg-quests-maybe.mdc`](rpg-quests-maybe.mdc) |
-| Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
-| Site — Theme-System (global, Light/Dark, Storage, Init) | [`site-theme-system.mdc`](site-theme-system.mdc) |
-| RPG — Theme-System (RPG-Ableitung vom Site-Theme) | [`rpg-theme-system.mdc`](rpg-theme-system.mdc) |
-| Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
+## Themenübersicht (vollständig, sortiert)
 
-Weitere Themen: bei Bedarf neue Dateien unter `memory/` anlegen und in dieser Tabelle verlinken.
+| Thema | Details |
+|-------|---------|
+| Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
+| Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |
+| KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
+| Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
+| RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |
+| Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
+| Site — Theme-System (global, Light/Dark, Storage, Init) | [`site-theme-system.mdc`](site-theme-system.mdc) |
+| Tester-Modus (Tester-Freigaben, Screenshot-Bugs, Feature-Toggles) | [`tester-features.mdc`](tester-features.mdc) |
+| Topic-Feeds (RSS, Allowlist, KI-Plan/Summary, Home + Settings) | [`custom-topic-feeds.mdc`](custom-topic-feeds.mdc) |
+
+Weitere Themen: bei Bedarf neue Dateien unter `memory/` anlegen und in dieser Übersicht verlinken.

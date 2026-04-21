@@ -1,0 +1,40 @@
+# RPG Memory — Einstieg
+
+Diese Seite ist der **zentrale Einstieg** fuer alle RPG-Themen.
+Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachbereichen.
+
+## Schnellstart
+
+- Wenn du neu im Thema bist: zuerst `memory/rpg/architecture.mdc`.
+- Wenn du eine konkrete Aufgabe hast: `memory/rpg/by-task.mdc`.
+- Wenn du wissen willst, wo bestehende Inhalte aktuell liegen: `memory/rpg/source-map.mdc`.
+
+## Fachbereiche (dauerhaft)
+
+| Bereich | Zweck | Einstieg in `memory/rpg/` |
+|--------|-------|---------------------------|
+| Gesamtbild & Invarianten | Was das RPG-System ist und welche Regeln immer gelten | `memory/rpg/architecture.mdc` |
+| KI / Questmaker+ | Prompt-/API-Flow, Clarify, Quality Gates, Item-Retrieval | `memory/rpg/ai.mdc` |
+| Steps & Rewards | Steps-Baum, DependsOn, Optional, TimeDueAt, Reward-Typen | `memory/rpg/steps-rewards.mdc` |
+| Datenmodell & Persistenz | Payload-Shape, Schema-Version, DB-/Client-Persistenz | `memory/rpg/data-persistence.mdc` |
+| UI (Hub/Baum/Editor/Location) | Sichtbares Verhalten und Interaktionslogik | `memory/rpg/ui.mdc` |
+| Theme | RPG-Themes auf Basis globaler Tokens | `memory/rpg/theme.mdc` |
+| Roadmap | Kandidaten fuer kommende Features | `memory/rpg/roadmap.mdc` |
+
+## Strukturregeln fuer RPG-Memory
+
+- Neue Infos immer in den passenden **Fachbereich**, nicht in "neu/zuletzt".
+- Zeitliche Hinweise nur optional in einer separaten Historie; Fachwissen bleibt in den Domainen.
+- Jede groessere RPG-Aenderung muss mindestens eine bestehende RPG-Memory-Datei aktualisieren.
+
+## Kernquellen in `memory/rpg/`
+
+- `memory/rpg/architecture.mdc`
+- `memory/rpg/by-task.mdc`
+- `memory/rpg/source-map.mdc`
+- `memory/rpg/ai.mdc`
+- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/data-persistence.mdc`
+- `memory/rpg/ui.mdc`
+- `memory/rpg/theme.mdc`
+- `memory/rpg/roadmap.mdc`

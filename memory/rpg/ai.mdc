@@ -1,0 +1,139 @@
+# RPG Memory — KI / Questmaker+
+
+## Zweck
+
+- Nutzer mit `rpg_access` koennen Quest-Inhalte per KI befuellen.
+- KI erzeugt primaer Inhalte; im Package-Flow kann sie zusaetzlich Edge-Vorschlaege liefern, die vor Merge validiert werden.
+- Inhalt ist auf echtes Leben ausgerichtet (Studium, Arbeit, Alltag); Ton darf metaphorisch/expressiv sein, Schritte bleiben real plausibel.
+
+## UI: manuell+ und questmaker+
+
+| Kontext | Verhalten |
+|---------|-----------|
+| Neue Quest (Baum: manuell+ / questmaker+) | manuell+ = nur Formular (kein Umschalten zu Questmaker). questmaker+ = nur Prompt; nach Generierung Vorschau (`RpgQuestStepsView` read-only) + Speichern / Neu generieren. |
+| Neue Quest (ohne `createEntry`, Legacy) | Umschaltung manuell+ / questmaker+ oben im Formular wie frueher. |
+| Quest bearbeiten (Panel) | manuell+ -> `editEntry: 'form'`; questmaker+ -> `editEntry: 'ai'`. |
+
+Speichern nach Generierung erfolgt wie gewohnt ueber `PUT /api/rpg/quests` (Graph, `addedIds`, `stepDone`, optional `questmakerItems` fuer neue Item-IDs).
+
+## Woran das Format gebunden ist
+
+Die Route `POST /api/rpg/quests-generate` nutzt:
+
+1. `SYSTEM_PROMPT` + JSON-Anweisung (kompakt) mit Realitaetsbezug; bei fehlenden Fakten Rueckfragen statt Halluzination.
+2. `response_format: { type: 'json_object' }` fuer OpenAI-kompatible Endpunkte; Validierung/Normalisierung serverseitig nach dem Parsen.
+3. Server-Nachlauf mit `normalizeQuestStepsTree`, Fallback `stepLabels -> labelsToSteps`, ID-Handling ueber `normalizeQuestId`/`ensureUniqueQuestId`, bei Bearbeitung ID-Fixierung ueber `lockedQuestId`.
+4. Item-Retrieval-Flow ohne Vollkatalog im Prompt: `itemLookupRequests` -> Kandidatensuche (`searchQuestmakerCatalogCandidates`) -> zweite kleine Aufloesungs-Completion (bestehende `itemId` oder neuer kompletter `questmakerItems`-Eintrag).
+
+Kurz: Semantik = System- + User-Nachricht, Item-Retrieval = serverseitig in zwei Phasen, JSON = freies Objekt mit Pflichtlogik pro `responseType`, Graph-Steps = immer normalisierte Baeume.
+
+## Rueckfragen (Clarify)
+
+- Antwort mit `responseType: "clarify"` und `questions: string[]`.
+- Request-Body enthaelt bei Folgerunden `clarification: { pairs: [{ question, answer }] }` (kumulativ).
+- Limit: max. 2 Clarify-Runden (`MAX_CLARIFY_ROUNDS`), danach Fehler `errorCode: "clarify_limit_reached"`.
+
+## Voraussetzungen
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|--------------|
+| `OPENAI_API_KEY` | Ja fuer KI | Nur Server. Ohne Key: 503. |
+| `OPENAI_BASE_URL` | Nein | Basis-URL ohne Pfad (Default: `https://api.openai.com/v1`). |
+| `RPG_OPENAI_MODEL` | Nein | Default: `gpt-4o-mini`. |
+
+Hinweis: `RPG_OPENAI_USE_JSON_SCHEMA` betrifft diese Route nicht mehr (immer `json_object`).
+
+## API `POST /api/rpg/quests-generate`
+
+- Zugriff: `rpg_access` erforderlich, sonst 403.
+- Usage-Log: Nach jeder gueltigen Upstream-Completion wird in `ai_usage_log` geschrieben (`feature = rpg`), sichtbar in `/settings` -> Tab KI-Nutzung.
+- Content-Type: `application/json`.
+
+Body (relevante Felder):
+
+```json
+{
+  "prompt": "Freitext (max. 6000 Zeichen)",
+  "existingQuestIds": ["optional", "alle", "vergebenen", "quest-ids"],
+  "lockedQuestId": "optional — bei Bearbeitung: Quest-ID bleibt unveraendert",
+  "responseMode": "optional: \"package\" fuer Unterabschnitt-Pakete",
+  "mode": "optional: \"subsection\" als alternativer Package-Schalter",
+  "clarification": {
+    "pairs": [{ "question": "...", "answer": "..." }]
+  }
+}
+```
+
+Erfolg 200 — Rueckfrage:
+
+```json
+{
+  "responseType": "clarify",
+  "questions": ["...", "..."]
+}
+```
+
+Erfolg 200 — Quest:
+
+```json
+{
+  "responseType": "quest",
+  "id": "...",
+  "title": "...",
+  "description": "...",
+  "kind": "main",
+  "stepLabels": ["..."],
+  "steps": [],
+  "rewards": ["..."],
+  "questRewards": [],
+  "questmakerItems": []
+}
+```
+
+Erfolg 200 — Unterabschnitt-Paket:
+
+```json
+{
+  "responseType": "package",
+  "packageType": "subsection",
+  "title": "...",
+  "description": "...",
+  "quests": [{ "id": "...", "title": "...", "steps": [] }],
+  "edges": [{ "from": "...", "to": "..." }],
+  "unlockHints": ["..."],
+  "questmakerItems": [{ "id": "...", "category": "...", "title": "...", "description": "..." }]
+}
+```
+
+Weitere Regeln:
+
+- `questmakerItems` nur bei neuen Item-IDs; sonst weglassen oder leeres Array.
+- `questRewards` via `normalizeQuestRewardRows` (Text-, Item- und Punkte-Typen, optional `unlockAtPercent`).
+- `rewards` als String-Liste bleibt moeglich, wenn `questRewards` fehlt.
+- Katalogverwaltung ueber `GET/PUT /api/rpg/questmaker-items`; beim `PUT /api/rpg/quests` optional `questmakerItems` fuer neue IDs, sonst 400 mit `missing`.
+
+Fehler: 400, 403, 503, 502; maschinenlesbar via `errorCode` (u. a. `quality_placeholder_steps`, `quality_too_flat`, `quality_leaf_not_concrete`, `clarify_limit_reached`, `invalid_clarify_payload`, `invalid_package_payload`, `package_too_large`, `package_invalid_steps`, `package_placeholder_steps`, `item_lookup_no_candidates`, `item_lookup_ambiguous`, `item_resolution_failed`).
+
+## Was die KI nicht autonom entscheidet
+
+- Keine direkte Persistenz ohne Editor-/API-Flow.
+- Keine dauerhafte Prompt-Speicherung in der DB (Client haelt Clarify-Session im Editor-Zustand).
+
+## Code-Pfade
+
+| Rolle | Datei |
+|-------|-------|
+| API | `src/pages/api/rpg/quests-generate.js` (zweiphasiger Item-Retrieval-Flow) |
+| Item-Katalog API | `src/pages/api/rpg/questmaker-items.js` |
+| Katalog-DB / Sync | `src/lib/rpg-questmaker-catalog-db.js`, `src/lib/rpg-questmaker-sync.js` |
+| Labels -> flache Steps | `src/lib/rpg-quest-form-helpers.js` (`labelsToSteps`, `normalizeQuestId`) |
+| Steps normalisieren | `src/lib/rpg-quest-steps.js` |
+| KI-`steps` -> Editor-Drafts | `src/lib/rpg-quest-editor-draft.js` (`aiQuestNodesToDraftSteps`, `aiLabelsToDraftSteps`) |
+| Editor | `src/components/RpgQuestGraphEditor.jsx` |
+| Styles Editor / Modus | `src/components/rpg-quest-tree.css` |
+
+## Siehe auch
+
+- `memory/rpg/data-persistence.mdc`
+- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/ui.mdc`

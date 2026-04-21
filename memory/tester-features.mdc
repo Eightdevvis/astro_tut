@@ -1,13 +1,29 @@
+# Tester-Features
+
+## Rechte und Zugriff
+
 - Tester-Steuerung läuft über `user_permissions` mit Rechten `tester_access` (Tester-Bar + Bugreport) und `rpg_access` (RPG-Zugriff).
 - Verfügbare Rechte zentral in `src/lib/permissions.js` (`KNOWN_PERMISSIONS`); Superuser `sash` behält automatisch Vollzugriff.
+- RPG-Zugriff nicht mehr nur Superuser: Gating in RPG-Seiten und Navigation nutzt jetzt `rpg_access` (oder Superuser).
+
+## Superuser-Panel
+
 - Superuser-Panel (`src/components/SuperSettings.jsx` + `GET /api/admin/panel`) zeigt aktive Tester und eingereichte Bug-Screenshots inkl. Kommentar/URL.
 - Superuser-Panel gruppiert Themen jetzt über ein linkes Menü (sticky auf Desktop, untereinander auf Mobile) und springt zu Abschnitt-IDs in `src/components/SuperSettings.jsx`.
+
+## Bugreport-APIs
+
 - Neue API für Bugreports: `src/pages/api/tester-bug-reports.js` (`POST` für Tester, `GET` für Superuser).
 - Bildabruf einzelner Reports über `src/pages/api/tester-bug-reports/[id]/image.js` (nur Superuser, liest BLOB aus DB).
+- API für UI-Sichtbarkeit: `GET/POST /api/user/tester-ui` (nur Superuser oder User mit `tester_access`).
+
+## Datenbank
+
 - Neue DB-Tabelle `tester_bug_reports` in `src/lib/db.js` sowie Init-Skripten (`scripts/init_db.cjs`, `scripts/init_turso.js`).
 - Zusätzliche DB-Tabelle `tester_ui_preferences` speichert pro User, ob die Testerleiste sichtbar ist (`enabled` als 0/1).
+
+## UI-Verhalten
+
 - Tester-UX über `src/components/TesterBugBar.jsx`: transparenter, runder Kamera-Floating-Button (unten rechts); Klick erstellt Screenshot (`html2canvas`) und öffnet ein zentriertes Mini-Modal mit optionaler Nachricht + `Speichern`.
-- API für UI-Sichtbarkeit: `GET/POST /api/user/tester-ui` (nur Superuser oder User mit `tester_access`).
 - `/api/user`, `login`, `register` liefern zusätzlich `testerUiEnabled`; Tester-Bar zeigt nur bei `isTester && testerUiEnabled`.
 - Overlay eingebunden in `src/layouts/BaseLayout.astro`, `src/pages/index.astro`, `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro`.
-- RPG-Zugriff nicht mehr nur Superuser: Gating in RPG-Seiten und Navigation nutzt jetzt `rpg_access` (oder Superuser).

@@ -7,7 +7,11 @@ import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
+import UserFeedHomeGrid from '../components/UserFeedHomeGrid.jsx';
+import { getUsernameFromCookies } from '../lib/session.js';
 import '../styles/global.css';
+
+const sessionUser = await getUsernameFromCookies(Astro.cookies);
 
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
 
@@ -72,6 +76,7 @@ const lastPost = sorted[0] ?? null;
             <div class="lastPost-eye">eye</div>
           </a>
         )}
+        {sessionUser ? <UserFeedHomeGrid client:load /> : null}
       </Grid>
     </section>
     <TesterBugBar client:load />

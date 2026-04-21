@@ -1,0 +1,36 @@
+# RPG Memory — Roadmap
+
+## Zweck
+
+- Zentrale RPG-Domaenenseite fuer geplante und moegliche Erweiterungen.
+
+## Kommende Features
+
+- DB-Backup fuer `rpg_user_state` bzw. gesamte App-DB in Prod (Snapshots/Export; Git sichert nur Code).
+- Evolutions-Metapunkte (Idee, noch nicht umgesetzt), getrennt von drainbaren Energien (`heart` / `mana` als `points.amount`).
+- Weitere Kandidaten: Monitoring bei fehlgeschlagenem Persist, Kategorien/Filter, Automatik, KI-Anbindung.
+
+## Vielleicht kommend
+
+- Eigener Default-Graph statt fest eingebautem Sample-Graphen, optional mit UI-Reset ("Standard"), waehrend API `resetToDefault` weiter nutzbar bleibt.
+
+## Bereits umgesetzt (Verlauf, optional)
+
+### 1) Questmaker+ — serverseitiger Item-Retrieval-Flow
+
+- `POST /api/rpg/quests-generate` nutzt keinen Vollkatalog im Prompt mehr.
+- Zweiphasig: `itemLookupRequests` -> serverseitige Kandidatensuche (`searchQuestmakerCatalogCandidates`) -> Aufloesungs-Completion.
+- Ergebnis: bestehende `itemId` oder neuer kompletter `questmakerItems`-Eintrag.
+- Relevante Code-Pfade: `src/pages/api/rpg/quests-generate.js`, `src/lib/rpg-questmaker-catalog-db.js`, `src/components/RpgQuestGraphEditor.jsx`.
+
+### 2) Questmaker+ — Quality-Gates und v3-Structure-Flow
+
+- `schemaVersion` v3 mit Top-Level-Feld `structure` (Hybrid: Container-Unlocks + Graph-Kanten).
+- Striktere output-basierte Quality-Gates in KI-Ausgabe.
+- RPG-Location-Flow und weitere UI/API-Anbindungen liefen in diesem Paket mit.
+- Relevante Code-Pfade: `src/lib/rpg-structure.js`, `src/pages/api/rpg/quests.js`, `src/lib/rpg-payload-schema.js`, `src/lib/rpg-server-sync.js`, `src/pages/api/rpg/locations.js`.
+
+## Hinweis
+
+- Roadmap bleibt fachliche Quelle fuer geplant/moeglich.
+- Verlauf dient nur als Kontext und ersetzt keine Domaenenregeln.

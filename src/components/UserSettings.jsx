@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
+import UserSettingsFeeds from './UserSettingsFeeds.jsx';
 
 const box = {
   maxWidth: 720,
@@ -130,6 +131,7 @@ export default function UserSettings() {
 
       <div style={tabRow}>
         <TabButton id="account" label="Konto" active={tab === 'account'} onPick={setTab} />
+        <TabButton id="feeds" label="Feed" active={tab === 'feeds'} onPick={setTab} />
         <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
         {user?.isTester ? (
           <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
@@ -156,6 +158,8 @@ export default function UserSettings() {
           </p>
         </section>
       )}
+
+      {!loading && tab === 'feeds' && user && <UserSettingsFeeds />}
 
       {!loading && tab === 'ai' && ai && (
         <>

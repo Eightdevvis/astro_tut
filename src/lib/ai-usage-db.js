@@ -7,6 +7,8 @@ import { ensureDbSchema, getDb } from './db.js';
 /** @type {Record<string, string>} Anzeigenamen für UI; Keys = `feature`-Spalte */
 export const AI_FEATURE_LABELS = {
   rpg: 'RPG (Questmaker & Quest-Graph)',
+  topic_feed_plan: 'Topic-Feed (Quellen-Vorschlag)',
+  topic_feed_summary: 'Topic-Feed (Zusammenfassung)',
 };
 
 export const AI_FEATURE_RPG = 'rpg';

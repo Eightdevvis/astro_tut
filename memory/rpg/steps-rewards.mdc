@@ -1,0 +1,129 @@
+# RPG Memory — Steps & Rewards
+
+## Zweck
+
+- Definiert Datenmodell und Verhalten fuer strukturierte Steps und Reward-Anzeige.
+- Ziel: Gruppen mit Substeps, Reihenfolge (frei vs. abhaengig), optionale Steps, zeitbegrenzte Blatt-Schritte (`timeDueAt`), Rewards pro Step und Quest-Rewards nach Fortschritt.
+
+## Entwicklungsprinzip
+
+- Stabilitaet vor Tempo: Strukturwechsel in kleinen, testbaren Stufen.
+- Trotzdem zuegig zur neuen Struktur: Normalize-on-read plus spaeter optionaler Bulk-Write ist absichtlich.
+
+## 1. Gruppen-Step (Substeps)
+
+- Ein Step kann `substeps` haben (rekursiv verschachtelbar).
+- Erledigt-Regel Gruppen-Step: erledigt, sobald alle nicht optionalen Substeps erledigt sind.
+- Gruppen koennen selbst `optional` sein.
+
+## 2. Reihenfolge: unabhaengig vs. abhaengig
+
+| Ansatz | Idee | Vorteile | Nachteile |
+|--------|------|----------|-----------|
+| Explizite Abhaengigkeiten (`dependsOn`) | Step nennt 0-n Step-IDs, die vorher erledigt sein muessen | Flexibel fuer Verzweigungen und Mischformen | Editor/UI muss Zyklen verhindern |
+| Strikte Listen-Reihenfolge | Reihenfolge ueber Array-Position | Einfach fuer lineare Listen | Unflexibel bei parallelen Schritten |
+
+Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Step-IDs innerhalb derselben Quest).
+
+## 3. Optionale Steps
+
+- Feld `optional: boolean` (Default `false`).
+- Optionale Steps zaehlen nicht fuer den Abschluss des uebergeordneten Gruppen-Steps.
+- Optionale Steps koennen eigene Rewards haben.
+
+## 4. Rewards — zwei Quellen, eine Anzeige-Liste
+
+### Reward-Eintraege (`RewardEntry`)
+
+- `{ "type": "text", "text": "..." }`
+- `{ "type": "item", "itemId": "...", "displayName"?: "..." }`
+- `{ "type": "points", "pointKind": "heart" | "mana", "amount": <int> }` (auch negative Werte moeglich)
+
+Globale Kontostaende (Baum-Gefaesse): Persistentes `vitals`-Konto in `rpg_user_state.payload` mit `{ heart, mana, appliedStepRewardIds[] }`, Startwerte `heart=25`, `mana=25` bei Max 50, einmalige Buchung pro Step-Reward-ID (`step:<questId>:<stepId>`), Werte clamp 0...50, Reconciliation via `reconcileRpgVitals`.
+Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls einmalig gebucht (`quest:<questId>:reward:<index>`).
+
+### 4a. Reward am Step
+
+- Solange Step offen ist: Reward in Liste gedimmt.
+- Nach Erledigung: Reward normal sichtbar.
+- Keine UI-Zuordnung "welcher Reward gehoert zu welchem Step", nur gemeinsame Liste.
+
+### 4b. Rewards an der Quest
+
+- Quest-Rewards haben Freischalt-Schwellen nach Quest-Fortschritt in Prozent.
+- Optional gespeichertes `unlockAtPercent` (0-100) pro Quest-Reward.
+- Wenn nicht gesetzt: automatische Stufen via `resolveQuestRewardUnlockSchedule`; Mischbetrieb pro Zeile moeglich.
+- Unterhalb der Schwelle gedimmt, ab Schwelle normal.
+
+## 5. Migration (Bestand)
+
+- Legacy-Flat-Steps `{ id, label }` werden als Leaf-Steps interpretiert: `optional=false`, keine `substeps`, keine `reward`, keine `dependsOn`, keine `timeDueAt`.
+
+### 5a. Legacy-Strings -> `RewardEntry`
+
+1. Lesen/Anzeige/Logik ueber Normalisierung im Speicher.
+2. Schreiben persistiert nur noch neues Format.
+3. KI bleibt bei Generierung schlank; neue Katalog-Items erst beim Speichern in Katalog schreiben.
+4. Optionaler DB-Bulk ueber `POST /api/rpg/quests-normalize-payload`.
+
+### 5b. Item-Katalog
+
+- Kategorien als hardcodierte Enum (`rpg-item-categories.js`).
+- Katalogpflege in Super-Einstellungen; Sync ueber `questmakerItems` beim PUT.
+
+### 5c. Zeitbegrenzung (`timeDueAt`)
+
+- Sinnvoll fuer Blatt-Schritte; gespeichert als ISO-Datum `YYYY-MM-DD`.
+- Pflicht-Step mit Frist und offen -> Quest gilt als zeitgebunden.
+- Optional-Step mit Frist zaehlt nicht fuer Pflicht-Zeitlogik.
+- Baum-UI: roter Punkt am Knoten bei offenem Pflicht-Step mit Frist < 7 Tage oder ueberfaellig.
+
+## JSON-Beispiel (Illustration)
+
+```json
+{
+  "id": "quest-clean-room",
+  "kind": "side",
+  "title": "Zimmer aufraeumen",
+  "description": "Struktur-Beispiel: Gruppe, Reihenfolge, Optional, Step- vs. Quest-Rewards.",
+  "steps": [
+    {
+      "id": "cr-root",
+      "label": "Zimmer aufraeumen",
+      "optional": false,
+      "substeps": [
+        { "id": "cr-trash", "label": "Muell einsammeln", "optional": false, "reward": "Fund: verlorenes Accessoire" },
+        { "id": "cr-wash", "label": "Waesche waschen", "optional": false, "dependsOn": [] },
+        { "id": "cr-hang", "label": "Waesche aufhaengen", "optional": false, "dependsOn": ["cr-wash"], "timeDueAt": "2026-04-20" },
+        { "id": "cr-bed", "label": "Bett machen", "optional": false },
+        { "id": "cr-vacuum", "label": "Staubsaugen", "optional": true, "reward": "+3 Clean Energy" }
+      ]
+    }
+  ],
+  "questRewards": [
+    { "text": "Buff: Aufgeraeumt (I)", "unlockAtPercent": 25 },
+    { "text": "Buff: Aufgeraeumt (II)", "unlockAtPercent": 40 },
+    { "text": "Titel: Haushaltsheld", "unlockAtPercent": 100 }
+  ]
+}
+```
+
+## Code-Pfade
+
+| Rolle | Dateien |
+|-------|---------|
+| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-steps.js` |
+| Graph-Hooks | `src/lib/rpg-quest-graph.js` |
+| Formular / Editor-Parsing | `src/lib/rpg-quest-form-helpers.js` |
+| Schema-Version / Migration | `src/lib/rpg-payload-schema.js`, `src/pages/api/rpg/quests.js` |
+| DB-Bulk-Normalisierung | `POST /api/rpg/quests-normalize-payload`, `rpg-state-db.js`, `SuperSettings.jsx` |
+| Bootstrap | `src/lib/rpg-server-sync.js` |
+| UI | `RpgQuestStepsView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
+| Editor | `src/components/RpgQuestGraphEditor.jsx` |
+| KI | `src/pages/api/rpg/quests-generate.js` |
+
+## Siehe auch
+
+- `memory/rpg/ai.mdc`
+- `memory/rpg/data-persistence.mdc`
+- `memory/rpg/ui.mdc`

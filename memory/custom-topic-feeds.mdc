@@ -1,0 +1,5 @@
+# Topic-Feeds (Custom)
+
+- **UI:** Home-Grid (`index.astro`) `UserFeedHomeGrid.jsx` wenn Session; Einstellungen Tab „Feed“ + `UserSettingsFeeds.jsx`; Detail `/feeds/[id]` + `FeedDetailView.jsx` (`noindex`).
+- **API:** `/api/user/feeds`, `/api/user/feeds/plan`, `/api/user/feeds/[id]`, Pins unter `.../pins` und `.../pins/[pinId]`; KI-Plan `feed-plan-ai.js`, Summary `feed-summary-ai.js`.
+- **Trust:** Nur https; Quellen außerhalb Allowlist nur mit Nutzerbestätigung; Pins außerhalb mit `acknowledge_untrusted`.

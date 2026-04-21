@@ -1,9 +1,0 @@
-# RPG Theme-System (aufbauend auf globalem Site-Theme)
-
-- Scope: RPG-Baum/Editor auf `src/components/rpg-quest-tree.css` vereinheitlicht; basiert auf dem globalen Site-Theme plus RPG-spezifischen `--rpg-*` Tokens.
-- Root-Anbindung: Seitenhintergrund bleibt über `--rpg-root-bg`/`--rpg-root-fg` in `src/styles/themes.css`; Baum nutzt eigene semantische RPG-Tokens.
-- Editor: feste High-Contrast-Overrides (`#000/#fff`) entfernt; Overlay, Border, Field, Text, Primary jetzt via `--rpg-editor-*`.
-- Knotenfarben: Node-States (`locked`, `unlocked-not-added`, `active`) verwenden tokenbasierte `color-mix(...)` statt fixer Dunkelwerte.
-- Semantische Farbtokens ergänzt: Accent/Danger/Warning/Invalid/Heart/Mana/Urgent (`--rpg-accent-*`, `--rpg-danger-*`, `--rpg-warning-*`, `--rpg-invalid-*`, `--rpg-heart-*`, `--rpg-mana-*`, `--rpg-urgent-dot`).
-- Komponenten-Mapping: Top-/Panel-/Edit-Buttons, Reward-Pills, Warning/Invalid-States, Danger-Action und Back-Link auf semantische Tokens gemappt.
-- Pflege-Regel: neue RPG-UI-Farben zuerst als `--rpg-*` Token (dark + light) definieren, danach erst in Selektoren referenzieren; keine neuen harten Hex/RGBA-Werte direkt im Komponentenblock.
