@@ -8,6 +8,7 @@ import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
 import UserFeedHomeGrid from '../components/UserFeedHomeGrid.jsx';
+import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import { getUsernameFromCookies } from '../lib/session.js';
 import '../styles/global.css';
 
@@ -79,6 +80,7 @@ const lastPost = sorted[0] ?? null;
         {sessionUser ? <UserFeedHomeGrid client:load /> : null}
       </Grid>
     </section>
+    <GraffitiLayer client:load />
     <TesterBugBar client:load />
     <ThemeClient />
   </body>

@@ -5,6 +5,7 @@ import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
+import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import '../styles/global.css';
 
 const { pageTitle } = Astro.props;
@@ -26,6 +27,7 @@ const { pageTitle } = Astro.props;
     <main class="subpage-main">
       <slot />
     </main>
+    <GraffitiLayer client:load />
     <TesterBugBar client:load />
     <Footer />
     <ThemeClient />

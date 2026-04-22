@@ -153,3 +153,47 @@ html.site-subpage a:hover,
 html.site-subpage a:focus {
   color: var(--site-link-hover);
 }
+
+/* Feed detail: KI-Zusammenfassung (Markdown → HTML) */
+.feed-summary-md {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.feed-summary-md :first-child {
+  margin-top: 0;
+}
+.feed-summary-md :last-child {
+  margin-bottom: 0;
+}
+.feed-summary-md p {
+  margin: 0.5em 0;
+}
+.feed-summary-md ul,
+.feed-summary-md ol {
+  margin: 0.5em 0;
+  padding-left: 1.25em;
+}
+.feed-summary-md h1,
+.feed-summary-md h2,
+.feed-summary-md h3 {
+  font-size: 1.05em;
+  font-weight: 600;
+  margin: 0.75em 0 0.35em;
+}
+.feed-summary-md a {
+  color: inherit;
+  text-decoration: underline;
+}
+.feed-summary-md code {
+  font-size: 0.88em;
+}
+.feed-summary-md pre {
+  overflow-x: auto;
+  margin: 0.5em 0;
+  padding: 0.5em 0.65em;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.06);
+}
+html.dark .feed-summary-md pre {
+  background: rgba(255, 255, 255, 0.08);
+}

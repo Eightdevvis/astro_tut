@@ -1,0 +1,525 @@
+---
+import { jwtVerify } from 'jose';
+import { hasPermission } from '../lib/permissions.js';
+import { getJwtSecretBytes } from '../lib/jwt-secret.js';
+import Nav2 from '../components/Nav2.astro';
+import SiteFontOverrides from '../components/SiteFontOverrides.astro';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeClient from '../components/ThemeClient.astro';
+import '../styles/global.css';
+
+const token = Astro.cookies.get('session')?.value;
+let username = null;
+let allowed = false;
+
+if (token) {
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecretBytes());
+    username = String(payload.username || '');
+    allowed = await hasPermission(username, 'blogpost_poster');
+  } catch {
+    username = null;
+  }
+}
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>BLOGPOST</title>
+    <SiteFontOverrides />
+    <style>
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        box-sizing: border-box;
+        background: var(--site-body-bg);
+        color: var(--site-body-text);
+        font-family: var(--font-family);
+        padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+      }
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: max(2rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
+          max(1rem, env(safe-area-inset-left));
+      }
+      .no-permission {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        letter-spacing: 0.08em;
+      }
+      .no-permission a {
+        margin-top: 1rem;
+        color: inherit;
+        opacity: 0.75;
+      }
+      .editor-shell {
+        position: relative;
+        width: min(860px, 100%);
+        margin: 0 auto;
+        min-height: 80dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .editor-activation {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 6.5rem;
+        height: 6.5rem;
+        transform: translate(-50%, -50%);
+        border: 0;
+        background: transparent;
+        color: var(--site-body-text);
+        border-radius: 0.7rem;
+        display: grid;
+        place-items: center;
+        font-size: clamp(3rem, 8vw, 5rem);
+        cursor: pointer;
+        z-index: 6;
+      }
+      .editor-wrap {
+        position: relative;
+        width: min(620px, 100%);
+      }
+      .editor-box {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        min-height: 420px;
+        border-radius: 0.7rem;
+        border: 1px solid var(--site-card-border);
+        background: var(--site-card-bg);
+        box-shadow: var(--site-card-shadow);
+        padding: 1.25rem;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      .editor-wrap.active .editor-activation {
+        display: none;
+      }
+      #editor {
+        min-height: calc(100% - 0.25rem);
+        outline: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 1.08rem;
+        line-height: 1.6;
+        color: var(--editor-accent, #8dc5ff);
+      }
+      .editor-wrap:not(.active) #editor {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #editor:empty::before {
+        content: 'Schreib deinen Post hier...';
+        opacity: 0.45;
+      }
+      #doodleCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        cursor: crosshair;
+        pointer-events: none;
+      }
+      #doodleCanvas.active {
+        pointer-events: auto;
+      }
+      .tool {
+        position: absolute;
+        z-index: 5;
+        width: 1.9rem;
+        height: 1.9rem;
+        border: none;
+        background: transparent;
+        color: var(--site-body-text);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transform: rotate(var(--rot, 0deg));
+        font-size: 1.2rem;
+      }
+      .tool.active {
+        color: var(--editor-accent, #8dc5ff);
+      }
+      .tool.bold { left: -2.6rem; top: 18%; --rot: -13deg; }
+      .tool.italic { left: -2.4rem; top: 42%; --rot: 11deg; }
+      .tool.font { left: 43%; top: -2.4rem; --rot: -7deg; }
+      .tool.list { left: 59%; top: -2.15rem; --rot: 8deg; }
+      .tool.doodle { right: -2.45rem; top: 34%; --rot: -10deg; }
+      .tool.eraser { right: -2.8rem; top: 48%; --rot: -4deg; }
+      .tool.color { right: -2.25rem; top: 63%; --rot: 14deg; }
+      .editor-actions {
+        margin-top: 0.85rem;
+        display: flex;
+        justify-content: center;
+      }
+      .save-btn {
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.7rem;
+        padding: 0.6rem 0.9rem;
+        background: var(--site-card-bg);
+        color: var(--site-body-text);
+        cursor: pointer;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .msg {
+        min-height: 1.2rem;
+        margin-top: 0.45rem;
+        text-align: right;
+        font-size: 0.85rem;
+        opacity: 0.85;
+      }
+      .past-posts {
+        margin-top: 82vh;
+        opacity: 0;
+        transform: translateY(40px);
+        transition: opacity 0.35s ease, transform 0.35s ease;
+        pointer-events: none;
+      }
+      .past-posts.show {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+      .past-posts h2 {
+        margin: 0 0 0.8rem;
+        font-size: 0.95rem;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+      .post-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.8rem;
+      }
+      .post-card {
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.9rem;
+        padding: 0.85rem;
+        background: var(--site-card-bg);
+        box-shadow: var(--site-card-shadow);
+        min-height: 130px;
+      }
+      .post-date {
+        font-size: 0.72rem;
+        opacity: 0.6;
+        margin-bottom: 0.45rem;
+      }
+      .post-preview {
+        font-size: 0.92rem;
+        white-space: pre-wrap;
+      }
+      @media (max-width: 700px) {
+        .editor-wrap {
+          width: min(95vw, 620px);
+        }
+        .tool.bold { left: 1%; top: -2.1rem; }
+        .tool.italic { left: 14%; top: -2rem; }
+        .tool.font { left: 31%; top: -2.2rem; }
+        .tool.list { left: 48%; top: -2.05rem; }
+        .tool.doodle { left: 65%; top: -2rem; right: auto; }
+        .tool.eraser { left: 80%; top: -2.05rem; right: auto; }
+        .tool.color { left: 92%; top: -2.15rem; right: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    {!username ? (
+      <main class="no-permission">
+        <h1>HEY</h1>
+        <p>DU MUSST EINGELOGGT SEIN.</p>
+        <a href="/">zurueck</a>
+      </main>
+    ) : !allowed ? (
+      <main class="no-permission">
+        <h1>NOPE</h1>
+        <p>DU HAST KEIN RECHT FUER BLOGPOSTS.</p>
+        <a href="/">zurueck</a>
+      </main>
+    ) : (
+      <>
+        <Nav2 />
+        <main class="page">
+        <section class="editor-shell" aria-label="Blogpost Editor">
+          <button class="editor-activation" id="editorActivation" type="button" aria-label="Editor oeffnen">+</button>
+          <div class="editor-wrap" id="editorWrap">
+            <button class="tool bold" data-tool="bold" title="Fett">B</button>
+            <button class="tool italic" data-tool="italic" title="Kursiv"><em>I</em></button>
+            <button class="tool font" data-tool="font" title="Schrift wechseln">Aa</button>
+            <button class="tool list" data-tool="list" title="Liste">-</button>
+            <button class="tool doodle" data-tool="doodle" title="Kritzeln">~</button>
+            <button class="tool eraser" data-tool="eraser" title="Radiergummi">E</button>
+            <button class="tool color" data-tool="color" title="Farbe">#</button>
+
+            <div class="editor-box">
+              <canvas id="doodleCanvas" width="1440" height="920"></canvas>
+              <div id="editor" contenteditable="true" spellcheck="true"></div>
+            </div>
+            <div class="editor-actions">
+              <button id="savePostBtn" class="save-btn" type="button">Post speichern</button>
+            </div>
+            <div class="msg" id="msg"></div>
+          </div>
+        </section>
+
+        <section class="past-posts" id="pastPostsSection" aria-label="Vergangene Posts">
+          <h2>Vergangene Posts</h2>
+          <div class="post-grid" id="pastPostsGrid"></div>
+        </section>
+        </main>
+      </>
+    )}
+
+    <script>
+      const activation = document.getElementById('editorActivation');
+      const editorWrap = document.getElementById('editorWrap');
+      const editor = document.getElementById('editor');
+      const msg = document.getElementById('msg');
+      const savePostBtn = document.getElementById('savePostBtn');
+      const pastPostsSection = document.getElementById('pastPostsSection');
+      const pastPostsGrid = document.getElementById('pastPostsGrid');
+      const doodleCanvas = document.getElementById('doodleCanvas');
+      const toolButtons = Array.from(document.querySelectorAll('.tool'));
+
+      let fontMode = 0;
+      const fonts = ['inherit', 'var(--font-quote, serif)', 'var(--font-hero, sans-serif)'];
+      const palette = ['#8dc5ff', '#ff9ac2', '#8de8bf', '#ffd16d', '#d4b0ff', '#ffffff'];
+      let colorIndex = 0;
+      let currentColor = palette[colorIndex];
+      let doodleMode = false;
+      let eraserMode = false;
+      let drawing = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      function setMsg(text, good) {
+        if (!msg) return;
+        msg.textContent = text || '';
+        msg.style.color = good ? 'lightgreen' : 'salmon';
+      }
+
+      function applyColor() {
+        document.documentElement.style.setProperty('--editor-accent', currentColor);
+        if (doodleMode && doodleCanvas) {
+          const ctx = doodleCanvas.getContext('2d');
+          if (ctx) {
+            ctx.strokeStyle = currentColor;
+            ctx.lineWidth = eraserMode ? 16 : 3;
+            ctx.lineCap = 'round';
+            ctx.globalCompositeOperation = eraserMode ? 'destination-out' : 'source-over';
+          }
+        }
+      }
+
+      function resizeCanvasToBox() {
+        if (!doodleCanvas) return;
+        const rect = doodleCanvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const ratio = window.devicePixelRatio || 1;
+        const targetWidth = Math.floor(rect.width * ratio);
+        const targetHeight = Math.floor(rect.height * ratio);
+        if (doodleCanvas.width === targetWidth && doodleCanvas.height === targetHeight) return;
+        const previous = doodleCanvas.toDataURL('image/png');
+        doodleCanvas.width = targetWidth;
+        doodleCanvas.height = targetHeight;
+        const ctx = doodleCanvas.getContext('2d');
+        if (!ctx) return;
+        ctx.scale(ratio, ratio);
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+          applyColor();
+        };
+        img.src = previous;
+      }
+
+      async function loadPosts() {
+        if (!pastPostsGrid) return;
+        try {
+          const res = await fetch('/api/posts/mine', { credentials: 'same-origin' });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return;
+          const rows = Array.isArray(data.posts) ? data.posts : [];
+          if (rows.length === 0) {
+            pastPostsGrid.innerHTML = '<div class="post-card"><div class="post-preview">Noch keine Posts.</div></div>';
+            return;
+          }
+          pastPostsGrid.innerHTML = rows
+            .map((row) => {
+              const preview = String(row.content_text || '').slice(0, 220);
+              const date = String(row.created_at || '').replace('T', ' ').slice(0, 16);
+              return `<article class="post-card">
+                <div class="post-date">${date}</div>
+                <div class="post-preview">${preview.replace(/[<>&]/g, '')}</div>
+              </article>`;
+            })
+            .join('');
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (activation && editorWrap && editor) {
+        activation.addEventListener('click', () => {
+          editorWrap.classList.add('active');
+          editor.focus();
+          resizeCanvasToBox();
+          void loadPosts();
+        });
+      }
+
+      toolButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (!editor) return;
+          const key = btn.getAttribute('data-tool');
+          editor.focus();
+          if (key === 'bold') document.execCommand('bold');
+          if (key === 'italic') document.execCommand('italic');
+          if (key === 'list') document.execCommand('insertUnorderedList');
+          if (key === 'font') {
+            fontMode = (fontMode + 1) % fonts.length;
+            editor.style.fontFamily = fonts[fontMode];
+          }
+          if (key === 'color') {
+            colorIndex = (colorIndex + 1) % palette.length;
+            currentColor = palette[colorIndex];
+            if (!doodleMode) document.execCommand('foreColor', false, currentColor);
+            applyColor();
+          }
+          if (key === 'doodle') {
+            doodleMode = !doodleMode;
+            btn.classList.toggle('active', doodleMode);
+            doodleCanvas?.classList.toggle('active', doodleMode);
+            if (!doodleMode) {
+              eraserMode = false;
+              const eraserBtn = document.querySelector('[data-tool="eraser"]');
+              eraserBtn?.classList.remove('active');
+            }
+            if (doodleMode) resizeCanvasToBox();
+          }
+          if (key === 'eraser') {
+            eraserMode = !eraserMode;
+            btn.classList.toggle('active', eraserMode);
+            const doodleBtn = document.querySelector('[data-tool="doodle"]');
+            if (!doodleMode) {
+              doodleMode = true;
+              doodleCanvas?.classList.add('active');
+              doodleBtn?.classList.add('active');
+              resizeCanvasToBox();
+            }
+            applyColor();
+          }
+        });
+      });
+
+      if (doodleCanvas) {
+        const getPoint = (ev) => {
+          const rect = doodleCanvas.getBoundingClientRect();
+          const source = ev.touches ? ev.touches[0] : ev;
+          return {
+            x: source.clientX - rect.left,
+            y: source.clientY - rect.top,
+          };
+        };
+        const start = (ev) => {
+          if (!doodleMode) return;
+          drawing = true;
+          const p = getPoint(ev);
+          lastX = p.x;
+          lastY = p.y;
+        };
+        const move = (ev) => {
+          if (!drawing || !doodleMode) return;
+          ev.preventDefault();
+          const p = getPoint(ev);
+          const ctx = doodleCanvas.getContext('2d');
+          if (!ctx) return;
+          ctx.globalCompositeOperation = eraserMode ? 'destination-out' : 'source-over';
+          ctx.strokeStyle = currentColor;
+          ctx.lineWidth = eraserMode ? 16 : 3;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          lastX = p.x;
+          lastY = p.y;
+        };
+        const stop = () => {
+          drawing = false;
+        };
+        doodleCanvas.addEventListener('mousedown', start);
+        doodleCanvas.addEventListener('mousemove', move, { passive: false });
+        window.addEventListener('mouseup', stop);
+        doodleCanvas.addEventListener('touchstart', start, { passive: true });
+        doodleCanvas.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('touchend', stop, { passive: true });
+        window.addEventListener('resize', resizeCanvasToBox);
+      }
+
+      if (savePostBtn && editor) {
+        savePostBtn.addEventListener('click', async () => {
+          const contentHtml = editor.innerHTML.trim();
+          const contentText = editor.innerText.trim();
+          if (!contentText) {
+            setMsg('Der Post ist leer.', false);
+            return;
+          }
+          savePostBtn.disabled = true;
+          setMsg('', true);
+          try {
+            const res = await fetch('/api/posts/add', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({
+                contentHtml,
+                contentText,
+                accentColor: currentColor,
+                doodleDataUrl: doodleCanvas ? doodleCanvas.toDataURL('image/png') : '',
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+              setMsg((data.error || 'Speichern fehlgeschlagen').toUpperCase(), false);
+              return;
+            }
+            setMsg('Post gespeichert.', true);
+            await loadPosts();
+          } catch {
+            setMsg('Netzwerkfehler.', false);
+          } finally {
+            savePostBtn.disabled = false;
+          }
+        });
+      }
+
+      if (pastPostsSection) {
+        const showOnScroll = () => {
+          if (window.scrollY > 40) pastPostsSection.classList.add('show');
+        };
+        window.addEventListener('scroll', showOnScroll, { passive: true });
+      }
+
+      applyColor();
+    </script>
+    <ThemeClient />
+  </body>
+</html>

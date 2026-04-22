@@ -44,6 +44,17 @@ const SCHEMA_DDL = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS blog_posts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    username         TEXT NOT NULL,
+    content_html     TEXT NOT NULL,
+    content_text     TEXT NOT NULL DEFAULT '',
+    accent_color     TEXT NOT NULL DEFAULT '#8dc5ff',
+    doodle_data_url  TEXT NOT NULL DEFAULT '',
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_blog_posts_user_created ON blog_posts (username, created_at DESC, id DESC);
+
   CREATE TABLE IF NOT EXISTS site_settings (
     setting_key TEXT PRIMARY KEY,
     value       TEXT NOT NULL

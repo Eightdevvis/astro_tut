@@ -1,4 +1,16 @@
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
+import DOMPurify from 'isomorphic-dompurify';
+import { marked } from 'marked';
+
+/**
+ * @param {string} md
+ * @returns {string}
+ */
+function renderFeedSummaryMd(md) {
+  const raw = marked.parse(String(md), { async: false });
+  const clean = DOMPurify.sanitize(raw);
+  return clean.replace(/<a\s+/gi, '<a target="_blank" rel="noopener noreferrer" ');
+}
 
 /**
  * Überschrift: bevorzugt Stichwörter aus dem gespeicherten Plan, sonst erste Zeile der Nutzereingabe;
@@ -62,6 +74,10 @@ export default function FeedDetailView({ feedId, initial }) {
 
   const items = initial?.items || [];
   const summary = initial?.summary;
+  const summaryHtml = useMemo(
+    () => (summary?.body_md ? renderFeedSummaryMd(summary.body_md) : ''),
+    [summary?.body_md],
+  );
   const sources = initial?.sources || [];
   const meta = initial?.meta || {};
   const headline = pickFeedHeadline(meta);
@@ -230,7 +246,10 @@ export default function FeedDetailView({ feedId, initial }) {
             Keine Rechts-, Medizin- oder Anlageberatung. Inhalte stammen von Drittseiten — bitte dort verifizieren.
           </p>
           {summary?.body_md ? (
-            <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem', lineHeight: 1.5 }}>{summary.body_md}</div>
+            <div
+              class="feed-summary-md"
+              dangerouslySetInnerHTML={{ __html: summaryHtml }}
+            />
           ) : (
             <p style={{ fontSize: '0.88rem', opacity: 0.75 }}>Noch keine Zusammenfassung (nach Ingest und KI-Lauf).</p>
           )}

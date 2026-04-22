@@ -1,0 +1,11 @@
+# Blogpost-Editor
+
+- Neues Recht: `blogpost_poster` in `src/lib/permissions.js` (Superuser vergibt es ueber bestehendes Rechtepanel).
+- Nav-Integration: `src/components/Nav2.astro` zeigt den neuen Link nur fuer User mit `blogpost_poster`.
+- Neues Nav-Icon: Mund-Symbol mit Spiralzunge (Desktop + Drawer) verlinkt auf `/blogpost`.
+- Neue Seite: `src/pages/blogpost.astro` mit Plus-Aktivierung, Contenteditable-Editor und lockeren Werkzeug-Icons um den Editor.
+- Werkzeuge auf der Seite: Fett, Kursiv, Schrift wechseln, Liste, Kritzelmodus (Canvas), Farbwechsel fuer Text/Kritzel.
+- Persistenz: neue Tabelle `blog_posts` in `src/lib/db.js` inkl. Index auf `(username, created_at DESC, id DESC)`.
+- API Speichern: `POST /api/posts/add` in `src/pages/api/posts/add.js` (Auth + Permission + Validierung).
+- API Laden: `GET /api/posts/mine` in `src/pages/api/posts/mine.js` (nur eigene Posts).
+- Unterhalb des Editors: Kachelgrid vergangener eigener Posts; Bereich wird erst nach Scroll sichtbar (`.past-posts.show`).

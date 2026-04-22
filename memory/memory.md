@@ -13,7 +13,9 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | Thema | Details |
 |-------|---------|
 | Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
+| Blogpost-Editor (Recht, Nav-Icon, API, Scribble-Editor, User-Grid) | [`blogpost-editor.mdc`](blogpost-editor.mdc) |
 | Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |
+| fgraffiti (globales Overlay, Hotkey, Stift/Spray, Settings) | [`fgraffiti.mdc`](fgraffiti.mdc) |
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
 | RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |

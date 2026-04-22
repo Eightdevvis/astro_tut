@@ -31,6 +31,7 @@ function isBootstrapSuper(username) {
 export const KNOWN_PERMISSIONS = [
   SUPER_PERMISSION,
   'quote_poster',
+  'blogpost_poster',
   'tester_access',
   'rpg_access',
 ];
