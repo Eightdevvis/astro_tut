@@ -354,7 +354,7 @@ if (token) {
       const toolButtons = Array.from(document.querySelectorAll('.tool'));
 
       let fontMode = 0;
-      const fonts = ['inherit', 'var(--font-quote, serif)', 'var(--font-hero, sans-serif)'];
+      const fonts = ['inherit', 'serif', 'sans-serif'];
       const palette = ['#8dc5ff', '#ff9ac2', '#8de8bf', '#ffd16d', '#d4b0ff', '#ffffff'];
       let colorIndex = 0;
       let currentColor = palette[colorIndex];
@@ -475,7 +475,12 @@ if (token) {
           if (key === 'list') document.execCommand('insertUnorderedList');
           if (key === 'font') {
             fontMode = (fontMode + 1) % fonts.length;
-            editor.style.fontFamily = fonts[fontMode];
+            const nextFont = fonts[fontMode];
+            if (nextFont === 'inherit') {
+              document.execCommand('removeFormat');
+            } else {
+              document.execCommand('fontName', false, nextFont);
+            }
           }
           if (key === 'color') {
             colorIndex = (colorIndex + 1) % palette.length;
