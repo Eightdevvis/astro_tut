@@ -1,9 +1,12 @@
-- Feature `fgraffiti`: globales Graffiti-Overlay fuer eingeloggte User, clientseitig in `src/components/GraffitiLayer.jsx`.
+- Feature `fgraffiti`: globales Graffiti-Overlay fuer alle Besucher sichtbar, Zeichnen nur fuer eingeloggte User (`src/components/GraffitiLayer.jsx`).
 - Einbindung auf allen Hauptseiten via `BaseLayout.astro` und `src/pages/index.astro` (`<GraffitiLayer client:load />`).
 - Aktivierung per Hotkey-Kombination (Default `Enter` + `1`), konfigurierbar in Einstellungen.
 - Hotkey-Speicher in `localStorage` unter `fgraffiti.hotkey`; Runtime-Sync per `window`-Event `fgraffiti-hotkey-change`.
 - Overlay ist Canvas mit zwei Modi: `tag` (Linie) per Klick auf Stift und `spray` (Spruehpunkte) per Doppelklick.
 - Stift-Button unten links (`.fgraffiti-pen`); bei aktivem Modus blockiert Canvas-Klicks auf die Seite (`pointer-events: auto`), im Leerlauf bleibt Seite normal klickbar.
-- Zeichnung wird als PNG DataURL pro Pfad (`location.pathname`) in `localStorage` unter `fgraffiti.overlay.v1` gespeichert.
-- Loeschen-Button im aktiven Modus entfernt nur das aktuelle Seiten-Overlay (aktueller Pfad).
+- Persistenz serverseitig in DB-Tabelle `graffiti_strokes` (Pfad, User, Modus, Punkte, created_at, Flag `is_functional`).
+- API `GET/POST /api/graffiti`: GET laedt alle Striche pro Pfad, POST speichert neue Striche (nur mit Session).
+- Kein Loeschen im UI: es gibt absichtlich keine Nutzer-Loeschen-Option.
+- Alterung: Graffiti verblasst clientseitig linear ueber 90 Tage (`FADE_DAYS`), danach serverseitig entfernt.
+- Funktionsbereiche (z. B. Nav, Header, Quotes, interaktive Controls) werden beim Zeichnen markiert (`is_functional`) und serverseitig nach 7 Tagen geloescht (woechentliche Saeuberung).
 - User-Einstellungen: neuer Tab `fgraffiti` in `src/components/UserSettings.jsx` mit zwei Key-Feldern, Save und Reset.

@@ -210,12 +210,16 @@ if (token) {
         gap: 0.8rem;
       }
       .post-card {
+        width: 100%;
         border: 1px solid var(--site-card-border);
         border-radius: 0.9rem;
         padding: 0.85rem;
         background: var(--site-card-bg);
         box-shadow: var(--site-card-shadow);
         min-height: 130px;
+        text-align: left;
+        color: inherit;
+        cursor: pointer;
       }
       .post-date {
         font-size: 0.72rem;
@@ -225,6 +229,46 @@ if (token) {
       .post-preview {
         font-size: 0.92rem;
         white-space: pre-wrap;
+      }
+      .post-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 120;
+        padding: 1rem;
+      }
+      .post-modal.show {
+        display: flex;
+      }
+      .post-modal-panel {
+        width: min(780px, 100%);
+        max-height: 85dvh;
+        overflow: auto;
+        background: var(--site-card-bg);
+        color: var(--site-body-text);
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.8rem;
+        box-shadow: var(--site-card-shadow);
+        padding: 1rem;
+      }
+      .post-modal-head {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.6rem;
+      }
+      .post-modal-close {
+        border: 1px solid var(--site-card-border);
+        background: transparent;
+        color: inherit;
+        border-radius: 0.45rem;
+        cursor: pointer;
+      }
+      .post-modal-body {
+        white-space: pre-wrap;
+        line-height: 1.55;
       }
       @media (max-width: 700px) {
         .editor-wrap {
@@ -258,8 +302,8 @@ if (token) {
         <Nav2 />
         <main class="page">
         <section class="editor-shell" aria-label="Blogpost Editor">
-          <button class="editor-activation" id="editorActivation" type="button" aria-label="Editor oeffnen">+</button>
           <div class="editor-wrap" id="editorWrap">
+            <button class="editor-activation" id="editorActivation" type="button" aria-label="Editor oeffnen">+</button>
             <button class="tool bold" data-tool="bold" title="Fett">B</button>
             <button class="tool italic" data-tool="italic" title="Kursiv"><em>I</em></button>
             <button class="tool font" data-tool="font" title="Schrift wechseln">Aa</button>
@@ -283,6 +327,14 @@ if (token) {
           <h2>Vergangene Posts</h2>
           <div class="post-grid" id="pastPostsGrid"></div>
         </section>
+        <div class="post-modal" id="postModal" aria-hidden="true">
+          <div class="post-modal-panel">
+            <div class="post-modal-head">
+              <button class="post-modal-close" id="postModalClose" type="button">Schliessen</button>
+            </div>
+            <div class="post-modal-body" id="postModalBody"></div>
+          </div>
+        </div>
         </main>
       </>
     )}
@@ -295,6 +347,9 @@ if (token) {
       const savePostBtn = document.getElementById('savePostBtn');
       const pastPostsSection = document.getElementById('pastPostsSection');
       const pastPostsGrid = document.getElementById('pastPostsGrid');
+      const postModal = document.getElementById('postModal');
+      const postModalClose = document.getElementById('postModalClose');
+      const postModalBody = document.getElementById('postModalBody');
       const doodleCanvas = document.getElementById('doodleCanvas');
       const toolButtons = Array.from(document.querySelectorAll('.tool'));
 
@@ -363,18 +418,43 @@ if (token) {
           }
           pastPostsGrid.innerHTML = rows
             .map((row) => {
-              const preview = String(row.content_text || '').slice(0, 220);
+              const fullText = String(row.content_text || '');
+              const len = fullText.length;
+              const span = Math.min(220, len);
+              const maxStart = Math.max(0, len - span);
+              const start = maxStart > 0 ? Math.floor(Math.random() * (maxStart + 1)) : 0;
+              const preview = fullText.slice(start, start + span);
               const date = String(row.created_at || '').replace('T', ' ').slice(0, 16);
-              return `<article class="post-card">
+              const escapedFull = fullText.replace(/[<>&]/g, '');
+              return `<button class="post-card" type="button" data-full="${escapedFull.replace(/"/g, '&quot;')}">
                 <div class="post-date">${date}</div>
                 <div class="post-preview">${preview.replace(/[<>&]/g, '')}</div>
-              </article>`;
+              </button>`;
             })
             .join('');
+          Array.from(pastPostsGrid.querySelectorAll('.post-card')).forEach((el) => {
+            el.addEventListener('click', () => {
+              const full = el.getAttribute('data-full') || '';
+              if (postModalBody) postModalBody.textContent = full;
+              postModal?.classList.add('show');
+              postModal?.setAttribute('aria-hidden', 'false');
+            });
+          });
         } catch {
           /* ignore */
         }
       }
+
+      postModalClose?.addEventListener('click', () => {
+        postModal?.classList.remove('show');
+        postModal?.setAttribute('aria-hidden', 'true');
+      });
+      postModal?.addEventListener('click', (ev) => {
+        if (ev.target === postModal) {
+          postModal.classList.remove('show');
+          postModal.setAttribute('aria-hidden', 'true');
+        }
+      });
 
       if (activation && editorWrap && editor) {
         activation.addEventListener('click', () => {

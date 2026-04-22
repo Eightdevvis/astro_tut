@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 const HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
-const DRAWING_STORAGE_KEY = 'fgraffiti.overlay.v1';
 const DEFAULT_HOTKEY = ['Enter', '1'];
+const FADE_DAYS = 90;
 
 function normalizeKeyName(key) {
   if (!key) return '';
@@ -26,43 +26,28 @@ function readHotkey() {
   }
 }
 
-function currentThemeMode() {
-  if (typeof document === 'undefined') return 'light';
-  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+function seededRng(seed) {
+  let t = seed + 0x6d2b79f5;
+  return function next() {
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-function readSavedImage(themeMode) {
-  if (typeof localStorage === 'undefined') return '';
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DRAWING_STORAGE_KEY) || '{}');
-    const key = typeof location !== 'undefined' ? `${location.pathname}::${themeMode}` : '/';
-    const value = parsed?.[key];
-    return typeof value === 'string' ? value : '';
-  } catch {
-    return '';
-  }
+function strokeAlpha(ageDays) {
+  const progress = Math.max(0, Math.min(1, ageDays / FADE_DAYS));
+  return Math.max(0.06, 1 - progress);
 }
 
-function saveImage(dataUrl, themeMode) {
-  if (typeof localStorage === 'undefined' || typeof location === 'undefined') return;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DRAWING_STORAGE_KEY) || '{}');
-    parsed[`${location.pathname}::${themeMode}`] = dataUrl;
-    localStorage.setItem(DRAWING_STORAGE_KEY, JSON.stringify(parsed));
-  } catch {
-    // ignore quota and JSON errors
-  }
-}
-
-function clearImage(themeMode) {
-  if (typeof localStorage === 'undefined' || typeof location === 'undefined') return;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DRAWING_STORAGE_KEY) || '{}');
-    delete parsed[`${location.pathname}::${themeMode}`];
-    localStorage.setItem(DRAWING_STORAGE_KEY, JSON.stringify(parsed));
-  } catch {
-    // ignore quota and JSON errors
-  }
+function isFunctionalAtPoint(clientX, clientY) {
+  const el = document.elementFromPoint(clientX, clientY);
+  if (!el) return false;
+  return Boolean(
+    el.closest(
+      'nav, .nav2, .nav2-strip, header, h1, h2, h3, blockquote, .quote, a, button, input, textarea, select, summary, [role="navigation"]'
+    )
+  );
 }
 
 export default function GraffitiLayer() {
@@ -70,12 +55,11 @@ export default function GraffitiLayer() {
   const [featureVisible, setFeatureVisible] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState('tag');
-  const [themeMode, setThemeMode] = useState('light');
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
+  const [strokes, setStrokes] = useState([]);
   const canvasRef = useRef(/** @type {HTMLCanvasElement | null} */ (null));
   const pressedRef = useRef(new Set());
-  const drawRef = useRef({ active: false, x: 0, y: 0 });
-  const saveTimerRef = useRef(/** @type {number | null} */ (null));
+  const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
 
   const hintLabel = useMemo(() => `${hotkey[0]} + ${hotkey[1]}`, [hotkey]);
 
@@ -98,21 +82,20 @@ export default function GraffitiLayer() {
   useEffect(() => {
     const sync = () => setHotkey(readHotkey());
     sync();
-    setThemeMode(currentThemeMode());
     window.addEventListener('fgraffiti-hotkey-change', sync);
     return () => window.removeEventListener('fgraffiti-hotkey-change', sync);
   }, []);
 
   useEffect(() => {
-    const root = document?.documentElement;
-    if (!root) return undefined;
-    const observer = new MutationObserver(() => setThemeMode(currentThemeMode()));
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
+    const page = typeof location !== 'undefined' ? location.pathname : '/';
+    fetch(`/api/graffiti?page=${encodeURIComponent(page)}`)
+      .then((res) => (res.ok ? res.json() : { strokes: [] }))
+      .then((data) => setStrokes(Array.isArray(data?.strokes) ? data.strokes : []))
+      .catch(() => setStrokes([]));
+  }, [userReady]);
 
   useEffect(() => {
-    if (!userReady) return undefined;
+    if (!userReady) return;
     const onDown = (e) => {
       const key = normalizeKeyName(e.key);
       if (!key) return;
@@ -138,49 +121,69 @@ export default function GraffitiLayer() {
     };
   }, [hotkey, userReady]);
 
-  useEffect(() => {
-    if (!userReady) return undefined;
+  function drawSprayCloud(ctx, strokeId, x, y, alpha) {
+    const random = seededRng((strokeId * 1315423911 + x * 31 + y * 17) | 0);
+    ctx.fillStyle = '#101010';
+    for (let i = 0; i < 20; i += 1) {
+      const angle = random() * Math.PI * 2;
+      const radius = random() * 18;
+      const px = x + Math.cos(angle) * radius;
+      const py = y + Math.sin(angle) * radius;
+      const size = random() * 1.8 + 0.5;
+      ctx.globalAlpha = alpha * (0.15 + random() * 0.45);
+      ctx.beginPath();
+      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function renderAll() {
     const canvas = canvasRef.current;
-    if (!canvas) return undefined;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
+    if (!ctx) return;
 
     function resize() {
       const ratio = window.devicePixelRatio || 1;
-      const prev = canvas.toDataURL('image/png');
       canvas.width = Math.floor(window.innerWidth * ratio);
       canvas.height = Math.floor(window.innerHeight * ratio);
       canvas.style.width = `${window.innerWidth}px`;
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      if (prev && prev !== 'data:,') {
-        const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, window.innerWidth, window.innerHeight);
-        img.src = prev;
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      for (const stroke of strokes) {
+        const points = Array.isArray(stroke.points) ? stroke.points : [];
+        if (points.length < 1) continue;
+        const alpha = strokeAlpha(Number(stroke.ageDays || 0));
+        if (stroke.mode === 'spray') {
+          for (const p of points) {
+            drawSprayCloud(ctx, Number(stroke.id || 0), Number(p.x || 0), Number(p.y || 0), alpha);
+          }
+          continue;
+        }
+        ctx.strokeStyle = '#111';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = alpha * 0.93;
+        ctx.beginPath();
+        ctx.moveTo(Number(points[0].x || 0), Number(points[0].y || 0));
+        for (let i = 1; i < points.length; i += 1) {
+          ctx.lineTo(Number(points[i].x || 0), Number(points[i].y || 0));
+        }
+        ctx.stroke();
       }
+      ctx.globalAlpha = 1;
     }
 
     resize();
-    const saved = readSavedImage(themeMode);
-    if (saved) {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, window.innerWidth, window.innerHeight);
-      img.src = saved;
-    }
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, [themeMode, userReady]);
-
-  function scheduleSave() {
-    if (saveTimerRef.current != null) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      saveImage(canvas.toDataURL('image/png'), themeMode);
-    }, 300);
   }
 
-  function paintTag(x, y) {
+  useEffect(() => renderAll(), [strokes, userReady]);
+
+  function paintTag(x, y, alpha = 0.93) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -189,7 +192,7 @@ export default function GraffitiLayer() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#111';
-    ctx.globalAlpha = 0.93;
+    ctx.globalAlpha = alpha;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(prev.x, prev.y);
@@ -204,18 +207,8 @@ export default function GraffitiLayer() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#101010';
-    for (let i = 0; i < 24; i += 1) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = Math.random() * 18;
-      const px = x + Math.cos(angle) * radius;
-      const py = y + Math.sin(angle) * radius;
-      const size = Math.random() * 1.8 + 0.5;
-      ctx.globalAlpha = 0.1 + Math.random() * 0.45;
-      ctx.beginPath();
-      ctx.arc(px, py, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    drawSprayCloud(ctx, Date.now() % 100000, x, y, 1);
+    ctx.globalAlpha = 1;
   }
 
   function pointerToCanvas(e) {
@@ -234,7 +227,13 @@ export default function GraffitiLayer() {
         onPointerDown={(e) => {
           if (!enabled) return;
           const pos = pointerToCanvas(e);
-          drawRef.current = { active: true, x: pos.x, y: pos.y };
+          drawRef.current = {
+            active: true,
+            x: pos.x,
+            y: pos.y,
+            points: [{ x: Math.round(pos.x), y: Math.round(pos.y) }],
+            functionalHit: isFunctionalAtPoint(e.clientX, e.clientY),
+          };
           if (mode === 'spray') paintSpray(pos.x, pos.y);
           else paintTag(pos.x, pos.y);
         }}
@@ -243,16 +242,43 @@ export default function GraffitiLayer() {
           const pos = pointerToCanvas(e);
           if (mode === 'spray') paintSpray(pos.x, pos.y);
           else paintTag(pos.x, pos.y);
+          if (drawRef.current.points.length < 420) {
+            drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
+          }
+          if (!drawRef.current.functionalHit) {
+            drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);
+          }
         }}
-        onPointerUp={() => {
+        onPointerUp={async () => {
           if (!drawRef.current.active) return;
+          const payload = {
+            pagePath: location.pathname,
+            mode,
+            points: drawRef.current.points,
+            isFunctional: drawRef.current.functionalHit,
+          };
           drawRef.current.active = false;
-          scheduleSave();
+          try {
+            const res = await fetch('/api/graffiti', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify(payload),
+            });
+            if (res.ok) {
+              const list = await fetch(`/api/graffiti?page=${encodeURIComponent(location.pathname)}`, {
+                credentials: 'same-origin',
+              });
+              const data = await list.json().catch(() => ({ strokes: [] }));
+              setStrokes(Array.isArray(data?.strokes) ? data.strokes : []);
+            }
+          } catch {
+            // keep local paint; next reload will fetch server state
+          }
         }}
         onPointerLeave={() => {
           if (!drawRef.current.active) return;
           drawRef.current.active = false;
-          scheduleSave();
         }}
       />
       {featureVisible ? (
@@ -271,21 +297,6 @@ export default function GraffitiLayer() {
           }}
         >
           {mode === 'spray' ? '🧯' : '✎'}
-        </button>
-      ) : null}
-      {enabled ? (
-        <button
-          type="button"
-          className="fgraffiti-clear"
-          onClick={() => {
-            const canvas = canvasRef.current;
-            const ctx = canvas?.getContext('2d');
-            if (!canvas || !ctx) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            clearImage(themeMode);
-          }}
-        >
-          Graffiti loeschen
         </button>
       ) : null}
       <style>{`
@@ -316,18 +327,6 @@ export default function GraffitiLayer() {
         }
         .fgraffiti-pen.is-active {
           background: rgba(255, 247, 154, 0.86);
-        }
-        .fgraffiti-clear {
-          position: fixed;
-          left: 3rem;
-          bottom: 0.6rem;
-          z-index: 399;
-          border: 1px solid rgba(0,0,0,0.25);
-          border-radius: 6px;
-          background: rgba(255,255,255,0.82);
-          padding: 0.35rem 0.55rem;
-          font-size: 0.75rem;
-          cursor: pointer;
         }
       `}</style>
     </>

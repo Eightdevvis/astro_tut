@@ -135,6 +135,17 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS graffiti_strokes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_path     TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    mode          TEXT NOT NULL DEFAULT 'tag',
+    points_json   TEXT NOT NULL,
+    is_functional INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_graffiti_page_created ON graffiti_strokes (page_path, created_at DESC, id DESC);
+
   CREATE TABLE IF NOT EXISTS user_feeds (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL,
@@ -235,6 +246,16 @@ async function ensureUserFeedItemsImageUrlColumn() {
   }
 }
 
+async function ensureGraffitiFunctionalColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE graffiti_strokes ADD COLUMN is_functional INTEGER NOT NULL DEFAULT 0');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     const db = createDbClient();
@@ -246,6 +267,7 @@ export async function ensureDbSchema() {
   await schemaPromise;
   await ensureQuotesAuthorColumn();
   await ensureUserFeedItemsImageUrlColumn();
+  await ensureGraffitiFunctionalColumn();
   const db = createDbClient();
   await seedFeedPolicyDefaults(db);
 }
