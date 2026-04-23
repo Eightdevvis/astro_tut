@@ -135,6 +135,70 @@ const btnPrimary = {
 const errStyle = { color: 'crimson', marginBottom: 12, fontSize: '0.9rem' };
 const okStyle = { color: 'seagreen', marginBottom: 12, fontSize: '0.9rem' };
 
+function drawGraffitiPreview(points, mode) {
+  const width = 220;
+  const height = 120;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.fillStyle = 'rgba(0,0,0,0.04)';
+  ctx.fillRect(0, 0, width, height);
+  const list = Array.isArray(points) ? points : [];
+  if (list.length < 1) return canvas.toDataURL('image/png');
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const p of list) {
+    const x = Number(p?.x || 0);
+    const y = Number(p?.y || 0);
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const scale = Math.min((width - 20) / spanX, (height - 20) / spanY);
+  const ox = (width - spanX * scale) / 2;
+  const oy = (height - spanY * scale) / 2;
+  const mapPoint = (p) => ({
+    x: ox + (Number(p?.x || 0) - minX) * scale,
+    y: oy + (Number(p?.y || 0) - minY) * scale,
+  });
+
+  if (mode === 'spray') {
+    ctx.fillStyle = '#111';
+    for (const p of list) {
+      const m = mapPoint(p);
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    return canvas.toDataURL('image/png');
+  }
+
+  const first = mapPoint(list[0]);
+  ctx.strokeStyle = '#111';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(first.x, first.y);
+  for (let i = 1; i < list.length; i += 1) {
+    const m = mapPoint(list[i]);
+    ctx.lineTo(m.x, m.y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  return canvas.toDataURL('image/png');
+}
+
 function mergeCatalogOptions(saved, options) {
   if (saved == null || saved === '') return options;
   const s = String(saved);
@@ -187,6 +251,8 @@ export default function SuperSettings() {
   const [fpBlock, setFpBlock] = useState('');
   const [fpMsg, setFpMsg] = useState('');
   const [fpBusy, setFpBusy] = useState(false);
+  const [graffitiRows, setGraffitiRows] = useState([]);
+  const [graffitiBusyId, setGraffitiBusyId] = useState(null);
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -234,6 +300,27 @@ export default function SuperSettings() {
         });
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, activeSection]);
+
+  useEffect(() => {
+    if (loading || activeSection !== 'graffiti') return;
+    let cancelled = false;
+    fetch('/api/admin/graffiti?limit=140', { credentials: 'same-origin' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Graffiti-Liste');
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setGraffitiRows(Array.isArray(data.rows) ? data.rows : []);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message || 'Graffiti-Liste fehlgeschlagen');
+      });
     return () => {
       cancelled = true;
     };
@@ -447,9 +534,30 @@ export default function SuperSettings() {
     }
   }
 
+  async function deleteGraffitiStroke(id) {
+    setError('');
+    setGraffitiBusyId(String(id));
+    try {
+      const res = await fetch('/api/admin/graffiti', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Graffiti-Löschen fehlgeschlagen');
+      setGraffitiRows((prev) => prev.filter((r) => String(r.id) !== String(id)));
+    } catch (e) {
+      setError(e?.message || 'Graffiti-Löschen fehlgeschlagen');
+    } finally {
+      setGraffitiBusyId(null);
+    }
+  }
+
   const sections = [
     { id: 'permissions', label: 'Nutzer-Rechte' },
     { id: 'tester-ui', label: 'Eigene Testeroberfläche' },
+    { id: 'graffiti', label: 'Graffiti' },
     { id: 'tester-bugs', label: 'Tester-Übersicht & Bugs' },
     { id: 'questmaker', label: 'Questmaker-Katalog' },
     { id: 'feed-policy', label: 'Topic-Feed Vertrauen' },
@@ -617,6 +725,64 @@ export default function SuperSettings() {
           {testerUiBusy ? 'Speichern…' : 'Speichern'}
         </button>
         {testerUiMsg ? <p style={{ ...okStyle, marginTop: 10 }}>{testerUiMsg}</p> : null}
+      </section>
+
+      <section style={section} id="super-sec-graffiti">
+        <h2 style={h2}>Graffiti</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
+          Zuletzt gespeicherte Graffiti-Striche mit Seitenpfad und Miniansicht. Nur hier kannst du einzelne Striche
+          manuell entfernen.
+        </p>
+        {graffitiRows.length === 0 ? (
+          <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Keine Graffiti-Einträge vorhanden.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {graffitiRows.map((row) => (
+              <article
+                key={`graffiti-${row.id}`}
+                style={{
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  borderRadius: 10,
+                  padding: '0.8rem',
+                  background: 'rgba(255,255,255,0.55)',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', opacity: 0.75, marginBottom: 6 }}>
+                  <strong>{row.username}</strong> · {row.createdAt} · {row.mode}
+                  {row.isFunctional ? ' · funktional' : ''}
+                </div>
+                <div style={{ fontSize: '0.82rem', marginBottom: 8 }}>
+                  <a href={row.pagePath} target="_blank" rel="noreferrer">
+                    {row.pagePath}
+                  </a>
+                </div>
+                <img
+                  src={drawGraffitiPreview(row.points, row.mode)}
+                  alt={`Graffiti #${row.id}`}
+                  style={{
+                    width: '100%',
+                    maxWidth: 360,
+                    borderRadius: 8,
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    background: 'rgba(0,0,0,0.04)',
+                    display: 'block',
+                  }}
+                  loading="lazy"
+                />
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    style={{ ...btnPrimary, padding: '7px 10px', fontSize: '0.75rem' }}
+                    disabled={graffitiBusyId === String(row.id)}
+                    onClick={() => void deleteGraffitiStroke(row.id)}
+                  >
+                    {graffitiBusyId === String(row.id) ? 'Lösche…' : 'Graffiti löschen'}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section style={section} id="super-sec-tester-bugs">

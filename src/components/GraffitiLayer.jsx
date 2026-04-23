@@ -40,6 +40,13 @@ function strokeAlpha(ageDays) {
   return Math.max(0.06, 1 - progress);
 }
 
+function toViewportPoint(point, scrollX, scrollY) {
+  return {
+    x: Number(point?.x || 0) - scrollX,
+    y: Number(point?.y || 0) - scrollY,
+  };
+}
+
 function isFunctionalAtPoint(clientX, clientY) {
   const el = document.elementFromPoint(clientX, clientY);
   if (!el) return false;
@@ -143,7 +150,7 @@ export default function GraffitiLayer() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    function resize() {
+    function resizeAndRender() {
       const ratio = window.devicePixelRatio || 1;
       canvas.width = Math.floor(window.innerWidth * ratio);
       canvas.height = Math.floor(window.innerHeight * ratio);
@@ -151,34 +158,43 @@ export default function GraffitiLayer() {
       canvas.style.height = `${window.innerHeight}px`;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      const viewX = window.scrollX || 0;
+      const viewY = window.scrollY || 0;
       for (const stroke of strokes) {
         const points = Array.isArray(stroke.points) ? stroke.points : [];
         if (points.length < 1) continue;
         const alpha = strokeAlpha(Number(stroke.ageDays || 0));
         if (stroke.mode === 'spray') {
           for (const p of points) {
-            drawSprayCloud(ctx, Number(stroke.id || 0), Number(p.x || 0), Number(p.y || 0), alpha);
+            const vp = toViewportPoint(p, viewX, viewY);
+            drawSprayCloud(ctx, Number(stroke.id || 0), vp.x, vp.y, alpha);
           }
           continue;
         }
+        const first = toViewportPoint(points[0], viewX, viewY);
         ctx.strokeStyle = '#111';
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = 3;
         ctx.globalAlpha = alpha * 0.93;
         ctx.beginPath();
-        ctx.moveTo(Number(points[0].x || 0), Number(points[0].y || 0));
+        ctx.moveTo(first.x, first.y);
         for (let i = 1; i < points.length; i += 1) {
-          ctx.lineTo(Number(points[i].x || 0), Number(points[i].y || 0));
+          const vp = toViewportPoint(points[i], viewX, viewY);
+          ctx.lineTo(vp.x, vp.y);
         }
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
     }
 
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    resizeAndRender();
+    window.addEventListener('resize', resizeAndRender);
+    window.addEventListener('scroll', resizeAndRender, { passive: true });
+    return () => {
+      window.removeEventListener('resize', resizeAndRender);
+      window.removeEventListener('scroll', resizeAndRender);
+    };
   }
 
   useEffect(() => renderAll(), [strokes, userReady]);
@@ -227,11 +243,13 @@ export default function GraffitiLayer() {
         onPointerDown={(e) => {
           if (!enabled) return;
           const pos = pointerToCanvas(e);
+          const pageX = (window.scrollX || 0) + pos.x;
+          const pageY = (window.scrollY || 0) + pos.y;
           drawRef.current = {
             active: true,
             x: pos.x,
             y: pos.y,
-            points: [{ x: Math.round(pos.x), y: Math.round(pos.y) }],
+            points: [{ x: Math.round(pageX), y: Math.round(pageY) }],
             functionalHit: isFunctionalAtPoint(e.clientX, e.clientY),
           };
           if (mode === 'spray') paintSpray(pos.x, pos.y);
@@ -242,8 +260,10 @@ export default function GraffitiLayer() {
           const pos = pointerToCanvas(e);
           if (mode === 'spray') paintSpray(pos.x, pos.y);
           else paintTag(pos.x, pos.y);
+          const pageX = (window.scrollX || 0) + pos.x;
+          const pageY = (window.scrollY || 0) + pos.y;
           if (drawRef.current.points.length < 420) {
-            drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
+            drawRef.current.points.push({ x: Math.round(pageX), y: Math.round(pageY) });
           }
           if (!drawRef.current.functionalHit) {
             drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);

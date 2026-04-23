@@ -9,4 +9,6 @@
 - Kein Loeschen im UI: es gibt absichtlich keine Nutzer-Loeschen-Option.
 - Alterung: Graffiti verblasst clientseitig linear ueber 90 Tage (`FADE_DAYS`), danach serverseitig entfernt.
 - Funktionsbereiche (z. B. Nav, Header, Quotes, interaktive Controls) werden beim Zeichnen markiert (`is_functional`) und serverseitig nach 7 Tagen geloescht (woechentliche Saeuberung).
+- Positionsmodell: Punkte werden in Dokument-Koordinaten (inkl. Scroll-Offset) gespeichert; Rendering rechnet auf Viewport um, damit Graffiti beim Scrollen am echten Seiteninhalt klebt.
+- Superuser-Moderation: `GET/POST /api/admin/graffiti` plus Section `Graffiti` in `src/components/SuperSettings.jsx` mit Mini-Vorschau, Pfad und manuellem Loeschen einzelner Striche.
 - User-Einstellungen: neuer Tab `fgraffiti` in `src/components/UserSettings.jsx` mit zwei Key-Feldern, Save und Reset.
