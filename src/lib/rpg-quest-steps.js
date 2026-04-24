@@ -1,5 +1,5 @@
 /**
- * Rekursive Quest-Schritte: Gruppen, optionale Blätter, dependsOn, Step-Rewards,
+ * Rekursive Quest-Knoten: Gruppen, optionale Blätter, dependsOn, Step-Rewards,
  * Quest-Rewards mit Freischalt-Prozent. Fortschritt nur über nicht-optionale Blätter.
  */
 import { normalizeQuestCityLocation, normalizeStepPlaceLocation } from './rpg-location.js';
@@ -50,9 +50,10 @@ export function formatRewardPointsAmount(n) {
 /**
  * @typedef {{
  *   id: string;
+ *   parentId: string | null;
  *   label: string;
  *   optional?: boolean;
- *   substeps?: RpgQuestStepNode[];
+ *   children: RpgQuestStepNode[];
  *   dependsOn?: string[];
  *   reward?: RpgQuestRewardEntry;
  *   timeDueAt?: string;
@@ -60,6 +61,7 @@ export function formatRewardPointsAmount(n) {
  *   placeLocation?: string;
  *   done?: boolean;
  *   orderLinked?: boolean;
+ *   isLock?: boolean;
  * }} RpgQuestStepNode
  */
 
@@ -131,9 +133,10 @@ export function rewardEntryDisplayLabel(entry, catalogById) {
 /**
  * @param {unknown} raw
  * @param {{ n: number }} next
+ * @param {string | null} parentId
  * @returns {RpgQuestStepNode}
  */
-function normalizeOneStep(raw, next) {
+function normalizeOneStep(raw, next, parentId) {
   const o = raw && typeof raw === 'object' ? /** @type {any} */ (raw) : {};
   const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : `s-${next.n++}`;
   const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : id;
@@ -156,17 +159,18 @@ function normalizeOneStep(raw, next) {
       if (!Number.isNaN(t)) timeDueAt = new Date(t).toISOString().slice(0, 10);
     }
   }
-  const subsRaw = o.substeps;
-  /** @type {RpgQuestStepNode | undefined} */
-  let out = { id, label, optional };
+  const kidsRaw = Array.isArray(o.children) ? o.children : o.substeps;
+  /** @type {RpgQuestStepNode} */
+  let out = { id, parentId, label, optional, children: [] };
   if (dependsOn.length) out = { ...out, dependsOn };
   if (reward) out = { ...out, reward };
   if (cityLocation) out = { ...out, cityLocation };
   if (placeLocation) out = { ...out, placeLocation };
   if (timeDueAt) out = { ...out, timeDueAt };
   if (o.orderLinked === true) out = { ...out, orderLinked: true };
-  if (Array.isArray(subsRaw) && subsRaw.length > 0) {
-    return { ...out, substeps: normalizeStepsArray(subsRaw, next) };
+  if (o.isLock === true) out = { ...out, isLock: true };
+  if (Array.isArray(kidsRaw) && kidsRaw.length > 0) {
+    return { ...out, children: normalizeStepsArray(kidsRaw, next, id) };
   }
   return out;
 }
@@ -174,19 +178,21 @@ function normalizeOneStep(raw, next) {
 /**
  * @param {unknown[]} arr
  * @param {{ n: number }} next
+ * @param {string | null} parentId
  * @returns {RpgQuestStepNode[]}
  */
-function normalizeStepsArray(arr, next) {
-  return arr.map((x) => normalizeOneStep(x, next));
+function normalizeStepsArray(arr, next, parentId) {
+  return arr.map((x) => normalizeOneStep(x, next, parentId));
 }
 
 /**
  * @param {unknown} steps
+ * @param {string | null} [parentId]
  * @returns {RpgQuestStepNode[]}
  */
-export function normalizeQuestStepsTree(steps) {
+export function normalizeQuestStepsTree(steps, parentId = null) {
   if (!Array.isArray(steps) || steps.length === 0) return [];
-  return normalizeStepsArray(steps, { n: 0 });
+  return normalizeStepsArray(steps, { n: 0 }, parentId);
 }
 
 /**
@@ -196,7 +202,7 @@ export function normalizeQuestStepsTree(steps) {
  */
 export function flatLegacyStepsToNormalized(flat) {
   const next = { n: 0 };
-  return flat.map((s) => normalizeOneStep({ id: s.id, label: s.label, optional: false }, next));
+  return flat.map((s) => normalizeOneStep({ id: s.id, label: s.label, optional: false }, next, null));
 }
 
 /**
@@ -390,8 +396,8 @@ export function normalizeQuestRewards(raw) {
 export function findStepById(steps, id) {
   for (const s of steps) {
     if (s.id === id) return s;
-    if (s.substeps?.length) {
-      const f = findStepById(s.substeps, id);
+    if (s.children?.length) {
+      const f = findStepById(s.children, id);
       if (f) return f;
     }
   }
@@ -403,7 +409,15 @@ export function findStepById(steps, id) {
  * @returns {boolean}
  */
 export function stepIsLeaf(step) {
-  return !Array.isArray(step.substeps) || step.substeps.length === 0;
+  return !Array.isArray(step.children) || step.children.length === 0;
+}
+
+/**
+ * @param {RpgQuestStepNode | null | undefined} step
+ * @returns {boolean}
+ */
+export function isLockNode(step) {
+  return !!step?.isLock;
 }
 
 /**
@@ -413,7 +427,7 @@ export function stepIsLeaf(step) {
 export function walkStepsPreOrder(steps, fn) {
   for (const s of steps) {
     fn(s);
-    if (s.substeps?.length) walkStepsPreOrder(s.substeps, fn);
+    if (s.children?.length) walkStepsPreOrder(s.children, fn);
   }
 }
 
@@ -424,7 +438,7 @@ export function walkStepsPreOrder(steps, fn) {
  * @param {Set<string>} [visiting]
  */
 export function isStepNodeComplete(quest, stepId, stepDone, visiting) {
-  const steps = quest.steps || [];
+  const steps = quest.children || [];
   const node = findStepById(steps, stepId);
   if (!node) return false;
   const qm = stepDone[quest.id] || {};
@@ -439,8 +453,9 @@ export function isStepNodeComplete(quest, stepId, stepDone, visiting) {
         return false;
       }
     }
-    const subs = node.substeps || [];
-    for (const ch of subs) {
+    const kids = node.children || [];
+    for (const ch of kids) {
+      if (isLockNode(ch)) continue;
       if (ch.optional) continue;
       if (!isStepNodeComplete(quest, ch.id, stepDone, vis)) {
         vis.delete(stepId);
@@ -486,9 +501,30 @@ export function isStepNodeComplete(quest, stepId, stepDone, visiting) {
  * @param {boolean} wantOn
  */
 export function canSetStepDone(quest, stepId, stepDone, wantOn) {
-  const node = findStepById(quest.steps || [], stepId);
+  const node = findStepById(quest.children || [], stepId);
   if (!node || !stepIsLeaf(node)) return false;
   if (!wantOn) return true;
+  /**
+   * @param {RpgQuestStepNode[]} arr
+   * @param {string} id
+   * @returns {RpgQuestStepNode | null}
+   */
+  function findParent(arr, id) {
+    for (const s of arr || []) {
+      if ((s.children || []).some((c) => c.id === id)) return s;
+      const sub = findParent(s.children || [], id);
+      if (sub) return sub;
+    }
+    return null;
+  }
+  const parent = findParent(quest.children || [], stepId);
+  if (parent && !isLockNode(node)) {
+    const lockChildren = (parent.children || []).filter((ch) => isLockNode(ch));
+    if (lockChildren.length > 0) {
+      const locksDone = lockChildren.every((l) => isStepNodeComplete(quest, l.id, stepDone));
+      if (!locksDone) return false;
+    }
+  }
   for (const d of node.dependsOn || []) {
     if (!isStepNodeComplete(quest, d, stepDone)) return false;
   }
@@ -504,8 +540,9 @@ function countLeafProgressQuest(quest, steps, stepDone) {
   let total = 0;
   let done = 0;
   for (const s of steps) {
+    if (isLockNode(s)) continue;
     if (!stepIsLeaf(s)) {
-      const sub = countLeafProgressQuest(quest, s.substeps || [], stepDone);
+      const sub = countLeafProgressQuest(quest, s.children || [], stepDone);
       total += sub.total;
       done += sub.done;
       continue;
@@ -534,7 +571,7 @@ export function buildStepIdMap(steps) {
  * @param {Record<string, Record<string, boolean>>} stepDone
  */
 export function questLeafProgressRatio(quest, stepDone) {
-  const { total, done } = countLeafProgressQuest(quest, quest.steps || [], stepDone);
+  const { total, done } = countLeafProgressQuest(quest, quest.children || [], stepDone);
   if (total === 0) return { total: 0, done: 0, percent: 100 };
   return { total, done, percent: Math.round((done / total) * 100) };
 }
@@ -582,7 +619,8 @@ function endOfLocalDayMs(isoYmd) {
  */
 export function questHasIncompleteTimeBoundLeaves(quest, stepDone) {
   let found = false;
-  walkStepsPreOrder(quest.steps || [], (s) => {
+  walkStepsPreOrder(quest.children || [], (s) => {
+    if (isLockNode(s)) return;
     if (!stepIsLeaf(s)) return;
     if (s.optional) return;
     if (!s.timeDueAt || !String(s.timeDueAt).trim()) return;
@@ -600,7 +638,8 @@ export function questHasIncompleteTimeBoundLeaves(quest, stepDone) {
  */
 export function questHasUrgentTimeBoundLeaves(quest, stepDone, nowMs = Date.now()) {
   let found = false;
-  walkStepsPreOrder(quest.steps || [], (s) => {
+  walkStepsPreOrder(quest.children || [], (s) => {
+    if (isLockNode(s)) return;
     if (!stepIsLeaf(s)) return;
     if (s.optional) return;
     const dueRaw = s.timeDueAt && String(s.timeDueAt).trim();
@@ -629,7 +668,7 @@ export function buildRewardDisplayList(quest, stepDone, progressPercentOverride,
       : questLeafProgressRatio(quest, stepDone).percent;
   /** @type {{ label: string; kind: 'text' | 'item' | 'points'; pointKind?: 'heart' | 'mana'; amount?: number; unlocked: boolean; source: 'step' | 'quest'; itemId?: string; unlockAtPercent?: number }[]} */
   const rows = [];
-  walkStepsPreOrder(quest.steps || [], (s) => {
+  walkStepsPreOrder(quest.children || [], (s) => {
     const entry = normalizeRewardEntry(s.reward);
     if (!entry) return;
     const unlocked = isStepNodeComplete(quest, s.id, stepDone);
@@ -686,33 +725,35 @@ export function getQuestRewardEntries(q) {
 }
 
 /**
- * Migriert eine Quest: `rewards` → `questRewards`, Steps normalisieren.
+ * Migriert eine Quest: `rewards` → `questRewards`, children normalisieren.
  * @param {import('./rpg-quests-data.js').RpgGraphQuest} q
  * @returns {import('./rpg-quests-data.js').RpgGraphQuest}
  */
 export function migrateQuestToV2Shape(q) {
-  const stepsIn = Array.isArray(q.steps) ? q.steps : [];
+  const childrenIn = Array.isArray(q.children) ? q.children : Array.isArray(q.steps) ? q.steps : [];
 
   const isLegacyFlatRow = (s) =>
     s &&
     typeof s === 'object' &&
-    !Array.isArray(/** @type {any} */ (s).substeps)?.length &&
+    (!Array.isArray(/** @type {any} */ (s).children) || /** @type {any} */ (s).children.length === 0) &&
+    (!Array.isArray(/** @type {any} */ (s).substeps) || /** @type {any} */ (s).substeps.length === 0) &&
     typeof /** @type {any} */ (s).label === 'string' &&
     !/** @type {any} */ (s).dependsOn?.length &&
     !/** @type {any} */ (s).optional &&
     !/** @type {any} */ (s).reward &&
     !/** @type {any} */ (s).timeDueAt;
 
-  const looksLegacyFlat = stepsIn.length > 0 && stepsIn.every(isLegacyFlatRow);
+  const looksLegacyFlat = childrenIn.length > 0 && childrenIn.every(isLegacyFlatRow);
 
-  let steps;
+  let children;
   if (looksLegacyFlat) {
-    steps = flatLegacyStepsToNormalized(
-      stepsIn.map((s) => ({ id: /** @type {any} */ (s).id, label: /** @type {any} */ (s).label }))
+    children = flatLegacyStepsToNormalized(
+      childrenIn.map((s) => ({ id: /** @type {any} */ (s).id, label: /** @type {any} */ (s).label }))
     );
   } else {
-    steps = normalizeQuestStepsTree(stepsIn);
+    children = normalizeQuestStepsTree(childrenIn, q.id);
   }
+  children = normalizeQuestStepsTree(children, q.id);
 
   let questRewardRows = normalizeQuestRewardRows(q.questRewards);
   if (questRewardRows.length === 0 && Array.isArray(q.rewards) && q.rewards.length > 0) {
@@ -723,10 +764,11 @@ export function migrateQuestToV2Shape(q) {
 
   const questRewards = questRewardRows.map(questRewardRowToStored);
 
-  const { rewards: _drop, questRewards: _qr, steps: _st, ...rest } = q;
+  const { rewards: _drop, questRewards: _qr, steps: _st, children: _ch, ...rest } = q;
   return {
     ...rest,
-    steps,
+    parentId: null,
+    children,
     questRewards,
   };
 }

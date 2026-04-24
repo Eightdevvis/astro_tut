@@ -14,9 +14,11 @@
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`) und blockiert Viewport-Gesten, bis das Detail geschlossen wird.
 - Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button; Vitals oeffnen ein Vollbild-Overlay (auch per Escape schliessbar).
 - Nodes:
-  - Main = Sechseck, Side = Kreis
+  - Einheitliche Node-Form (keine Main/Side-Differenz mehr)
   - State-Styling fuer gesperrt, frei-nicht-hinzugefuegt, aktiv, fertig
   - Roter Punkt bei offenen Pflicht-Schritten mit Frist < 7 Tage oder ueberfaellig
+- Child-Nodes im Baum werden wieder als eigene Mini-Nodes inkl. Parent->Child-Kanten gezeigt.
+- Lock-Nodes erscheinen als Schloss (`🔒`) und waehlen beim Klick die zugehoerige Quest (Bearbeiten weiter ueber Quest-Panel).
 - Kanten:
   - Quelle fertig -> weiss
   - Quelle aktiv mit Fortschritt -> anteiliges Leuchten
@@ -27,19 +29,22 @@
   - Modus Suchen: zentrale Suchleiste (`GET /api/rpg/locations?q=...`)
   - Modus Neu anlegen: Ort/Stadt/Land mit Autocomplete und `upsertHierarchy`.
   - Hinweis Rollenlogik: "Neu anlegen" ist ueber API-POST an `super_access` gebunden; bei fehlender Berechtigung kann UI-Create fehlschlagen.
-- Strukturansicht: Tree zeigt `structure.chapters` als eigenes Panel (Lebens-Karte/Kapitel-Kontext).
 - Bootstrap: Vor initialem Payload-Load zeigt die UI einen separaten Loading-Screen (`RpgBootstrapLoading`).
 
 ## Hub (UI)
 
-- Kategorie-/Fokusmodell: getrennte Main/Side-Sicht, je Kategorie eine Fokus-Quest als Hero-Block; weitere Quests als ein-/ausklappbare Strips.
+- Fokusmodell ohne Kategorien: eine Fokus-Quest als Hero-Block; weitere aktive Quests als ein-/ausklappbare Strips.
 - Sidebar-Link "Quest-Baum" -> `/rpg/tree`.
 - Pro Quest Link mit Mini-Graph-SVG -> `/rpg/tree?focus=<id>`.
 - Steps beruecksichtigen Location-State:
   - Quest-Lock ueber `quest.cityLocation`
   - Step-Hinweis ueber `step.placeLocation` (nur Hub, nicht Tree-Panel)
 - Globaler Location-Katalog in `rpg_locations`; user-relevante IDs in `payload.locationCatalog`.
-- Strukturvorschau: Hub zeigt eine kompakte Mini-Ansicht der Kapitel-/Strukturdaten.
+
+## Einstellungen (UI)
+
+- Tab `RPG` (nur bei `canUseRpg`) zeigt Backup-Liste mit Restore pro Eintrag.
+- Backup-Liste wird lazy nur beim Oeffnen des RPG-Tabs geladen (kein Zusatz-Load fuer normale Settings-Starts).
 
 ## Code-Pfade
 

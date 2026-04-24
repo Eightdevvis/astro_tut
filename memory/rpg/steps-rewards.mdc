@@ -2,34 +2,42 @@
 
 ## Zweck
 
-- Definiert Datenmodell und Verhalten fuer strukturierte Steps und Reward-Anzeige.
-- Ziel: Gruppen mit Substeps, Reihenfolge (frei vs. abhaengig), optionale Steps, zeitbegrenzte Blatt-Schritte (`timeDueAt`), Rewards pro Step und Quest-Rewards nach Fortschritt.
+- Definiert Datenmodell und Verhalten fuer strukturierte Quest-Nodes und Reward-Anzeige.
+- Ziel: rekursiver Baum mit `children`/`parentId`, Reihenfolge (frei vs. abhaengig), optionale Leaf-Nodes, zeitbegrenzte Leaf-Nodes (`timeDueAt`), Rewards pro Node und Quest-Rewards nach Fortschritt.
 
 ## Entwicklungsprinzip
 
 - Stabilitaet vor Tempo: Strukturwechsel in kleinen, testbaren Stufen.
 - Trotzdem zuegig zur neuen Struktur: Normalize-on-read plus spaeter optionaler Bulk-Write ist absichtlich.
 
-## 1. Gruppen-Step (Substeps)
+## 1. Gruppen-Node (Children)
 
-- Ein Step kann `substeps` haben (rekursiv verschachtelbar).
-- Erledigt-Regel Gruppen-Step: erledigt, sobald alle nicht optionalen Substeps erledigt sind.
-- Gruppen koennen selbst `optional` sein.
+- Ein Node kann `children` haben (rekursiv verschachtelbar).
+- Leaf: `children.length === 0` (ausfuehrbare Aktion).
+- Container: `children.length > 0`; Fortschritt wird aus direkten `children` berechnet.
+- Erledigt-Regel Container: erledigt, sobald alle direkten Children erledigt sind.
 
 ## 2. Reihenfolge: unabhaengig vs. abhaengig
 
 | Ansatz | Idee | Vorteile | Nachteile |
 |--------|------|----------|-----------|
-| Explizite Abhaengigkeiten (`dependsOn`) | Step nennt 0-n Step-IDs, die vorher erledigt sein muessen | Flexibel fuer Verzweigungen und Mischformen | Editor/UI muss Zyklen verhindern |
+| Explizite Abhaengigkeiten (`dependsOn`) | Node nennt 0-n Node-IDs, die vorher erledigt sein muessen | Flexibel fuer Verzweigungen und Mischformen | Editor/UI muss Zyklen verhindern |
 | Strikte Listen-Reihenfolge | Reihenfolge ueber Array-Position | Einfach fuer lineare Listen | Unflexibel bei parallelen Schritten |
 
-Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Step-IDs innerhalb derselben Quest).
+Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb derselben Quest).
 
 ## 3. Optionale Steps
 
 - Feld `optional: boolean` (Default `false`).
-- Optionale Steps zaehlen nicht fuer den Abschluss des uebergeordneten Gruppen-Steps.
-- Optionale Steps koennen eigene Rewards haben.
+- Optionale Leaf-Nodes zaehlen nicht fuer den Abschluss des uebergeordneten Containers.
+- Optionale Nodes koennen eigene Rewards haben.
+
+## 3b. Lock-Node (unsichtbarer Abhaengigkeitslayer)
+
+- Step-Node kann `isLock: true` tragen; kein eigener Graph-Typ noetig.
+- Lock-Node zaehlt nicht zum Completion-Progress des Parents (wie optional, aber fuer ganzen Lock-Zweig).
+- Solange ein Lock-Child eines Parents nicht fertig ist, sind alle nicht-Lock-Sibling-Leafs des Parents beim Toggeln gesperrt.
+- Lock-Node selbst wird normal ueber `children` + `dependsOn` abgeschlossen.
 
 ## 4. Rewards — zwei Quellen, eine Anzeige-Liste
 
@@ -42,11 +50,11 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Step-IDs innerhalb d
 Globale Kontostaende (Baum-Gefaesse): Persistentes `vitals`-Konto in `rpg_user_state.payload` mit `{ heart, mana, appliedStepRewardIds[] }`, Startwerte `heart=25`, `mana=25` bei Max 50, einmalige Buchung pro Step-Reward-ID (`step:<questId>:<stepId>`), Werte clamp 0...50, Reconciliation via `reconcileRpgVitals`.
 Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls einmalig gebucht (`quest:<questId>:reward:<index>`).
 
-### 4a. Reward am Step
+### 4a. Reward am Node
 
-- Solange Step offen ist: Reward in Liste gedimmt.
+- Solange Node offen ist: Reward in Liste gedimmt.
 - Nach Erledigung: Reward normal sichtbar.
-- Keine UI-Zuordnung "welcher Reward gehoert zu welchem Step", nur gemeinsame Liste.
+- Keine UI-Zuordnung "welcher Reward gehoert zu welchem Node", nur gemeinsame Liste.
 
 ### 4b. Rewards an der Quest
 
@@ -57,7 +65,7 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 
 ## 5. Migration (Bestand)
 
-- Legacy-Flat-Steps `{ id, label }` werden als Leaf-Steps interpretiert: `optional=false`, keine `substeps`, keine `reward`, keine `dependsOn`, keine `timeDueAt`.
+- Legacy-Flat-Listen `{ id, label }` werden als Leaf-Nodes interpretiert: `optional=false`, keine `children`, keine `reward`, keine `dependsOn`, keine `timeDueAt`.
 
 ### 5a. Legacy-Strings -> `RewardEntry`
 
@@ -73,9 +81,9 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 
 ### 5c. Zeitbegrenzung (`timeDueAt`)
 
-- Sinnvoll fuer Blatt-Schritte; gespeichert als ISO-Datum `YYYY-MM-DD`.
-- Pflicht-Step mit Frist und offen -> Quest gilt als zeitgebunden.
-- Optional-Step mit Frist zaehlt nicht fuer Pflicht-Zeitlogik.
+- Sinnvoll fuer Leaf-Nodes; gespeichert als ISO-Datum `YYYY-MM-DD`.
+- Pflicht-Leaf mit Frist und offen -> Quest gilt als zeitgebunden.
+- Optionaler Leaf mit Frist zaehlt nicht fuer Pflicht-Zeitlogik.
 - Baum-UI: roter Punkt am Knoten bei offenem Pflicht-Step mit Frist < 7 Tage oder ueberfaellig.
 
 ## JSON-Beispiel (Illustration)
@@ -83,20 +91,21 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 ```json
 {
   "id": "quest-clean-room",
-  "kind": "side",
+  "parentId": null,
   "title": "Zimmer aufraeumen",
-  "description": "Struktur-Beispiel: Gruppe, Reihenfolge, Optional, Step- vs. Quest-Rewards.",
-  "steps": [
+  "description": "Struktur-Beispiel: Container, Reihenfolge, Optional, Node- vs. Quest-Rewards.",
+  "children": [
     {
       "id": "cr-root",
+      "parentId": "quest-clean-room",
       "label": "Zimmer aufraeumen",
       "optional": false,
-      "substeps": [
-        { "id": "cr-trash", "label": "Muell einsammeln", "optional": false, "reward": "Fund: verlorenes Accessoire" },
-        { "id": "cr-wash", "label": "Waesche waschen", "optional": false, "dependsOn": [] },
-        { "id": "cr-hang", "label": "Waesche aufhaengen", "optional": false, "dependsOn": ["cr-wash"], "timeDueAt": "2026-04-20" },
-        { "id": "cr-bed", "label": "Bett machen", "optional": false },
-        { "id": "cr-vacuum", "label": "Staubsaugen", "optional": true, "reward": "+3 Clean Energy" }
+      "children": [
+        { "id": "cr-trash", "parentId": "cr-root", "label": "Muell einsammeln", "optional": false, "children": [], "reward": "Fund: verlorenes Accessoire" },
+        { "id": "cr-wash", "parentId": "cr-root", "label": "Waesche waschen", "optional": false, "dependsOn": [], "children": [] },
+        { "id": "cr-hang", "parentId": "cr-root", "label": "Waesche aufhaengen", "optional": false, "dependsOn": ["cr-wash"], "timeDueAt": "2026-04-20", "children": [] },
+        { "id": "cr-bed", "parentId": "cr-root", "label": "Bett machen", "optional": false, "children": [] },
+        { "id": "cr-vacuum", "parentId": "cr-root", "label": "Staubsaugen", "optional": true, "children": [], "reward": "+3 Clean Energy" }
       ]
     }
   ],

@@ -43,7 +43,7 @@ export function collectItemRewardRefsFromGraph(graph) {
   /** @type {Map<string, { displayName?: string }>} */
   const refs = new Map();
   for (const q of graph.quests || []) {
-    walkStepsPreOrder(q.steps || [], (s) => {
+    walkStepsPreOrder(q.children || [], (s) => {
       const e = normalizeRewardEntry(s.reward);
       if (e?.type === 'item') {
         const prev = refs.get(e.itemId) || {};

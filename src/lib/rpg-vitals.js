@@ -112,7 +112,7 @@ export function reconcileRpgVitals(graph, stepDone, rawState) {
   };
 
   for (const q of graph?.quests || []) {
-    walkStepsPreOrder(q.steps || [], (s) => {
+    walkStepsPreOrder(q.children || [], (s) => {
       const ent = normalizeRewardEntry(s.reward);
       if (!ent || ent.type !== 'points') return;
       if (!isStepNodeComplete(q, s.id, stepDone)) return;

@@ -417,6 +417,12 @@ html:not(.dark) .rpg-hub {
   letter-spacing: 0.04em;
 }
 
+.rpg-step-badge--lock {
+  color: color-mix(in srgb, var(--rpg-accent) 82%, var(--rpg-page-bg));
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .rpg-step-hint {
   font-size: 0.72em;
   color: color-mix(in srgb, var(--rpg-ink) 35%, var(--rpg-page-bg));

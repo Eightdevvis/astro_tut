@@ -8,7 +8,7 @@ import {
 
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number; questmakerPrompt?: string }} RpgGraphQuest */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgQuestStep[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number; questmakerPrompt?: string }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
@@ -168,9 +168,9 @@ export function questMap(graph) {
   return m;
 }
 
-/** @param {'main' | 'side'} kind @param {boolean} compact */
-function layoutShapeRadius(kind, compact) {
-  return kind === 'main' ? (compact ? 30 : 28) : compact ? 26 : 24;
+/** @param {boolean} compact */
+function layoutShapeRadius(compact) {
+  return compact ? 26 : 24;
 }
 
 /**
@@ -179,7 +179,7 @@ function layoutShapeRadius(kind, compact) {
  * @param {boolean} compact
  */
 function layoutNodeLocalBounds(q, compact) {
-  const r = layoutShapeRadius(q.kind, compact);
+  const r = layoutShapeRadius(compact);
   const title = typeof q.title === 'string' ? q.title : '';
   const labelText = title.length > 20 ? `${title.slice(0, 18)}…` : title;
   const charW = compact ? 5.7 : 6.2;
@@ -308,16 +308,25 @@ export function computeLayeredLayout(graph, opts = {}) {
 
   /** @type {Map<string, number>} */
   const level = new Map();
+  /** @type {Set<string>} */
+  const visiting = new Set();
 
   function levelOf(id) {
     if (level.has(id)) return level.get(id);
+    if (visiting.has(id)) {
+      // Defensiv gegen fehlerhafte persistierte Zyklen.
+      return 0;
+    }
+    visiting.add(id);
     const preds = incoming.get(id) || [];
     if (preds.length === 0) {
       level.set(id, 0);
+      visiting.delete(id);
       return 0;
     }
     const L = Math.max(...preds.map((p) => levelOf(p))) + 1;
     level.set(id, L);
+    visiting.delete(id);
     return L;
   }
 
@@ -422,7 +431,7 @@ export function buildInitialStepMapFromGraph(graph) {
   const m = {};
   for (const q of graph.quests || []) {
     m[q.id] = {};
-    walkStepsPreOrder(q.steps || [], (s) => {
+    walkStepsPreOrder(q.children || [], (s) => {
       if (stepIsLeaf(s) && s.done) m[q.id][s.id] = true;
     });
   }

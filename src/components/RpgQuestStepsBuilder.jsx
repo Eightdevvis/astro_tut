@@ -44,6 +44,20 @@ function IconPlus() {
   );
 }
 
+function IconLock() {
+  return <span class="rpg-step-builder__plus" aria-hidden="true">🔒</span>;
+}
+
+/** @returns {QuestStepDraft} */
+function createNodeDraft() {
+  return {
+    ...createEmptyStepDraft(false),
+    key: newDraftKey(),
+    substepsOn: false,
+    children: [],
+  };
+}
+
 function IconGrip() {
   return (
     <svg class="rpg-step-builder__grip-svg" width="14" height="18" viewBox="0 0 14 18" aria-hidden="true">
@@ -92,6 +106,11 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 Reihenfolge
               </span>
             ) : null}
+            {draft.isLock ? (
+              <span class="rpg-step-card__badge" title="Lock-Node">
+                Lock
+              </span>
+            ) : null}
             {draft.optional ? (
               <span class="rpg-step-card__badge" title="Optional">
                 Optional
@@ -114,12 +133,12 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             ) : null}
             {draft.substepsOn && draft.children.length > 0 ? (
               <span class="rpg-step-card__badge">
-                {draft.children.length} Unterschritt{draft.children.length === 1 ? '' : 'e'}
+                {draft.children.length} Child-Node{draft.children.length === 1 ? '' : 's'}
               </span>
             ) : null}
           </div>
         </div>
-        <button type="button" class="rpg-step-card__edit-btn" onClick={edit} aria-label="Schritt bearbeiten" title="Bearbeiten">
+        <button type="button" class="rpg-step-card__edit-btn" onClick={edit} aria-label="Node bearbeiten" title="Bearbeiten">
           <IconPencil />
         </button>
       </div>
@@ -132,7 +151,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
       style={{ '--step-depth': String(depth) }}
     >
       <div class="rpg-step-card__field">
-        <span class="rpg-step-card__field-label">Titel des Schritts</span>
+        <span class="rpg-step-card__field-label">Node-Titel</span>
         <input
           type="text"
           class="rpg-graph-editor__input"
@@ -166,8 +185,8 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           </button>
         </div>
         <p class="rpg-step-card__order-hint">
-          Abhängig: kann erst erledigt werden, wenn der vorherige <strong>abhängige</strong> Schritt in dieser Liste fertig ist. Die Reihenfolge
-          der gespeicherten Schritte änderst du per Ziehen am Griff.
+          Abhängig: kann erst erledigt werden, wenn der vorherige <strong>abhängige</strong> Node in dieser Liste fertig ist. Die Reihenfolge
+          der gespeicherten Nodes änderst du per Ziehen am Griff.
         </p>
       </div>
 
@@ -194,7 +213,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             });
           }}
         />
-        <span>Belohnung für diesen Schritt</span>
+        <span>Belohnung für diesen Node</span>
       </label>
       {draft.rewardOn ? (
         <div class="rpg-step-card__field rpg-step-card__field--indented rpg-step-card__reward-block">
@@ -313,7 +332,22 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         <span>Optional — zählt nicht für den Pflicht-Abschluss</span>
       </label>
 
-      {!draft.substepsOn ? (
+      <label class="rpg-step-card__toggle">
+        <input
+          type="checkbox"
+          checked={draft.isLock}
+          onChange={(ev) => {
+            const on = ev.currentTarget.checked;
+            update({
+              isLock: on,
+              optional: on ? false : draft.optional,
+            });
+          }}
+        />
+        <span>Lock-Node — sperrt Geschwister bis Lock erfüllt ist</span>
+      </label>
+
+      {draft.children.length === 0 ? (
         <>
           <label class="rpg-step-card__toggle">
             <input
@@ -327,7 +361,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 });
               }}
             />
-            <span>Zeitbegrenzt — Frist (nur bei Pflichtschritten relevant für die Quest)</span>
+            <span>Zeitbegrenzt — Frist (nur bei Pflicht-Leafs relevant für die Quest)</span>
           </label>
           {draft.timeLimitOn ? (
             <div class="rpg-step-card__field rpg-step-card__field--indented">
@@ -342,44 +376,46 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           ) : null}
         </>
       ) : null}
-
-      <label class="rpg-step-card__toggle">
-        <input
-          type="checkbox"
-          checked={draft.substepsOn}
-          onChange={(ev) => {
-            const on = ev.currentTarget.checked;
-            update({
-              substepsOn: on,
-              children: on && draft.children.length === 0 ? [] : draft.children,
-              ...(on ? { timeLimitOn: false, timeDueAt: '' } : {}),
-            });
-          }}
-        />
-        <span>Unterschritte — mehrere kleine Teilschritte unter diesem Titel</span>
-      </label>
-
-      {draft.substepsOn ? (
-        <div class="rpg-step-card__nest">
-          <span class="rpg-step-card__nest-label">Unterschritte</span>
+      <div class="rpg-step-card__nest">
+        <span class="rpg-step-card__nest-label">Children</span>
+        {draft.children.length > 0 ? (
           <DraggableStepList
             steps={draft.children}
             depth={depth + 1}
-            onStepsChange={(next) => update({ children: next })}
+            onStepsChange={(next) => update({ children: next, substepsOn: next.length > 0 })}
           />
-          <button
-            type="button"
-            class="rpg-step-builder__add-nested"
-            onClick={() =>
-              update({
-                children: [...draft.children, createEmptyStepDraft(false)],
-              })
-            }
-          >
-            <IconPlus /> Unterschritt hinzufügen
-          </button>
-        </div>
-      ) : null}
+        ) : (
+          <p class="rpg-step-card__order-hint">Keine Children. Dieser Node ist aktuell ein Leaf.</p>
+        )}
+        <button
+          type="button"
+          class="rpg-step-builder__add-nested"
+          onClick={() =>
+            update({
+              children: [...draft.children, createNodeDraft()],
+              substepsOn: true,
+              timeLimitOn: false,
+              timeDueAt: '',
+            })
+          }
+        >
+          <IconPlus /> Child-Node hinzufügen
+        </button>
+        <button
+          type="button"
+          class="rpg-step-builder__add-nested"
+          onClick={() =>
+            update({
+              children: [...draft.children, { ...createNodeDraft(), isLock: true, optional: false }],
+              substepsOn: true,
+              timeLimitOn: false,
+              timeDueAt: '',
+            })
+          }
+        >
+          <IconLock /> Lock-Node hinzufügen
+        </button>
+      </div>
 
       <div class="rpg-step-card__actions">
         {onRemove ? (
@@ -395,7 +431,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           onClick={save}
           disabled={!(draft.title || '').trim()}
         >
-          Schritt speichern
+          Node speichern
         </button>
       </div>
     </div>
@@ -498,19 +534,27 @@ export function RpgQuestStepsBuilder({ steps, onStepsChange }) {
   return (
     <div class="rpg-step-builder">
       <div class="rpg-step-builder__section-head">
-        <span class="rpg-step-builder__section-title">Schritte</span>
+        <span class="rpg-step-builder__section-title">Quest-Nodes</span>
         <p class="rpg-step-builder__section-intro">
-          Schritte anlegen, speichern, dann per Griff sortieren. „Abhängig“ verknüpft mit dem vorherigen abhängigen Schritt in derselben Liste.
+          Baue den Baum direkt: Ein Node ohne Children ist automatisch ein Leaf. „Abhängig“ verknüpft mit dem vorherigen abhängigen Node in derselben Liste.
         </p>
       </div>
       <DraggableStepList steps={steps} depth={0} onStepsChange={onStepsChange} />
       <button
         type="button"
         class="rpg-step-builder__add-root"
-        onClick={() => onStepsChange([...steps, { ...createEmptyStepDraft(false), key: newDraftKey() }])}
+        onClick={() => onStepsChange([...steps, createNodeDraft()])}
       >
         <IconPlus />
-        Schritt hinzufügen
+        Node hinzufügen
+      </button>
+      <button
+        type="button"
+        class="rpg-step-builder__add-root"
+        onClick={() => onStepsChange([...steps, { ...createNodeDraft(), isLock: true, optional: false }])}
+      >
+        <IconLock />
+        Lock-Node hinzufügen
       </button>
     </div>
   );

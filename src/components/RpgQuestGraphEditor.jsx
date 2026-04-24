@@ -32,6 +32,7 @@ import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
 export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
+const RPG_QUESTMAKER_ENABLED = false;
 
 /**
  * @param {{
@@ -57,8 +58,11 @@ export default function RpgQuestGraphEditor({
   editEntry,
   itemCatalog = {},
 }) {
+  const resolvedCreateEntry =
+    !RPG_QUESTMAKER_ENABLED && createEntry === 'questmaker' ? 'manual' : createEntry;
+  const resolvedEditEntry =
+    !RPG_QUESTMAKER_ENABLED && editEntry === 'ai' ? 'form' : editEntry;
   const [id, setId] = useState('');
-  const [kind, setKind] = useState(/** @type {'main' | 'side'} */ ('side'));
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   /** @type {import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[]} */
@@ -76,7 +80,6 @@ export default function RpgQuestGraphEditor({
      *   stepDrafts: import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[];
      *   title: string;
      *   description: string;
-     *   kind: 'main' | 'side';
      *   rewardRows: import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[];
      *   orderInLayer: number;
      * } | null} */ (null)
@@ -139,7 +142,7 @@ export default function RpgQuestGraphEditor({
       quality_too_flat:
         'Die Struktur ist für das Vorhaben zu flach. Bitte nenne die Hauptblöcke (z. B. Beschaffung, Setup, Implementierung, Test).',
       quality_leaf_not_concrete:
-        'Mindestens ein Schritt war nicht konkret genug. Bitte formuliere überprüfbare Handlungen.',
+        'Mindestens ein Leaf-Node war nicht konkret genug. Bitte formuliere überprüfbare Handlungen.',
       missing_questmaker_items:
         'Für neue Item-IDs fehlen vollständige Item-Definitionen. Bitte Prompt konkretisieren oder Item-Namen angeben.',
       item_lookup_no_candidates:
@@ -151,7 +154,7 @@ export default function RpgQuestGraphEditor({
       invalid_package_payload:
         'Das KI-Paket war unvollständig. Bitte den Unterabschnitt enger und konkreter beschreiben.',
       package_placeholder_steps:
-        'Das KI-Paket enthält Platzhalter-Schritte. Bitte konkrete Schritte und Substeps angeben.',
+        'Das KI-Paket enthält Platzhalter-Nodes. Bitte konkrete Leafs und Branches angeben.',
     };
     const mapped = code && byCode[code] ? byCode[code] : msg;
     const rest = hint || detail;
@@ -160,10 +163,12 @@ export default function RpgQuestGraphEditor({
 
   /** Baum setzt createEntry / editEntry; Defaults: neue Quest = manuell, Bearbeiten = Formular */
   const onlyQuestmaker =
-    (mode === 'create' && createEntry === 'questmaker') ||
-    (mode === 'edit' && (editEntry ?? 'form') === 'ai');
+    RPG_QUESTMAKER_ENABLED &&
+    ((mode === 'create' && resolvedCreateEntry === 'questmaker') ||
+      (mode === 'edit' && (resolvedEditEntry ?? 'form') === 'ai'));
   /** Legacy: beide Modi im selben Dialog */
-  const showCreateModeSwitch = mode === 'create' && createEntry === undefined;
+  const showCreateModeSwitch =
+    RPG_QUESTMAKER_ENABLED && mode === 'create' && resolvedCreateEntry === undefined;
 
   useEffect(() => {
     if (!open) {
@@ -180,10 +185,9 @@ export default function RpgQuestGraphEditor({
       const q = graph.quests.find((x) => x.id === questId);
       if (!q) return;
       setId(q.id);
-      setKind(q.kind === 'main' ? 'main' : 'side');
       setTitle(q.title || '');
       setDescription(q.description || '');
-      const drafts = questStepsToDrafts(q.steps || []);
+      const drafts = questStepsToDrafts(q.children || []);
       const rrows = questRewardRowsToDraftRows(getQuestRewardRows(q));
       hydrateItemFieldsFromCatalog(drafts, rrows, itemCatalogRef.current);
       setStepDrafts(drafts);
@@ -198,19 +202,17 @@ export default function RpgQuestGraphEditor({
         stepDrafts: drafts,
         title: q.title || '',
         description: q.description || '',
-        kind: q.kind === 'main' ? 'main' : 'side',
         rewardRows: rrows.map((r) => ({ ...r })),
         orderInLayer: typeof q.orderInLayer === 'number' ? q.orderInLayer : 0,
       };
       resetAiSession();
       const storedQm = typeof q.questmakerPrompt === 'string' ? q.questmakerPrompt : '';
-      setAiPrompt((editEntry ?? 'form') === 'ai' ? storedQm : '');
+      setAiPrompt((resolvedEditEntry ?? 'form') === 'ai' ? storedQm : '');
       setCreateMode('manual');
       setAiLoading(false);
-      setQmPhase((editEntry ?? 'form') === 'ai' ? 'prompt' : 'result');
+      setQmPhase((resolvedEditEntry ?? 'form') === 'ai' ? 'prompt' : 'result');
     } else {
       setId('');
-      setKind('side');
       setTitle('');
       setDescription('');
       setStepDrafts([]);
@@ -218,7 +220,7 @@ export default function RpgQuestGraphEditor({
       setOrderInLayer(0);
       setPrereqIds(new Set());
       editQmBaselineRef.current = null;
-      const ce = createEntry ?? 'manual';
+      const ce = resolvedCreateEntry ?? 'manual';
       setCreateMode(ce === 'questmaker' ? 'ai' : 'manual');
       setQmPhase(ce === 'questmaker' ? 'prompt' : 'result');
       setAiPrompt('');
@@ -226,7 +228,7 @@ export default function RpgQuestGraphEditor({
       setAiLoading(false);
       resetAiSession();
     }
-  }, [open, mode, questId, graph, createEntry, editEntry]);
+  }, [open, mode, questId, graph, resolvedCreateEntry, resolvedEditEntry]);
 
   useEffect(() => {
     if (open) setDraftListTick((t) => t + 1);
@@ -235,7 +237,7 @@ export default function RpgQuestGraphEditor({
   const storedManualDrafts = useMemo(() => loadManualQuestDrafts(), [draftListTick, open]);
 
   const showManualCreateDrafts =
-    mode === 'create' && (createEntry ?? 'manual') !== 'questmaker';
+    mode === 'create' && (resolvedCreateEntry ?? 'manual') !== 'questmaker';
 
   const manualAbortDraftHasContent = () => {
     if ((id || '').trim().length > 0) return true;
@@ -260,17 +262,16 @@ export default function RpgQuestGraphEditor({
 
   const handleRequestClose = () => {
     const legacyManual =
-      createEntry === undefined && createMode === 'manual';
-    const explicitManual = createEntry === 'manual';
+      resolvedCreateEntry === undefined && createMode === 'manual';
+    const explicitManual = resolvedCreateEntry === 'manual';
     if (
       mode === 'create' &&
-      (createEntry ?? 'manual') !== 'questmaker' &&
+      (resolvedCreateEntry ?? 'manual') !== 'questmaker' &&
       (explicitManual || legacyManual) &&
       manualAbortDraftHasContent()
     ) {
       addManualQuestDraft({
         id,
-        kind,
         title,
         description,
         stepDrafts: JSON.parse(JSON.stringify(stepDrafts)),
@@ -290,7 +291,6 @@ export default function RpgQuestGraphEditor({
   const handleLoadManualDraft = (entry) => {
     const p = entry.payload;
     setId(typeof p.id === 'string' ? p.id : '');
-    setKind(p.kind === 'main' ? 'main' : 'side');
     setTitle(typeof p.title === 'string' ? p.title : '');
     setDescription(typeof p.description === 'string' ? p.description : '');
     setStepDrafts(
@@ -305,7 +305,7 @@ export default function RpgQuestGraphEditor({
     );
     setOrderInLayer(typeof p.orderInLayer === 'number' ? p.orderInLayer : 0);
     setPrereqIds(new Set(Array.isArray(p.prereqIds) ? p.prereqIds.map(String) : []));
-    if (createEntry === undefined) setCreateMode('manual');
+    if (resolvedCreateEntry === undefined) setCreateMode('manual');
     setDraftsOpen(false);
   };
 
@@ -328,20 +328,19 @@ export default function RpgQuestGraphEditor({
   const otherQuests = graph.quests.filter((q) => (mode === 'edit' ? q.id !== questId : true));
 
   const previewQuest = useMemo(() => {
-    const steps = draftStepsToQuestNodes(stepDrafts);
     const nid =
       mode === 'edit' && questId
         ? questId
         : normalizedCreateId || 'preview';
+    const children = draftStepsToQuestNodes(stepDrafts, nid);
     return {
       id: nid,
-      kind,
       title: title.trim() || nid,
       description: description.trim(),
-      steps,
+      children,
       questRewards: draftRewardRowsToStoredQuestRewards(rewardRows),
     };
-  }, [mode, questId, normalizedCreateId, kind, title, description, stepDrafts, rewardRows]);
+  }, [mode, questId, normalizedCreateId, title, description, stepDrafts, rewardRows]);
 
   const togglePrereq = (pid) => {
     setPrereqIds((prev) => {
@@ -402,19 +401,19 @@ export default function RpgQuestGraphEditor({
     if (mode === 'create' && graph.quests.some((q) => q.id === nid)) {
       return;
     }
-    const steps = draftStepsToQuestNodes(stepDrafts);
-    if (steps.length === 0) {
-      window.alert('Bitte mindestens einen Schritt anlegen und speichern.');
+    const children = draftStepsToQuestNodes(stepDrafts, nid);
+    if (children.length === 0) {
+      window.alert('Bitte mindestens einen Leaf- oder Branch-Node anlegen und speichern.');
       return;
     }
     const questRewards = draftRewardRowsToStoredQuestRewards(rewardRows);
     const qmSaved = lastQmPromptRef.current.trim();
     const quest = {
       id: nid,
-      kind,
+      parentId: null,
       title: title.trim() || nid,
       description: description.trim(),
-      steps,
+      children,
       questRewards,
       orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
       ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
@@ -465,10 +464,11 @@ export default function RpgQuestGraphEditor({
     if (mode === 'create') {
       setId(typeof data.id === 'string' ? data.id : '');
     }
-    setKind(data.kind === 'main' ? 'main' : 'side');
     setTitle(typeof data.title === 'string' ? data.title : '');
     setDescription(typeof data.description === 'string' ? data.description : '');
-    if (Array.isArray(data.steps) && data.steps.length > 0) {
+    if (Array.isArray(data.children) && data.children.length > 0) {
+      setStepDrafts(aiQuestNodesToDraftSteps(/** @type {any} */ (data.children)));
+    } else if (Array.isArray(data.steps) && data.steps.length > 0) {
       setStepDrafts(aiQuestNodesToDraftSteps(/** @type {any} */ (data.steps)));
     } else {
       const labels = Array.isArray(data.stepLabels) ? data.stepLabels : [];
@@ -598,7 +598,6 @@ export default function RpgQuestGraphEditor({
       setStepDrafts(b.stepDrafts);
       setTitle(b.title);
       setDescription(b.description);
-      setKind(b.kind);
       setRewardRows(b.rewardRows);
       setOrderInLayer(b.orderInLayer);
     } else {
@@ -606,7 +605,6 @@ export default function RpgQuestGraphEditor({
       setTitle('');
       setDescription('');
       setId('');
-      setKind('side');
       setRewardRows([]);
     }
   };
@@ -614,8 +612,8 @@ export default function RpgQuestGraphEditor({
   const showQmPrompt = onlyQuestmaker && qmPhase === 'prompt';
   const showQmResult = onlyQuestmaker && qmPhase === 'result';
   const showManualFullForm =
-    (mode === 'create' && (createEntry ?? 'manual') !== 'questmaker') ||
-    (mode === 'edit' && (editEntry ?? 'form') === 'form');
+    (mode === 'create' && (resolvedCreateEntry ?? 'manual') !== 'questmaker') ||
+    (mode === 'edit' && (resolvedEditEntry ?? 'form') === 'form');
 
   const noopToggle = () => {};
 
@@ -820,12 +818,9 @@ export default function RpgQuestGraphEditor({
                   </p>
                 </div>
               ) : null}
-              <p class="rpg-graph-editor__qm-kind">
-                {kind === 'main' ? 'Main (Sechseck)' : 'Side (Kreis)'}
-              </p>
               <h3 class="rpg-graph-editor__qm-title">{title.trim() || '(ohne Titel)'}</h3>
               {description.trim() ? <p class="rpg-graph-editor__qm-desc">{description}</p> : null}
-              <p class="rpg-graph-editor__label">Schritte & Rewards</p>
+              <p class="rpg-graph-editor__label">Nodes & Rewards</p>
               <RpgQuestStepsView
                 quest={previewQuest}
                 stepDone={{}}
@@ -959,13 +954,6 @@ export default function RpgQuestGraphEditor({
                   <code class="rpg-graph-editor__code">{normalizedCreateId}</code>
                 </p>
               )}
-            </label>
-            <label class="rpg-graph-editor__field">
-              <span class="rpg-graph-editor__label">Typ</span>
-              <select class="rpg-graph-editor__input" value={kind} onChange={(ev) => setKind(ev.currentTarget.value)}>
-                <option value="main">Main (Sechseck)</option>
-                <option value="side">Side (Kreis)</option>
-              </select>
             </label>
             <label class="rpg-graph-editor__field">
               <span class="rpg-graph-editor__label">Titel</span>

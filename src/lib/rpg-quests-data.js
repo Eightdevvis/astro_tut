@@ -5,9 +5,9 @@
 
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
 /** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
-/** @typedef {{ id: string; title: string; description: string; steps: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; children: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
 /** @typedef {{ main: RpgQuest[]; side: RpgQuest[] }} RpgQuestPayloadLegacy */
-/** @typedef {{ id: string; kind: 'main' | 'side'; title: string; description: string; cityLocation?: string; steps: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; questmakerPrompt?: string }} RpgGraphQuest */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; questmakerPrompt?: string }} RpgGraphQuest */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
 /** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
 
@@ -19,59 +19,59 @@ export const SAMPLE_RPG_GRAPH = {
   quests: [
     {
       id: 'main-architect',
-      kind: 'main',
+      parentId: null,
       title: 'Der rote Faden',
       description:
         'Du strukturierst dein Leben um ein langfristiges Ziel: weniger reagieren, mehr bauen. Jeder Schritt ist eine bewusste Entscheidung, nicht ein Zufallstreffer.',
-      steps: [
-        { id: 'm1', label: 'Klarheit: ein Satz, wofür die nächsten Jahre da sind' },
-        { id: 'm2', label: 'Umgebung so trimmen, dass sie das Ziel trägt, nicht sabotiert' },
-        { id: 'm3', label: 'Ein Ritual, das wöchentlich Fortschritt sichtbar macht' },
-        { id: 'm4', label: 'Nein sagen zu einer großen Ablenkung' },
+      children: [
+        { id: 'm1', parentId: 'main-architect', label: 'Klarheit: ein Satz, wofür die nächsten Jahre da sind', children: [] },
+        { id: 'm2', parentId: 'main-architect', label: 'Umgebung so trimmen, dass sie das Ziel trägt, nicht sabotiert', children: [] },
+        { id: 'm3', parentId: 'main-architect', label: 'Ein Ritual, das wöchentlich Fortschritt sichtbar macht', children: [] },
+        { id: 'm4', parentId: 'main-architect', label: 'Nein sagen zu einer großen Ablenkung', children: [] },
       ],
       questRewards: [{ text: '+2 Klarheit' }, { text: 'Titel: Architekt' }, { text: 'Cutscene: Morgenlicht' }],
     },
     {
       id: 'main-bridge',
-      kind: 'main',
+      parentId: null,
       title: 'Brücke bauen',
       description:
         'Zwischen dem, der du warst, und dem, der du werden willst, fehlt eine Brücke aus konkreten Taten.',
-      steps: [
-        { id: 'b1', label: 'Eine ehrliche Bilanz: was bleibt, was fliegt' },
-        { id: 'b2', label: 'Ein Gespräch, das du seit Monaten vermeidest' },
+      children: [
+        { id: 'b1', parentId: 'main-bridge', label: 'Eine ehrliche Bilanz: was bleibt, was fliegt', children: [] },
+        { id: 'b2', parentId: 'main-bridge', label: 'Ein Gespräch, das du seit Monaten vermeidest', children: [] },
       ],
       questRewards: [{ type: 'item', itemId: 'sample-toolbox', displayName: 'Werkzeugkasten' }],
     },
     {
       id: 'side-read',
-      kind: 'side',
+      parentId: null,
       title: 'Seiten statt Scrollen',
       description:
         'Nebenquest: wieder mehr Tiefe statt Dauerfeuer. Ein Buch, ein Stift, keine Ausreden.',
-      steps: [
-        { id: 's1', label: '30 Minuten ohne zweiten Bildschirm' },
-        { id: 's2', label: 'Ein Kapitel zu Ende lesen' },
-        { id: 's3', label: 'Eine Notiz, die du in einer Woche noch verstehst' },
+      children: [
+        { id: 's1', parentId: 'side-read', label: '30 Minuten ohne zweiten Bildschirm', children: [] },
+        { id: 's2', parentId: 'side-read', label: 'Ein Kapitel zu Ende lesen', children: [] },
+        { id: 's3', parentId: 'side-read', label: 'Eine Notiz, die du in einer Woche noch verstehst', children: [] },
       ],
       questRewards: [{ text: '+XP Lesen' }, { text: 'Cosmetic: Lesezeichen' }],
     },
     {
       id: 'side-walk',
-      kind: 'side',
+      parentId: null,
       title: 'Draußen-Level',
       description: 'Kurz raus, Kopf leeren, Körper mitnehmen.',
-      steps: [{ id: 'w1', label: '20 Minuten ohne Podcast' }],
+      children: [{ id: 'w1', parentId: 'side-walk', label: '20 Minuten ohne Podcast', children: [] }],
       questRewards: [{ text: 'Buff: Sonnenlicht' }],
     },
     {
       id: 'side-cook',
-      kind: 'side',
+      parentId: null,
       title: 'Quest: Küche',
       description: 'Etwas kochen, das nicht aus „schnell und müde“ heißt.',
-      steps: [
-        { id: 'c1', label: 'Einkaufsliste ohne Impulskauf' },
-        { id: 'c2', label: 'Gericht zu Ende gebracht' },
+      children: [
+        { id: 'c1', parentId: 'side-cook', label: 'Einkaufsliste ohne Impulskauf', children: [] },
+        { id: 'c2', parentId: 'side-cook', label: 'Gericht zu Ende gebracht', children: [] },
       ],
       questRewards: [{ text: 'Recipe drop' }],
     },

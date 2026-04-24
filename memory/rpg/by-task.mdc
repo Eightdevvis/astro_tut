@@ -12,9 +12,9 @@ Diese Seite beantwortet die Frage: **"Ich will X aendern, wo lese ich zuerst?"**
 
 - Start: `memory/rpg/ai.mdc`
 - Relevant fuer Datenfluss: `memory/rpg/data-persistence.mdc`
-- Steps-/Reward-Shape der KI-Ausgabe: `memory/rpg/steps-rewards.mdc`
+- Node-/Reward-Shape der KI-Ausgabe: `memory/rpg/steps-rewards.mdc`
 
-## Steps / Rewards / Fortschritt aendern
+## Nodes / Rewards / Fortschritt aendern
 
 - Start: `memory/rpg/steps-rewards.mdc`
 - Hub/Tree-Auswirkungen: `memory/rpg/ui.mdc`

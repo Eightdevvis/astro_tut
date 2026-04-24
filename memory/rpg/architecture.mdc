@@ -15,6 +15,7 @@
 ## Nicht verhandelbare Invarianten
 
 - Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
+- Quest-Differenzierung erfolgt nicht mehr ueber `main`/`side`, sondern nur ueber Struktur (`children`) + Kanten.
 - `addedIds` repraesentiert Hub-Auswahl; Zustand "added aber gelockt" wird bereinigt.
 - `schemaVersion` steuert Strukturkompatibilitaet und Migrationen.
 - Steps/Rewards folgen eigener Spezifikation (rekursiv, optional, dependsOn, timeDueAt).

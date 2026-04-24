@@ -15,7 +15,7 @@ Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachb
 |--------|-------|---------------------------|
 | Gesamtbild & Invarianten | Was das RPG-System ist und welche Regeln immer gelten | `memory/rpg/architecture.mdc` |
 | KI / Questmaker+ | Prompt-/API-Flow, Clarify, Quality Gates, Item-Retrieval | `memory/rpg/ai.mdc` |
-| Steps & Rewards | Steps-Baum, DependsOn, Optional, TimeDueAt, Reward-Typen | `memory/rpg/steps-rewards.mdc` |
+| Steps & Rewards | Node-Baum (`children`), DependsOn, Optional, TimeDueAt, Reward-Typen | `memory/rpg/steps-rewards.mdc` |
 | Datenmodell & Persistenz | Payload-Shape, Schema-Version, DB-/Client-Persistenz | `memory/rpg/data-persistence.mdc` |
 | UI (Hub/Baum/Editor/Location) | Sichtbares Verhalten und Interaktionslogik | `memory/rpg/ui.mdc` |
 | Theme | RPG-Themes auf Basis globaler Tokens | `memory/rpg/theme.mdc` |

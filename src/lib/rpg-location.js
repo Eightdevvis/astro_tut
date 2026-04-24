@@ -122,10 +122,10 @@ export function collectLocationEntriesFromGraph(graph) {
             description: '',
           });
         }
-        if (Array.isArray(s.substeps) && s.substeps.length) walk(s.substeps);
+        if (Array.isArray(s.children) && s.children.length) walk(s.children);
       }
     };
-    walk(q.steps);
+    walk(q.children);
   }
   return out;
 }

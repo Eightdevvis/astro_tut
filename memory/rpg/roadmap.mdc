@@ -23,12 +23,11 @@
 - Ergebnis: bestehende `itemId` oder neuer kompletter `questmakerItems`-Eintrag.
 - Relevante Code-Pfade: `src/pages/api/rpg/quests-generate.js`, `src/lib/rpg-questmaker-catalog-db.js`, `src/components/RpgQuestGraphEditor.jsx`.
 
-### 2) Questmaker+ — Quality-Gates und v3-Structure-Flow
+### 2) Questmaker+ — Quality-Gates
 
-- `schemaVersion` v3 mit Top-Level-Feld `structure` (Hybrid: Container-Unlocks + Graph-Kanten).
 - Striktere output-basierte Quality-Gates in KI-Ausgabe.
 - RPG-Location-Flow und weitere UI/API-Anbindungen liefen in diesem Paket mit.
-- Relevante Code-Pfade: `src/lib/rpg-structure.js`, `src/pages/api/rpg/quests.js`, `src/lib/rpg-payload-schema.js`, `src/lib/rpg-server-sync.js`, `src/pages/api/rpg/locations.js`.
+- Relevante Code-Pfade: `src/pages/api/rpg/quests.js`, `src/lib/rpg-payload-schema.js`, `src/lib/rpg-server-sync.js`, `src/pages/api/rpg/locations.js`.
 
 ## Hinweis
 

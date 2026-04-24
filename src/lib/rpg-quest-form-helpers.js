@@ -51,7 +51,7 @@ export function isSimpleFlatStepsForEditor(steps) {
   if (!Array.isArray(steps) || steps.length === 0) return true;
   return steps.every(
     (s) =>
-      !s?.substeps?.length &&
+      !s?.children?.length &&
       !s?.optional &&
       !s?.reward &&
       !s?.timeDueAt &&

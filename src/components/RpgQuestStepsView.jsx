@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { canSetStepDone, buildRewardDisplayList } from '../lib/rpg-quest-steps.js';
+import { canSetStepDone, buildRewardDisplayList, isLockNode } from '../lib/rpg-quest-steps.js';
 import { questProgress } from '../lib/rpg-quest-graph.js';
 import { normalizeQuestCityLocation, normalizeStepPlaceLocation } from '../lib/rpg-location.js';
 
@@ -61,6 +61,10 @@ function RewardManaStarIcon() {
   );
 }
 
+function StepLockIcon() {
+  return <span class="rpg-step-badge rpg-step-badge--lock" title="Lock-Node">🔒</span>;
+}
+
 /**
  * @param {{
  *   quest: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
@@ -105,7 +109,7 @@ export default function RpgQuestStepsView({
             </span>
           </li>
         ) : (
-          (quest.steps || []).map((s) => (
+          (quest.children || []).map((s) => (
             <StepBranch
               key={s.id}
               quest={quest}
@@ -165,7 +169,7 @@ export default function RpgQuestStepsView({
 /**
  * @param {{
  *   quest: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
- *   step: Record<string, unknown> & { id: string; label: string; substeps?: unknown[]; optional?: boolean };
+ *   step: Record<string, unknown> & { id: string; label: string; children?: unknown[]; optional?: boolean };
  *   depth: number;
  *   doneFor: Record<string, boolean>;
  *   stepDone: Record<string, Record<string, boolean>>;
@@ -192,7 +196,7 @@ function StepBranch({
   questCity,
   showLocationGuidance,
 }) {
-  const hasSubs = Array.isArray(step.substeps) && step.substeps.length > 0;
+  const hasSubs = Array.isArray(step.children) && step.children.length > 0;
 
   if (hasSubs) {
     return (
@@ -204,6 +208,7 @@ function StepBranch({
         <details class="rpg-step__details" open={depth < 1}>
           <summary class="rpg-step__summary">
             <span class="rpg-step__summary-text">{step.label}</span>
+            {isLockNode(/** @type {any} */ (step)) ? <StepLockIcon /> : null}
             {step.optional ? (
               <span class="rpg-step-badge" title="Optional">
                 optional
@@ -211,7 +216,7 @@ function StepBranch({
             ) : null}
           </summary>
           <ul class="rpg-steps rpg-steps--nested">
-            {step.substeps.map((ch) => (
+            {step.children.map((ch) => (
               <StepBranch
                 key={ch.id}
                 quest={quest}
@@ -282,6 +287,7 @@ function StepBranch({
           ) : null}
           <span class="rpg-step__text">{step.label}</span>
         </span>
+        {isLockNode(/** @type {any} */ (step)) ? <StepLockIcon /> : null}
         {step.optional ? (
           <span class="rpg-step-badge" title="Optional">
             optional

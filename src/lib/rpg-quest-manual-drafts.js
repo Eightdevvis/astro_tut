@@ -7,7 +7,6 @@ const STORAGE_KEY = 'rpg-quest-manual-drafts-v1';
 /**
  * @typedef {{
  *   id: string;
- *   kind: 'main' | 'side';
  *   title: string;
  *   description: string;
  *   stepDrafts: import('./rpg-quest-editor-draft.js').QuestStepDraft[];

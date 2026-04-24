@@ -1,7 +1,7 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
-import { EMPTY_RPG_GRAPH, SAMPLE_RPG_QUESTS } from '../../../lib/rpg-quests-data.js';
+import { EMPTY_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
 import {
@@ -26,11 +26,6 @@ import {
   listQuestmakerCatalogRows,
   upsertQuestmakerCatalogItems,
 } from '../../../lib/rpg-questmaker-catalog-db.js';
-import {
-  normalizeRpgStructure,
-  buildDefaultRpgStructureFromGraph,
-  validateRpgStructureAgainstGraph,
-} from '../../../lib/rpg-structure.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -58,7 +53,6 @@ export async function GET({ cookies }) {
   let vitals = normalizeRpgVitalsState(null);
   let location = normalizeRpgLocationState(null);
   let locationCatalog = normalizeRpgLocationCatalog(null);
-  let structure = buildDefaultRpgStructureFromGraph(EMPTY_RPG_GRAPH);
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
@@ -70,14 +64,10 @@ export async function GET({ cookies }) {
     vitals = normalizeRpgVitalsState(stored.vitals);
     location = normalizeRpgLocationState(stored.location);
     locationCatalog = normalizeRpgLocationCatalog(stored.locationCatalog);
-    structure = normalizeRpgStructure(stored.structure);
   }
 
   graph = migrateRpgGraphToV2(graph);
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
-  if (!stored?.structure) {
-    structure = buildDefaultRpgStructureFromGraph(graph);
-  }
 
   const questmakerItems = await listQuestmakerCatalogRows();
   const globalLocs = await listRpgLocations();
@@ -90,7 +80,6 @@ export async function GET({ cookies }) {
 
   return new Response(
     JSON.stringify({
-      ...SAMPLE_RPG_QUESTS,
       graph,
       addedIds,
       stepDone,
@@ -98,7 +87,6 @@ export async function GET({ cookies }) {
       location,
       locationCatalog,
       locations,
-      structure,
       persisted,
       schemaVersion,
       questmakerItems,
@@ -159,10 +147,6 @@ export async function PUT({ request, cookies }) {
   const vitals = normalizeRpgVitalsState(body.vitals);
   const location = normalizeRpgLocationState(body.location);
   let locationCatalog = normalizeRpgLocationCatalog(body.locationCatalog);
-  const nextStructure =
-    body?.structure && typeof body.structure === 'object'
-      ? normalizeRpgStructure(body.structure)
-      : buildDefaultRpgStructureFromGraph(body.graph);
 
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
@@ -195,7 +179,6 @@ export async function PUT({ request, cookies }) {
     vitals,
     location,
     locationCatalog,
-    structure: nextStructure,
     locations: Array.isArray(body.locations)
       ? normalizeRpgUserLocationRows(body.locations)
       : normalizeRpgUserLocationRows(base.locations),
@@ -236,18 +219,6 @@ export async function PUT({ request, cookies }) {
   const toUpsert = [...proposedMap.values()].filter((row) => needed.has(row.id));
   await upsertQuestmakerCatalogItems(toUpsert);
 
-  const structureCheck = validateRpgStructureAgainstGraph(payload.graph, payload.structure);
-  if (!structureCheck.ok) {
-    return new Response(
-      JSON.stringify({
-        errorCode: structureCheck.errorCode,
-        error: structureCheck.message,
-        detail: structureCheck.detail || '',
-      }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
   const graphLocations = collectLocationEntriesFromGraph(body.graph);
   for (const loc of graphLocations) {
     const row = await upsertRpgLocation(loc);
@@ -268,7 +239,7 @@ export async function PUT({ request, cookies }) {
     globalLocsAfter
   );
 
-  return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog, structure: payload.structure }), {
+  return new Response(JSON.stringify({ ok: true, questmakerItems, locations, locationCatalog }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });

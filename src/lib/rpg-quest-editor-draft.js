@@ -25,6 +25,7 @@ import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js'
  *   children: QuestStepDraft[];
  *   saved: boolean;
  *   orderLinked: boolean;
+ *   isLock: boolean;
  *   legacyDependsOn?: string[];
  *   timeLimitOn?: boolean;
  *   timeDueAt?: string;
@@ -58,6 +59,7 @@ export function createEmptyStepDraft(saved = false) {
     children: [],
     saved,
     orderLinked: false,
+    isLock: false,
     legacyDependsOn: undefined,
     timeLimitOn: false,
     timeDueAt: '',
@@ -69,7 +71,7 @@ export function createEmptyStepDraft(saved = false) {
  * @returns {QuestStepDraft}
  */
 export function questNodeToDraft(node) {
-  const subs = Array.isArray(node.substeps) && node.substeps.length > 0;
+  const subs = Array.isArray(node.children) && node.children.length > 0;
   const legacyDeps =
     node.orderLinked === true
       ? undefined
@@ -101,9 +103,10 @@ export function questNodeToDraft(node) {
     pointKind,
     pointsAmount,
     substepsOn: subs,
-    children: subs ? node.substeps.map(questNodeToDraft) : [],
+    children: subs ? node.children.map(questNodeToDraft) : [],
     saved: true,
     orderLinked: node.orderLinked === true,
+    isLock: node.isLock === true,
     legacyDependsOn: legacyDeps,
     timeLimitOn: !!due,
     timeDueAt: due,
@@ -125,7 +128,7 @@ export function questStepsToDrafts(nodes) {
  */
 export function isDraftStepMeaningful(d) {
   if ((d.title || '').trim().length > 0) return true;
-  if (d.substepsOn && d.children.length > 0) {
+  if (d.children.length > 0) {
     return d.children.some(isDraftStepMeaningful);
   }
   return false;
@@ -152,9 +155,10 @@ export function reorderDraftSteps(arr, fromIdx, toIdx) {
  * @param {string} id
  * @param {string[]} chainDependsOn
  * @param {{ n: number }} idCounter
+ * @param {string | null} parentId
  * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode}
  */
-function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
+function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
   const optional = !!d.optional;
   /** @type {import('./rpg-quest-steps.js').RpgQuestRewardEntry | undefined} */
@@ -180,32 +184,35 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter) {
       : undefined;
   const meaningfulKids = d.children.filter(isDraftStepMeaningful);
 
-  if (d.substepsOn && meaningfulKids.length > 0) {
-    const substeps = processDraftSiblings(meaningfulKids, idCounter);
+  if (meaningfulKids.length > 0) {
+    const children = processDraftSiblings(meaningfulKids, idCounter, id);
     /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode} */
-    const out = { id, label, optional, substeps };
+    const out = { id, parentId, label, optional, children };
     if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
     if (reward) out.reward = reward;
     if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) out.timeDueAt = due;
     if (d.orderLinked) out.orderLinked = true;
+    if (d.isLock) out.isLock = true;
     return out;
   }
 
   /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode} */
-  const leaf = { id, label, optional };
+  const leaf = { id, parentId, label, optional, children: [] };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
   if (reward) leaf.reward = reward;
   if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) leaf.timeDueAt = due;
   if (d.orderLinked) leaf.orderLinked = true;
+  if (d.isLock) leaf.isLock = true;
   return leaf;
 }
 
 /**
  * @param {QuestStepDraft[]} meaningfulSiblings
  * @param {{ n: number }} idCounter
+ * @param {string | null} parentId
  * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode[]}
  */
-function processDraftSiblings(meaningfulSiblings, idCounter) {
+function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
   let lastChainId = /** @type {string | null} */ (null);
   /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode[]} */
   const out = [];
@@ -220,20 +227,21 @@ function processDraftSiblings(meaningfulSiblings, idCounter) {
     } else if (d.legacyDependsOn?.length) {
       deps = [...d.legacyDependsOn];
     }
-    out.push(buildRawFromDraft(d, id, deps, idCounter));
+    out.push(buildRawFromDraft(d, id, deps, idCounter, parentId));
   }
   return out;
 }
 
 /**
  * @param {QuestStepDraft[]} drafts
+ * @param {string | null} [rootParentId]
  * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode[]}
  */
-export function draftStepsToQuestNodes(drafts) {
+export function draftStepsToQuestNodes(drafts, rootParentId = null) {
   const idCounter = { n: 0 };
   const meaningful = drafts.filter(isDraftStepMeaningful);
-  const raw = processDraftSiblings(meaningful, idCounter);
-  return normalizeQuestStepsTree(raw);
+  const raw = processDraftSiblings(meaningful, idCounter, rootParentId);
+  return normalizeQuestStepsTree(raw, rootParentId);
 }
 
 /**
@@ -247,6 +255,7 @@ export function aiLabelsToDraftSteps(labels) {
     title,
     key: newDraftKey(),
     orderLinked: false,
+    isLock: false,
     legacyDependsOn: undefined,
     timeLimitOn: false,
     timeDueAt: '',
@@ -363,8 +372,10 @@ export function ensureStepDraftFields(raw) {
   }
   if (typeof d.pointsAmount !== 'string') d.pointsAmount = '';
   if (typeof d.rewardText !== 'string') d.rewardText = '';
+  d.isLock = d.isLock === true;
   if (Array.isArray(d.children) && d.children.length > 0) {
     d.children = d.children.map((c) => ensureStepDraftFields(c));
+    d.substepsOn = true;
   }
   return d;
 }

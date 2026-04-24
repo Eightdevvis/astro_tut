@@ -84,6 +84,16 @@ const SCHEMA_DDL = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS rpg_user_state_backups (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT NOT NULL,
+    backup_kind TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_rpg_user_state_backups_user_created
+    ON rpg_user_state_backups (username, created_at DESC, id DESC);
+
   CREATE TABLE IF NOT EXISTS rpg_questmaker_items (
     id          TEXT PRIMARY KEY,
     category    TEXT NOT NULL,

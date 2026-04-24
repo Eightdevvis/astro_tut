@@ -18,7 +18,6 @@ import {
 } from '../lib/rpg-server-sync.js';
 import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
-import { normalizeRpgStructure } from '../lib/rpg-structure.js';
 import RpgQuestStepsView from './RpgQuestStepsView.jsx';
 import './rpg-quest-hub.css';
 
@@ -26,10 +25,9 @@ function firstId(list) {
   return list?.[0]?.id ?? null;
 }
 
-function activeQuestsForKind(graph, added, stepDone, kind) {
+function activeQuests(graph, added, stepDone) {
   const out = [];
   for (const q of graph.quests || []) {
-    if (q.kind !== kind) continue;
     if (!added.has(q.id)) continue;
     if (isQuestCompleted(q, stepDone)) continue;
     out.push(q);
@@ -94,8 +92,7 @@ function QuestDetail({
 export default function RpgQuestHub() {
   const [graph, setGraph] = useState(EMPTY_RPG_GRAPH);
   const [added, setAdded] = useState(() => new Set());
-  const [category, setCategory] = useState(/** @type {'main' | 'side'} */ ('main'));
-  const [focusedByCat, setFocusedByCat] = useState({ main: null, side: null });
+  const [focusedId, setFocusedId] = useState(/** @type {string | null} */ (null));
   const [expanded, setExpanded] = useState(() => new Set());
   const [stepDone, setStepDone] = useState(() =>
     mergeStepDoneBase(buildInitialStepMapFromGraph(EMPTY_RPG_GRAPH), {})
@@ -109,7 +106,6 @@ export default function RpgQuestHub() {
   const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
   const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
   const [locations, setLocations] = useState(() => []);
-  const [structure, setStructure] = useState(() => normalizeRpgStructure(null));
   const [bootstrapped, setBootstrapped] = useState(false);
   const [canPersist, setCanPersist] = useState(true);
   const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
@@ -140,7 +136,6 @@ export default function RpgQuestHub() {
         location,
         locationCatalog,
         locations,
-        structure,
         itemCatalog: m,
       });
     };
@@ -178,7 +173,6 @@ export default function RpgQuestHub() {
       setLocation(d.location);
       setLocationCatalog(d.locationCatalog);
       setLocations(d.locations);
-      setStructure(d.structure);
       setItemCatalog(d.itemCatalog);
       itemCatalogRef.current = d.itemCatalog;
       saveSessionCachedPayload({
@@ -189,7 +183,6 @@ export default function RpgQuestHub() {
         location: d.location,
         locationCatalog: d.locationCatalog,
         locations: d.locations,
-        structure: d.structure,
         itemCatalog: d.itemCatalog,
       });
       setBootstrapped(true);
@@ -212,7 +205,6 @@ export default function RpgQuestHub() {
         location,
         locationCatalog,
         locations,
-        structure,
       };
       void (async () => {
         const r = await persistRpgState(payload);
@@ -225,7 +217,6 @@ export default function RpgQuestHub() {
           }
           if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
           if (Array.isArray(r.locations)) setLocations(r.locations);
-          if (r.structure) setStructure(r.structure);
         } else if (r.error) {
           const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
           if (persistFailFingerprintRef.current !== fp) {
@@ -239,7 +230,6 @@ export default function RpgQuestHub() {
           ...payload,
           locationCatalog: r.locationCatalog ?? locationCatalog,
           locations: Array.isArray(r.locations) ? r.locations : locations,
-          structure: r.structure || structure,
           itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
         });
       })();
@@ -256,7 +246,6 @@ export default function RpgQuestHub() {
     location,
     locationCatalog,
     locations,
-    structure,
   ]);
 
   useEffect(() => {
@@ -282,26 +271,12 @@ export default function RpgQuestHub() {
     });
   }, [graph, stepDone]);
 
-  const mainActive = useMemo(
-    () => activeQuestsForKind(graph, added, stepDone, 'main'),
-    [graph, added, stepDone]
-  );
-  const sideActive = useMemo(
-    () => activeQuestsForKind(graph, added, stepDone, 'side'),
-    [graph, added, stepDone]
-  );
-
-  const quests = category === 'main' ? mainActive : sideActive;
+  const quests = useMemo(() => activeQuests(graph, added, stepDone), [graph, added, stepDone]);
 
   useEffect(() => {
-    setFocusedByCat((prev) => {
-      const id = prev[category];
-      if (id && quests.some((q) => q.id === id)) return prev;
-      return { ...prev, [category]: firstId(quests) };
-    });
-  }, [category, quests]);
-
-  const focusedId = focusedByCat[category] ?? firstId(quests);
+    if (focusedId && quests.some((q) => q.id === focusedId)) return;
+    setFocusedId(firstId(quests));
+  }, [focusedId, quests]);
   const focusedQuest = useMemo(
     () => quests.find((q) => q.id === focusedId) ?? quests[0] ?? null,
     [quests, focusedId]
@@ -336,12 +311,7 @@ export default function RpgQuestHub() {
     });
   }, []);
 
-  const setFocused = useCallback(
-    (id) => {
-      setFocusedByCat((prev) => ({ ...prev, [category]: id }));
-    },
-    [category]
-  );
+  const setFocused = useCallback((id) => setFocusedId(id), []);
 
   if (!bootstrapped) {
     return <RpgBootstrapLoading />;
@@ -349,42 +319,18 @@ export default function RpgQuestHub() {
 
   return (
     <div class="rpg-hub">
-      <aside class="rpg-hub__rail" aria-label="Quest-Kategorien">
-        <div class="rpg-hub__rail-label">Kategorie</div>
-        <button
-          type="button"
-          class={`rpg-hub__cat${category === 'main' ? ' rpg-hub__cat--active' : ''}`}
-          onClick={() => setCategory('main')}
-        >
-          Main
-        </button>
-        <button
-          type="button"
-          class={`rpg-hub__cat${category === 'side' ? ' rpg-hub__cat--active' : ''}`}
-          onClick={() => setCategory('side')}
-        >
-          Side
-        </button>
+      <aside class="rpg-hub__rail" aria-label="Quests">
+        <div class="rpg-hub__rail-label">Aktive Quests</div>
         <div class="rpg-hub__rail-spacer" />
         <a class="rpg-hub__tree-link" href="/rpg/tree">
           Quest-Baum
         </a>
-        {structure?.chapters?.length ? (
-          <div class="rpg-hub__structure-mini">
-            <p>Kapitel</p>
-            <ul>
-              {structure.chapters.slice(0, 4).map((ch) => (
-                <li key={ch.id}>{ch.title}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </aside>
 
       <main class="rpg-hub__main">
         {!focusedQuest && (
           <p class="rpg-hub__empty">
-            Keine aktiven Quests in dieser Kategorie. Im{' '}
+            Keine aktiven Quests. Im{' '}
             <a href="/rpg/tree">Quest-Baum</a> Quests hinzufügen.
           </p>
         )}
