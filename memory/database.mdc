@@ -29,7 +29,7 @@ Vollständiges DDL nur in **`db.js`** / Init-Skripten; hier nur Namen:
 | `site_settings` | Key-Value |
 | `custom_fonts` | Font-Blobs |
 | `fractal_snapshots` | Fraktal-Snapshots |
-| `rpg_user_state` | RPG Graph + `addedIds` + `stepDone` (Superuser `sash`) |
+| `rpg_user_state` | RPG Graph + `addedIds` + `nodeDone` (Superuser `sash`) |
 | `rpg_questmaker_items` | Questmaker-Item-Katalog (`id`, Kategorie, Titel, Kurzbeschreibung); Anzeige für Item-Rewards |
 | `ai_usage_log` | KI-Token/Kosten pro User (`feature` z. B. `rpg`, `topic_feed_plan`, `topic_feed_summary`); siehe `src/lib/ai-usage-db.js`, UI `/settings` Tab KI-Nutzung |
 | `user_feeds`, `user_feed_sources`, `user_feed_items` (u. a. `image_url`), `user_feed_pins`, `user_feed_summaries` | Topic-Feeds pro User; Logik `src/lib/feed-db.js`, Ingest `feed-ingest.js`, Bild-Helfer `feed-item-image.js`, Policy `feed-policy.js` |

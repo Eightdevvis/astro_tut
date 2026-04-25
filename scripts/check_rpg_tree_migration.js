@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { migrateRpgGraphToV2, walkStepsPreOrder } from '../src/lib/rpg-quest-steps.js';
+import { migrateRpgGraphToV2, walkNodesPreOrder } from '../src/lib/rpg-quest-nodes.js';
+import { SAMPLE_RPG_GRAPH } from '../src/lib/rpg-quests-data.js';
 
 /**
  * @param {unknown} value
@@ -16,9 +17,9 @@ function asObject(value) {
 function pickGraph(input) {
   const obj = asObject(input);
   if (!obj) return null;
-  if (Array.isArray(obj.quests) && Array.isArray(obj.edges)) return obj;
+  if ((Array.isArray(obj.nodes) || Array.isArray(obj.quests)) && Array.isArray(obj.edges)) return obj;
   const g = asObject(obj.graph);
-  if (g && Array.isArray(g.quests) && Array.isArray(g.edges)) return g;
+  if (g && (Array.isArray(g.nodes) || Array.isArray(g.quests)) && Array.isArray(g.edges)) return g;
   return null;
 }
 
@@ -55,7 +56,7 @@ function collectLegacyNodeRows(quest) {
 function collectMigratedNodeRows(quest) {
   /** @type {{ id: string; parentId: string | null; label: string; optional: boolean; dependsOn: string[]; timeDueAt: string; reward: string; childCount: number }[]} */
   const out = [];
-  walkStepsPreOrder(quest?.children || [], (row) => {
+  walkNodesPreOrder(quest?.children || [], (row) => {
     out.push({
       id: row.id,
       parentId: row.parentId ?? null,
@@ -76,7 +77,8 @@ function collectMigratedNodeRows(quest) {
 function validateMigratedGraph(graph) {
   /** @type {string[]} */
   const issues = [];
-  for (const quest of graph.quests || []) {
+  const graphNodes = Array.isArray(graph.nodes) ? graph.nodes : graph.quests || [];
+  for (const quest of graphNodes) {
     if (quest.parentId !== null) issues.push(`Quest ${quest.id}: parentId muss null sein.`);
     const rows = collectMigratedNodeRows(quest);
     const idSet = new Set(rows.map((r) => r.id));
@@ -101,8 +103,10 @@ function validateMigratedGraph(graph) {
 function compareGraphs(before, after) {
   /** @type {string[]} */
   const issues = [];
-  const beforeById = new Map((before.quests || []).map((q) => [q.id, q]));
-  const afterById = new Map((after.quests || []).map((q) => [q.id, q]));
+  const beforeNodes = Array.isArray(before.nodes) ? before.nodes : before.quests || [];
+  const afterNodes = Array.isArray(after.nodes) ? after.nodes : after.quests || [];
+  const beforeById = new Map(beforeNodes.map((q) => [q.id, q]));
+  const afterById = new Map(afterNodes.map((q) => [q.id, q]));
   if (beforeById.size !== afterById.size) {
     issues.push(`Quest-Anzahl geändert: ${beforeById.size} -> ${afterById.size}`);
   }
@@ -139,17 +143,18 @@ function compareGraphs(before, after) {
 
 async function main() {
   const arg = process.argv[2];
+  let graph = null;
   if (!arg) {
-    console.error('Usage: node scripts/check_rpg_tree_migration.js <path-to-json>');
-    process.exit(2);
-  }
-  const filePath = path.resolve(process.cwd(), arg);
-  const raw = await fs.readFile(filePath, 'utf8');
-  const parsed = JSON.parse(raw);
-  const graph = pickGraph(parsed);
-  if (!graph) {
-    console.error('Input enthält kein gültiges graph-Objekt mit quests + edges.');
-    process.exit(2);
+    graph = SAMPLE_RPG_GRAPH;
+  } else {
+    const filePath = path.resolve(process.cwd(), arg);
+    const raw = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    graph = pickGraph(parsed);
+    if (!graph) {
+      console.error('Input enthält kein gültiges graph-Objekt mit nodes/quests + edges.');
+      process.exit(2);
+    }
   }
   const migrated = migrateRpgGraphToV2(graph);
   const compareIssues = compareGraphs(graph, migrated);
@@ -160,7 +165,8 @@ async function main() {
     for (const issue of issues) console.error(`- ${issue}`);
     process.exit(1);
   }
-  console.log(`OK: ${migrated.quests.length} Quests geprüft, keine Strukturverletzungen gefunden.`);
+  const migratedNodes = Array.isArray(migrated.nodes) ? migrated.nodes : migrated.quests || [];
+  console.log(`OK: ${migratedNodes.length} Quests geprüft, keine Strukturverletzungen gefunden.`);
 }
 
 main().catch((err) => {

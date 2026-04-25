@@ -7,7 +7,7 @@ import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
-import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
+import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-nodes.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -18,7 +18,7 @@ function forbidden() {
 
 /**
  * POST /api/rpg/quests-normalize-payload — alle Zeilen in `rpg_user_state` auf kanonisches Graph-v2-Format schreiben
- * (`migrateRpgGraphToV2`: Steps, questRewards inkl. optional unlockAtPercent, ohne Legacy rewards).
+ * (`migrateRpgGraphToV2`: Nodes, questRewards inkl. optional unlockAtPercent, ohne Legacy rewards).
  * Nur super_access. Idempotent wenn schon normalisiert.
  */
 export async function POST({ cookies }) {

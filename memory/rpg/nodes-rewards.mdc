@@ -1,4 +1,4 @@
-# RPG Memory — Steps & Rewards
+# RPG Memory — Nodes & Rewards
 
 ## Zweck
 
@@ -26,7 +26,7 @@
 
 Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb derselben Quest).
 
-## 3. Optionale Steps
+## 3. Optionale Nodes
 
 - Feld `optional: boolean` (Default `false`).
 - Optionale Leaf-Nodes zaehlen nicht fuer den Abschluss des uebergeordneten Containers.
@@ -34,7 +34,7 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb d
 
 ## 3b. Lock-Node (unsichtbarer Abhaengigkeitslayer)
 
-- Step-Node kann `isLock: true` tragen; kein eigener Graph-Typ noetig.
+- Node-Node kann `isLock: true` tragen; kein eigener Graph-Typ noetig.
 - Lock-Node zaehlt nicht zum Completion-Progress des Parents (wie optional, aber fuer ganzen Lock-Zweig).
 - Solange ein Lock-Child eines Parents nicht fertig ist, sind alle nicht-Lock-Sibling-Leafs des Parents beim Toggeln gesperrt.
 - Lock-Node selbst wird normal ueber `children` + `dependsOn` abgeschlossen.
@@ -47,7 +47,7 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb d
 - `{ "type": "item", "itemId": "...", "displayName"?: "..." }`
 - `{ "type": "points", "pointKind": "heart" | "mana", "amount": <int> }` (auch negative Werte moeglich)
 
-Globale Kontostaende (Baum-Gefaesse): Persistentes `vitals`-Konto in `rpg_user_state.payload` mit `{ heart, mana, appliedStepRewardIds[] }`, Startwerte `heart=25`, `mana=25` bei Max 50, einmalige Buchung pro Step-Reward-ID (`step:<questId>:<stepId>`), Werte clamp 0...50, Reconciliation via `reconcileRpgVitals`.
+Globale Kontostaende (Baum-Gefaesse): Persistentes `vitals`-Konto in `rpg_user_state.payload` mit `{ heart, mana, appliedNodeRewardIds[] }`, Startwerte `heart=25`, `mana=25` bei Max 50, einmalige Buchung pro Node-Reward-ID (`node:<questId>:<nodeId>`), Werte clamp 0...50, Reconciliation via `reconcileRpgVitals`.
 Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls einmalig gebucht (`quest:<questId>:reward:<index>`).
 
 ### 4a. Reward am Node
@@ -84,7 +84,7 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 - Sinnvoll fuer Leaf-Nodes; gespeichert als ISO-Datum `YYYY-MM-DD`.
 - Pflicht-Leaf mit Frist und offen -> Quest gilt als zeitgebunden.
 - Optionaler Leaf mit Frist zaehlt nicht fuer Pflicht-Zeitlogik.
-- Baum-UI: roter Punkt am Knoten bei offenem Pflicht-Step mit Frist < 7 Tage oder ueberfaellig.
+- Baum-UI: roter Punkt am Knoten bei offenem Pflicht-Node mit Frist < 7 Tage oder ueberfaellig.
 
 ## JSON-Beispiel (Illustration)
 
@@ -121,13 +121,13 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 
 | Rolle | Dateien |
 |-------|---------|
-| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-steps.js` |
+| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-nodes.js` |
 | Graph-Hooks | `src/lib/rpg-quest-graph.js` |
 | Formular / Editor-Parsing | `src/lib/rpg-quest-form-helpers.js` |
 | Schema-Version / Migration | `src/lib/rpg-payload-schema.js`, `src/pages/api/rpg/quests.js` |
 | DB-Bulk-Normalisierung | `POST /api/rpg/quests-normalize-payload`, `rpg-state-db.js`, `SuperSettings.jsx` |
 | Bootstrap | `src/lib/rpg-server-sync.js` |
-| UI | `RpgQuestStepsView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
+| UI | `RpgQuestNodesView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
 | Editor | `src/components/RpgQuestGraphEditor.jsx` |
 | KI | `src/pages/api/rpg/quests-generate.js` |
 

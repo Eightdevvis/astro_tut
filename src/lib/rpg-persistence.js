@@ -1,5 +1,6 @@
 const ADDED_KEY = 'rpg-quest-added-ids';
-const STEPS_KEY = 'rpg-quest-step-done';
+const NODE_DONE_KEY = 'rpg-node-done';
+const LEGACY_STEP_DONE_KEY = 'rpg-quest-node-done';
 const GRAPH_CUSTOM_KEY = 'rpg-quest-graph-custom';
 
 /** @param {unknown} v */
@@ -28,26 +29,30 @@ export function saveAddedIds(ids) {
 }
 
 /** @returns {Record<string, Record<string, boolean>>} */
-export function loadStepDone() {
+export function loadNodeDone() {
   if (typeof localStorage === 'undefined') return {};
-  const raw = parseJson(localStorage.getItem(STEPS_KEY), {});
+  const raw = parseJson(
+    localStorage.getItem(NODE_DONE_KEY) ?? localStorage.getItem(LEGACY_STEP_DONE_KEY),
+    {}
+  );
   if (!raw || typeof raw !== 'object') return {};
   /** @type {Record<string, Record<string, boolean>>} */
   const out = {};
-  for (const [qid, steps] of Object.entries(raw)) {
-    if (!steps || typeof steps !== 'object') continue;
+  for (const [qid, nodeMap] of Object.entries(raw)) {
+    if (!nodeMap || typeof nodeMap !== 'object') continue;
     out[qid] = {};
-    for (const [sid, done] of Object.entries(steps)) {
+    for (const [sid, done] of Object.entries(nodeMap)) {
       if (done === true) out[qid][sid] = true;
     }
   }
   return out;
 }
 
-/** @param {Record<string, Record<string, boolean>>} stepDone */
-export function saveStepDone(stepDone) {
+/** @param {Record<string, Record<string, boolean>>} nodeDone */
+export function saveNodeDone(nodeDone) {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STEPS_KEY, JSON.stringify(stepDone));
+  localStorage.setItem(NODE_DONE_KEY, JSON.stringify(nodeDone));
+  localStorage.removeItem(LEGACY_STEP_DONE_KEY);
 }
 
 /**
@@ -84,5 +89,6 @@ export function clearAllRpgLocalStorage() {
   if (typeof localStorage === 'undefined') return;
   localStorage.removeItem(GRAPH_CUSTOM_KEY);
   localStorage.removeItem(ADDED_KEY);
-  localStorage.removeItem(STEPS_KEY);
+  localStorage.removeItem(NODE_DONE_KEY);
+  localStorage.removeItem(LEGACY_STEP_DONE_KEY);
 }

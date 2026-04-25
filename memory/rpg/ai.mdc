@@ -16,11 +16,11 @@
 
 | Kontext | Verhalten |
 |---------|-----------|
-| Neue Quest (Baum: manuell+ / questmaker+) | manuell+ = nur Formular (kein Umschalten zu Questmaker). questmaker+ = nur Prompt; nach Generierung Vorschau (`RpgQuestStepsView` read-only) + Speichern / Neu generieren. |
+| Neue Quest (Baum: manuell+ / questmaker+) | manuell+ = nur Formular (kein Umschalten zu Questmaker). questmaker+ = nur Prompt; nach Generierung Vorschau (`RpgQuestNodesView` read-only) + Speichern / Neu generieren. |
 | Neue Quest (ohne `createEntry`, Legacy) | Umschaltung manuell+ / questmaker+ oben im Formular wie frueher. |
 | Quest bearbeiten (Panel) | manuell+ -> `editEntry: 'form'`; questmaker+ -> `editEntry: 'ai'`. |
 
-Speichern nach Generierung erfolgt wie gewohnt ueber `PUT /api/rpg/quests` (Graph, `addedIds`, `stepDone`, optional `questmakerItems` fuer neue Item-IDs).
+Speichern nach Generierung erfolgt wie gewohnt ueber `PUT /api/rpg/quests` (Graph, `addedIds`, `nodeDone`, optional `questmakerItems` fuer neue Item-IDs).
 
 ## Woran das Format gebunden ist
 
@@ -28,7 +28,7 @@ Die Route `POST /api/rpg/quests-generate` nutzt:
 
 1. `SYSTEM_PROMPT` + JSON-Anweisung (kompakt) mit Realitaetsbezug; bei fehlenden Fakten Rueckfragen statt Halluzination.
 2. `response_format: { type: 'json_object' }` fuer OpenAI-kompatible Endpunkte; Validierung/Normalisierung serverseitig nach dem Parsen.
-3. Server-Nachlauf mit `normalizeQuestStepsTree`, Fallback `stepLabels -> labelsToSteps`, ID-Handling ueber `normalizeQuestId`/`ensureUniqueQuestId`, bei Bearbeitung ID-Fixierung ueber `lockedQuestId`.
+3. Server-Nachlauf mit `normalizeQuestNodesTree`, Fallback `nodeLabels -> labelsToNodes`, ID-Handling ueber `normalizeQuestId`/`ensureUniqueQuestId`, bei Bearbeitung ID-Fixierung ueber `lockedQuestId`.
 4. Item-Retrieval-Flow ohne Vollkatalog im Prompt: `itemLookupRequests` -> Kandidatensuche (`searchQuestmakerCatalogCandidates`) -> zweite kleine Aufloesungs-Completion (bestehende `itemId` oder neuer kompletter `questmakerItems`-Eintrag).
 
 Kurz: Semantik = System- + User-Nachricht, Item-Retrieval = serverseitig in zwei Phasen, JSON = freies Objekt mit Pflichtlogik pro `responseType`, Quest-Children = immer normalisierte Baeume.
@@ -88,7 +88,7 @@ Erfolg 200 — Quest:
   "parentId": null,
   "title": "...",
   "description": "...",
-  "stepLabels": ["..."],
+  "nodeLabels": ["..."],
   "children": [],
   "rewards": ["..."],
   "questRewards": [],
@@ -118,7 +118,7 @@ Weitere Regeln:
 - `rewards` als String-Liste bleibt moeglich, wenn `questRewards` fehlt.
 - Katalogverwaltung ueber `GET/PUT /api/rpg/questmaker-items`; beim `PUT /api/rpg/quests` optional `questmakerItems` fuer neue IDs, sonst 400 mit `missing`.
 
-Fehler: 400, 403, 503, 502; maschinenlesbar via `errorCode` (u. a. `quality_placeholder_steps`, `quality_too_flat`, `quality_leaf_not_concrete`, `clarify_limit_reached`, `invalid_clarify_payload`, `invalid_package_payload`, `package_too_large`, `package_invalid_steps`, `package_placeholder_steps`, `item_lookup_no_candidates`, `item_lookup_ambiguous`, `item_resolution_failed`).
+Fehler: 400, 403, 503, 502; maschinenlesbar via `errorCode` (u. a. `quality_placeholder_nodes`, `quality_too_flat`, `quality_leaf_not_concrete`, `clarify_limit_reached`, `invalid_clarify_payload`, `invalid_package_payload`, `package_too_large`, `package_invalid_nodes`, `package_placeholder_nodes`, `item_lookup_no_candidates`, `item_lookup_ambiguous`, `item_resolution_failed`).
 
 ## Was die KI nicht autonom entscheidet
 
@@ -132,14 +132,14 @@ Fehler: 400, 403, 503, 502; maschinenlesbar via `errorCode` (u. a. `quality_plac
 | API | `src/pages/api/rpg/quests-generate.js` (zweiphasiger Item-Retrieval-Flow) |
 | Item-Katalog API | `src/pages/api/rpg/questmaker-items.js` |
 | Katalog-DB / Sync | `src/lib/rpg-questmaker-catalog-db.js`, `src/lib/rpg-questmaker-sync.js` |
-| Labels -> flache Children | `src/lib/rpg-quest-form-helpers.js` (`labelsToSteps`, `normalizeQuestId`) |
-| Children normalisieren | `src/lib/rpg-quest-steps.js` |
-| KI-`children` -> Editor-Drafts | `src/lib/rpg-quest-editor-draft.js` (`aiQuestNodesToDraftSteps`, `aiLabelsToDraftSteps`) |
+| Labels -> flache Children | `src/lib/rpg-quest-form-helpers.js` (`labelsToNodes`, `normalizeQuestId`) |
+| Children normalisieren | `src/lib/rpg-quest-nodes.js` |
+| KI-`children` -> Editor-Drafts | `src/lib/rpg-quest-editor-draft.js` (`aiQuestNodesToDraftNodes`, `aiLabelsToDraftNodes`) |
 | Editor | `src/components/RpgQuestGraphEditor.jsx` |
 | Styles Editor / Modus | `src/components/rpg-quest-tree.css` |
 
 ## Siehe auch
 
 - `memory/rpg/data-persistence.mdc`
-- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/nodes-rewards.mdc`
 - `memory/rpg/ui.mdc`

@@ -2,13 +2,14 @@ import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { EMPTY_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
+import { graphNodes, makeRpgGraph } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
 import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
 } from '../../../lib/rpg-payload-schema.js';
-import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-steps.js';
+import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-nodes.js';
 import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
 import {
   collectAllItemIdsFromGraph,
@@ -22,6 +23,7 @@ import {
   normalizeRpgUserLocationRows,
   resolveRpgUserPickerLocations,
 } from '../../../lib/rpg-location.js';
+import { validateRpgGraphReferences } from '../../../lib/rpg-graph-validation.js';
 import {
   listQuestmakerCatalogRows,
   upsertQuestmakerCatalogItems,
@@ -35,7 +37,7 @@ function forbidden() {
 }
 
 /**
- * GET /api/rpg/quests — Graph + addedIds + stepDone (rpg_access), aus DB oder Default.
+ * GET /api/rpg/quests — Graph + addedIds + nodeDone (rpg_access), aus DB oder Default.
  */
 export async function GET({ cookies }) {
   const username = await getUsernameFromCookies(cookies);
@@ -48,7 +50,7 @@ export async function GET({ cookies }) {
   const stored = await getRpgState(username);
   let graph = EMPTY_RPG_GRAPH;
   let addedIds = [];
-  let stepDone = {};
+  let nodeDone = {};
   let persisted = false;
   let vitals = normalizeRpgVitalsState(null);
   let location = normalizeRpgLocationState(null);
@@ -56,11 +58,14 @@ export async function GET({ cookies }) {
 
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
-    graph = /** @type {typeof EMPTY_RPG_GRAPH} */ (stored.graph);
+    graph = /** @type {typeof EMPTY_RPG_GRAPH} */ (
+      makeRpgGraph(graphNodes(stored.graph), stored.graph.edges || [])
+    );
     persisted = true;
     schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
-    if (stored.stepDone && typeof stored.stepDone === 'object') stepDone = stored.stepDone;
+    const nodeDoneRaw = stored.nodeDone;
+    if (nodeDoneRaw && typeof nodeDoneRaw === 'object') nodeDone = nodeDoneRaw;
     vitals = normalizeRpgVitalsState(stored.vitals);
     location = normalizeRpgLocationState(stored.location);
     locationCatalog = normalizeRpgLocationCatalog(stored.locationCatalog);
@@ -80,9 +85,9 @@ export async function GET({ cookies }) {
 
   return new Response(
     JSON.stringify({
-      graph,
+      graph: makeRpgGraph(graphNodes(graph), graph.edges || []),
       addedIds,
-      stepDone,
+      nodeDone,
       vitals,
       location,
       locationCatalog,
@@ -100,7 +105,7 @@ export async function GET({ cookies }) {
 
 /**
  * PUT /api/rpg/quests — vollen RPG-State speichern oder auf Default zurücksetzen.
- * Body: { resetToDefault?: true } | { graph, addedIds, stepDone, questmakerItems?: unknown[] }
+ * Body: { resetToDefault?: true } | { graph, addedIds, nodeDone, questmakerItems?: unknown[] }
  */
 export async function PUT({ request, cookies }) {
   const username = await getUsernameFromCookies(cookies);
@@ -130,7 +135,8 @@ export async function PUT({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Ungültiger graph' }), { status: 400 });
   }
 
-  const questIds = body.graph.quests.map((/** @type {{ id?: unknown }} */ q) => q?.id);
+  const nodes = graphNodes(body.graph);
+  const questIds = nodes.map((/** @type {{ id?: unknown }} */ q) => q?.id);
   if (questIds.some((x) => typeof x !== 'string' || !x.trim())) {
     return new Response(JSON.stringify({ error: 'Jede Quest braucht eine nicht-leere id' }), { status: 400 });
   }
@@ -138,11 +144,17 @@ export async function PUT({ request, cookies }) {
   if (idSet.size !== questIds.length) {
     return new Response(JSON.stringify({ error: 'Doppelte Quest-IDs im Graph' }), { status: 400 });
   }
+  const edges = Array.isArray(body.graph.edges) ? body.graph.edges : [];
+  const refCheck = validateRpgGraphReferences(body.graph, edges);
+  if (!refCheck.ok) {
+    return new Response(JSON.stringify({ error: refCheck.reason }), { status: 400 });
+  }
   if (!Array.isArray(body.addedIds)) {
     return new Response(JSON.stringify({ error: 'addedIds fehlt' }), { status: 400 });
   }
-  if (!body.stepDone || typeof body.stepDone !== 'object') {
-    return new Response(JSON.stringify({ error: 'stepDone fehlt' }), { status: 400 });
+  const nodeDoneRaw = body.nodeDone;
+  if (!nodeDoneRaw || typeof nodeDoneRaw !== 'object') {
+    return new Response(JSON.stringify({ error: 'nodeDone fehlt' }), { status: 400 });
   }
   const vitals = normalizeRpgVitalsState(body.vitals);
   const location = normalizeRpgLocationState(body.location);
@@ -151,8 +163,8 @@ export async function PUT({ request, cookies }) {
   const addedIds = body.addedIds.filter((/** @type {unknown} */ x) => typeof x === 'string');
 
   const existing = await getRpgState(username);
-  const existingQuestCount = Array.isArray(existing?.graph?.quests) ? existing.graph.quests.length : 0;
-  const nextQuestCount = Array.isArray(body?.graph?.quests) ? body.graph.quests.length : 0;
+  const existingQuestCount = graphNodes(existing?.graph).length;
+  const nextQuestCount = nodes.length;
   if (existingQuestCount > 0 && nextQuestCount === 0) {
     return new Response(
       JSON.stringify({
@@ -166,16 +178,18 @@ export async function PUT({ request, cookies }) {
     existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
   const prevGraph =
     base.graph && typeof base.graph === 'object' && !Array.isArray(base.graph) ? base.graph : {};
+  const normalizedGraph = makeRpgGraph(nodes, edges);
   const payload = {
     ...base,
     graph: {
       ...prevGraph,
-      ...body.graph,
-      quests: body.graph.quests,
-      edges: body.graph.edges,
+      ...normalizedGraph,
+      nodes: normalizedGraph.nodes,
+      quests: normalizedGraph.nodes,
+      edges: normalizedGraph.edges,
     },
     addedIds,
-    stepDone: body.stepDone,
+    nodeDone: nodeDoneRaw,
     vitals,
     location,
     locationCatalog,
@@ -198,7 +212,7 @@ export async function PUT({ request, cookies }) {
 
   const existingRows = await listQuestmakerCatalogRows();
   const existingIds = new Set(existingRows.map((r) => r.id));
-  const needed = collectAllItemIdsFromGraph(body.graph);
+  const needed = collectAllItemIdsFromGraph(normalizedGraph);
   /** @type {string[]} */
   const missing = [];
   for (const id of needed) {
@@ -219,7 +233,7 @@ export async function PUT({ request, cookies }) {
   const toUpsert = [...proposedMap.values()].filter((row) => needed.has(row.id));
   await upsertQuestmakerCatalogItems(toUpsert);
 
-  const graphLocations = collectLocationEntriesFromGraph(body.graph);
+  const graphLocations = collectLocationEntriesFromGraph(normalizedGraph);
   for (const loc of graphLocations) {
     const row = await upsertRpgLocation(loc);
     if (!row) continue;

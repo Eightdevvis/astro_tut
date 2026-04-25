@@ -1,10 +1,11 @@
 import {
-  walkStepsPreOrder,
+  walkNodesPreOrder,
   normalizeRewardEntry,
-  isStepNodeComplete,
+  isNodeCompleteInQuest,
   getQuestRewardRows,
-} from './rpg-quest-steps.js';
+} from './rpg-quest-nodes.js';
 import { isQuestCompleted } from './rpg-quest-graph.js';
+import { graphNodes } from './rpg-quests-data.js';
 
 export const RPG_VITAL_MAX_POINTS = 50;
 export const RPG_VITAL_BASE_HEART = 25;
@@ -14,7 +15,7 @@ export const RPG_VITAL_BASE_MANA = 25;
  * @typedef {{
  *   heart: number;
  *   mana: number;
- *   appliedStepRewardIds: string[];
+ *   appliedNodeRewardIds: string[];
  * }} RpgVitalsState
  */
 
@@ -69,15 +70,15 @@ export function normalizeRpgVitalsState(raw) {
   const o = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {};
   const heart = clampPoints(typeof o.heart === 'number' ? o.heart : RPG_VITAL_BASE_HEART);
   const mana = clampPoints(typeof o.mana === 'number' ? o.mana : RPG_VITAL_BASE_MANA);
-  const rawApplied = Array.isArray(o.appliedStepRewardIds)
-    ? o.appliedStepRewardIds
+  const rawApplied = Array.isArray(o.appliedNodeRewardIds)
+    ? o.appliedNodeRewardIds
     : Array.isArray(o.appliedRewardIds)
       ? o.appliedRewardIds
       : [];
-  const appliedStepRewardIds = rawApplied
+  const appliedNodeRewardIds = rawApplied
     .filter((x) => typeof x === 'string' && x.trim())
     .map((x) => x.trim());
-  return { heart, mana, appliedStepRewardIds };
+  return { heart, mana, appliedNodeRewardIds };
 }
 
 /**
@@ -93,37 +94,37 @@ export function toRpgVitalsView(state) {
 }
 
 /**
- * Schreibt genau einmal gut, sobald ein Schritt mit points-Reward erledigt ist.
+ * Schreibt genau einmal gut, sobald ein Node mit points-Reward erledigt ist.
  * Kein automatisches Zurückbuchen beim Ent-Haken.
  * @param {import('./rpg-quests-data.js').RpgGraph} graph
- * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {Record<string, Record<string, boolean>>} nodeDone
  * @param {unknown} rawState
  * @returns {{ state: RpgVitalsState; changed: boolean }}
  */
-export function reconcileRpgVitals(graph, stepDone, rawState) {
+export function reconcileRpgVitals(graph, nodeDone, rawState) {
   const state = normalizeRpgVitalsState(rawState);
-  const applied = new Set(state.appliedStepRewardIds);
+  const applied = new Set(state.appliedNodeRewardIds);
   let changed = false;
   /** @type {RpgVitalsState} */
   let acc = {
     heart: state.heart,
     mana: state.mana,
-    appliedStepRewardIds: state.appliedStepRewardIds,
+    appliedNodeRewardIds: state.appliedNodeRewardIds,
   };
 
-  for (const q of graph?.quests || []) {
-    walkStepsPreOrder(q.children || [], (s) => {
+  for (const q of graphNodes(graph)) {
+    walkNodesPreOrder(q.children || [], (s) => {
       const ent = normalizeRewardEntry(s.reward);
       if (!ent || ent.type !== 'points') return;
-      if (!isStepNodeComplete(q, s.id, stepDone)) return;
-      const key = `step:${q.id}:${s.id}`;
+      if (!isNodeCompleteInQuest(q, s.id, nodeDone)) return;
+      const key = `node:${q.id}:${s.id}`;
       if (applied.has(key)) return;
       applied.add(key);
       acc = applyPointsReward(acc, ent.pointKind, ent.amount);
       changed = true;
     });
 
-    if (isQuestCompleted(q, stepDone)) {
+    if (isQuestCompleted(q, nodeDone)) {
       const rows = getQuestRewardRows(q);
       for (let i = 0; i < rows.length; i++) {
         const ent = rows[i]?.entry;
@@ -140,12 +141,12 @@ export function reconcileRpgVitals(graph, stepDone, rawState) {
   const next = {
     heart: clampPoints(acc.heart),
     mana: clampPoints(acc.mana),
-    appliedStepRewardIds: [...applied],
+    appliedNodeRewardIds: [...applied],
   };
   if (
     next.heart !== state.heart ||
     next.mana !== state.mana ||
-    next.appliedStepRewardIds.length !== state.appliedStepRewardIds.length
+    next.appliedNodeRewardIds.length !== state.appliedNodeRewardIds.length
   ) {
     changed = true;
   }

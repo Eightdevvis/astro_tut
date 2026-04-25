@@ -1,3 +1,5 @@
+import { graphNodes } from './rpg-quests-data.js';
+
 export const RPG_DEFAULT_LOCATION = Object.freeze({
   city: 'Berlin',
   place: '',
@@ -38,7 +40,7 @@ export function normalizeQuestCityLocation(raw) {
 /**
  * @param {unknown} raw
  */
-export function normalizeStepPlaceLocation(raw) {
+export function normalizeNodePlaceLocation(raw) {
   return cleanPart(raw);
 }
 
@@ -89,7 +91,7 @@ export function normalizeRpgLocationCatalog(raw) {
 export function collectLocationEntriesFromGraph(graph) {
   /** @type {{ kind: 'city' | 'place'; name: string; city: string; country: string; description: string }[]} */
   const out = [];
-  for (const q of graph?.quests || []) {
+  for (const q of graphNodes(graph)) {
     const qCity = normalizeQuestCityLocation(q.cityLocation);
     if (qCity) {
       out.push({
@@ -100,15 +102,15 @@ export function collectLocationEntriesFromGraph(graph) {
         description: '',
       });
     }
-    const walk = (steps) => {
-      for (const s of steps || []) {
-        const stepCity = normalizeQuestCityLocation(s.cityLocation) || qCity;
-        const place = normalizeStepPlaceLocation(s.placeLocation);
-        if (stepCity) {
+    const walk = (nodes) => {
+      for (const s of nodes || []) {
+        const nodeCity = normalizeQuestCityLocation(s.cityLocation) || qCity;
+        const place = normalizeNodePlaceLocation(s.placeLocation);
+        if (nodeCity) {
           out.push({
             kind: RPG_LOCATION_KIND_CITY,
-            name: stepCity,
-            city: stepCity,
+            name: nodeCity,
+            city: nodeCity,
             country: '',
             description: '',
           });
@@ -117,7 +119,7 @@ export function collectLocationEntriesFromGraph(graph) {
           out.push({
             kind: RPG_LOCATION_KIND_PLACE,
             name: place,
-            city: stepCity,
+            city: nodeCity,
             country: '',
             description: '',
           });

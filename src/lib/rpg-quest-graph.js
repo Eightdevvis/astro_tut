@@ -1,16 +1,24 @@
 import {
-  questProgressFromSteps,
-  isQuestCompletedFromSteps,
-  walkStepsPreOrder,
-  stepIsLeaf,
+  questProgressFromNodes,
+  isQuestCompletedFromNodes,
+  walkNodesPreOrder,
+  nodeIsLeaf,
   questLeafProgressRatio,
-} from './rpg-quest-steps.js';
+} from './rpg-quest-nodes.js';
+import { graphNodes, makeRpgGraph } from './rpg-quests-data.js';
 
-/** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
-/** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
-/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgQuestStep[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number; questmakerPrompt?: string }} RpgGraphQuest */
+const RPG_GRAPH_WARNED_KEYS = new Set();
+function warnGraphOnce(key, message, details) {
+  if (RPG_GRAPH_WARNED_KEYS.has(key)) return;
+  RPG_GRAPH_WARNED_KEYS.add(key);
+  console.warn(`[rpg:graph] ${message}`, details);
+}
+
+/** @typedef {import('./rpg-quest-nodes.js').RpgQuestNode} RpgQuestNode */
+/** @typedef {import('./rpg-quest-nodes.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgQuestNode[]; rewards?: string[]; questRewards?: (RpgQuestRewardEntry | Record<string, unknown>)[]; orderInLayer?: number; questmakerPrompt?: string }} RpgGraphNode */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
-/** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
+/** @typedef {{ nodes?: RpgGraphNode[]; quests?: RpgGraphNode[]; edges: RpgGraphEdge[] }} RpgGraph */
 
 /**
  * @param {unknown} g
@@ -20,7 +28,8 @@ export function isValidGraphShape(g) {
   return (
     !!g &&
     typeof g === 'object' &&
-    Array.isArray(/** @type {any} */ (g).quests) &&
+    (Array.isArray(/** @type {any} */ (g).nodes) ||
+      Array.isArray(/** @type {any} */ (g).quests)) &&
     Array.isArray(/** @type {any} */ (g).edges)
   );
 }
@@ -70,10 +79,10 @@ export function collectQuestIdsForAggregatedProgress(graph, questId) {
 
 /**
  * @param {RpgGraph} graph
- * @param {RpgGraphQuest} quest
- * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {RpgGraphNode} quest
+ * @param {Record<string, Record<string, boolean>>} nodeDone
  */
-export function questLeafProgressRatioAggregated(graph, quest, stepDone) {
+export function questLeafProgressRatioAggregated(graph, quest, nodeDone) {
   const ids = collectQuestIdsForAggregatedProgress(graph, quest.id);
   const qmap = questMap(graph);
   let total = 0;
@@ -81,7 +90,7 @@ export function questLeafProgressRatioAggregated(graph, quest, stepDone) {
   for (const qid of ids) {
     const q = qmap.get(qid);
     if (!q) continue;
-    const r = questLeafProgressRatio(q, stepDone);
+    const r = questLeafProgressRatio(q, nodeDone);
     total += r.total;
     done += r.done;
   }
@@ -91,20 +100,20 @@ export function questLeafProgressRatioAggregated(graph, quest, stepDone) {
 
 /**
  * @param {RpgGraphQuest} quest
- * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {Record<string, Record<string, boolean>>} nodeDone
  * @param {RpgGraph | null | undefined} [graph] — mit Graph: Fortschritt über Vorgänger- + Folgequests (Subquests)
  */
-export function questProgress(quest, stepDone, graph) {
-  if (!graph || !Array.isArray(graph.quests)) return questProgressFromSteps(quest, stepDone);
-  return questLeafProgressRatioAggregated(graph, quest, stepDone).percent;
+export function questProgress(quest, nodeDone, graph) {
+  if (!graph || graphNodes(graph).length === 0) return questProgressFromNodes(quest, nodeDone);
+  return questLeafProgressRatioAggregated(graph, quest, nodeDone).percent;
 }
 
 /**
- * @param {RpgGraphQuest} quest
- * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {RpgGraphNode} quest
+ * @param {Record<string, Record<string, boolean>>} nodeDone
  */
-export function isQuestCompleted(quest, stepDone) {
-  return isQuestCompletedFromSteps(quest, stepDone);
+export function isQuestCompleted(quest, nodeDone) {
+  return isQuestCompletedFromNodes(quest, nodeDone);
 }
 
 /**
@@ -114,10 +123,15 @@ export function isQuestCompleted(quest, stepDone) {
 export function buildIncomingMap(graph) {
   /** @type {Map<string, string[]>} */
   const incoming = new Map();
-  for (const q of graph.quests) {
+  const knownIds = new Set();
+  for (const q of graphNodes(graph)) {
     incoming.set(q.id, []);
+    knownIds.add(q.id);
   }
   for (const e of graph.edges || []) {
+    if (!knownIds.has(e.from) || !knownIds.has(e.to)) {
+      warnGraphOnce(`danglingEdge.${e.from}->${e.to}`, 'Dangling edge references missing node id', e);
+    }
     if (!incoming.has(e.to)) incoming.set(e.to, []);
     incoming.get(e.to).push(e.from);
   }
@@ -127,16 +141,16 @@ export function buildIncomingMap(graph) {
 /**
  * @param {string} questId
  * @param {RpgGraph} graph
- * @param {Record<string, Record<string, boolean>>} stepDone
- * @param {Map<string, RpgGraphQuest>} byId
+ * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Map<string, RpgGraphNode>} byId
  */
-export function isQuestUnlocked(questId, graph, stepDone, byId) {
+export function isQuestUnlocked(questId, graph, nodeDone, byId) {
   const incoming = buildIncomingMap(graph);
   const preds = incoming.get(questId) || [];
   if (preds.length === 0) return true;
   for (const p of preds) {
     const pq = byId.get(p);
-    if (!pq || !isQuestCompleted(pq, stepDone)) return false;
+    if (!pq || !isQuestCompleted(pq, nodeDone)) return false;
   }
   return true;
 }
@@ -145,16 +159,16 @@ export function isQuestUnlocked(questId, graph, stepDone, byId) {
  * Nur hinzugefügte IDs, die weiterhin unlocked und nicht completed sind.
  * @param {Set<string>} added
  * @param {RpgGraph} graph
- * @param {Record<string, Record<string, boolean>>} stepDone
+ * @param {Record<string, Record<string, boolean>>} nodeDone
  */
-export function sanitizeAddedIds(added, graph, stepDone) {
+export function sanitizeAddedIds(added, graph, nodeDone) {
   const byId = questMap(graph);
   const next = new Set();
   for (const id of added) {
     const q = byId.get(id);
     if (!q) continue;
-    if (isQuestCompleted(q, stepDone)) continue;
-    if (!isQuestUnlocked(id, graph, stepDone, byId)) continue;
+    if (isQuestCompleted(q, nodeDone)) continue;
+    if (!isQuestUnlocked(id, graph, nodeDone, byId)) continue;
     next.add(id);
   }
   return next;
@@ -162,9 +176,9 @@ export function sanitizeAddedIds(added, graph, stepDone) {
 
 /** @param {RpgGraph} graph */
 export function questMap(graph) {
-  /** @type {Map<string, RpgGraphQuest>} */
+  /** @type {Map<string, RpgGraphNode>} */
   const m = new Map();
-  for (const q of graph.quests || []) m.set(q.id, q);
+  for (const q of graphNodes(graph)) m.set(q.id, q);
   return m;
 }
 
@@ -175,7 +189,7 @@ function layoutShapeRadius(compact) {
 
 /**
  * Lokale AABB relativ zum Knotenmittelpunkt (SVG wie RpgQuestTree: Label unter dem Shape).
- * @param {RpgGraphQuest} q
+ * @param {RpgGraphNode} q
  * @param {boolean} compact
  */
 function layoutNodeLocalBounds(q, compact) {
@@ -207,7 +221,7 @@ export function resolveQuestNodeCollisions(positions, graph, compact, opts = {})
   const iterations = opts.iterations ?? 48;
   const extra = opts.extraSeparation ?? 2;
   const byId = questMap(graph);
-  const ids = (graph.quests || []).map((q) => q.id).filter((id) => positions[id]);
+  const ids = graphNodes(graph).map((q) => q.id).filter((id) => positions[id]);
   const bounds = new Map(
     ids.map((id) => {
       const q = byId.get(id);
@@ -264,7 +278,7 @@ export function resolveQuestNodeCollisions(positions, graph, compact, opts = {})
  * @param {number} padding
  */
 function normalizeLayoutOrigin(positions, graph, compact, padding) {
-  const quests = graph.quests || [];
+  const quests = graphNodes(graph);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -300,7 +314,7 @@ export function computeLayeredLayout(graph, opts = {}) {
   const colGap = opts.colGap ?? 128;
   const padding = opts.padding ?? 72;
   const compact = !!opts.compact;
-  const quests = graph.quests || [];
+  const quests = graphNodes(graph);
   const collisionIterations =
     opts.collisionIterations ?? Math.min(120, 36 + Math.floor(quests.length * 2.5));
   const ids = quests.map((q) => q.id);
@@ -396,50 +410,49 @@ export function computeLayeredLayout(graph, opts = {}) {
 
 /**
  * @param {RpgGraph} graph
- * @param {RpgGraphQuest} quest
+ * @param {RpgGraphNode} node
  * @param {string[]} prerequisiteIds — Kanten from → quest.id
  */
-export function upsertQuestInGraph(graph, quest, prerequisiteIds) {
+export function upsertQuestInGraph(graph, node, prerequisiteIds) {
   const ids = new Set((prerequisiteIds || []).filter((x) => typeof x === 'string'));
-  ids.delete(quest.id);
-  const prev = (graph.quests || []).find((q) => q.id === quest.id);
-  const mergedQuest =
-    prev && typeof prev === 'object' ? { ...prev, ...quest } : quest;
-  if (Array.isArray(mergedQuest.questRewards)) {
-    delete mergedQuest.rewards;
+  ids.delete(node.id);
+  const prev = graphNodes(graph).find((q) => q.id === node.id);
+  const mergedNode =
+    prev && typeof prev === 'object' ? { ...prev, ...node } : node;
+  if (Array.isArray(mergedNode.questRewards)) {
+    delete mergedNode.rewards;
   }
-  const quests = (graph.quests || []).filter((q) => q.id !== quest.id);
-  quests.push(mergedQuest);
-  const edges = (graph.edges || []).filter((e) => e.to !== quest.id);
+  const nodes = graphNodes(graph).filter((q) => q.id !== node.id);
+  nodes.push(mergedNode);
+  const edges = (graph.edges || []).filter((e) => e.to !== node.id);
   for (const from of ids) {
-    if (quests.some((q) => q.id === from)) edges.push({ from, to: quest.id });
+    if (nodes.some((q) => q.id === from)) edges.push({ from, to: node.id });
   }
-  return { quests, edges };
+  return makeRpgGraph(nodes, edges);
 }
 
 /** @param {RpgGraph} graph @param {string} questId */
 export function removeQuestFromGraph(graph, questId) {
-  return {
-    quests: (graph.quests || []).filter((q) => q.id !== questId),
-    edges: (graph.edges || []).filter((e) => e.from !== questId && e.to !== questId),
-  };
+  const nodes = graphNodes(graph).filter((q) => q.id !== questId);
+  const edges = (graph.edges || []).filter((e) => e.from !== questId && e.to !== questId);
+  return makeRpgGraph(nodes, edges);
 }
 
 /** @param {RpgGraph} graph */
-export function buildInitialStepMapFromGraph(graph) {
+export function buildInitialNodeMapFromGraph(graph) {
   /** @type {Record<string, Record<string, boolean>>} */
   const m = {};
-  for (const q of graph.quests || []) {
+  for (const q of graphNodes(graph)) {
     m[q.id] = {};
-    walkStepsPreOrder(q.children || [], (s) => {
-      if (stepIsLeaf(s) && s.done) m[q.id][s.id] = true;
+    walkNodesPreOrder(q.children || [], (s) => {
+      if (nodeIsLeaf(s) && s.done) m[q.id][s.id] = true;
     });
   }
   return m;
 }
 
 /** @param {Record<string, Record<string, boolean>>} serverBase @param {Record<string, Record<string, boolean>>} persisted */
-export function mergeStepDoneBase(serverBase, persisted) {
+export function mergeNodeDoneBase(serverBase, persisted) {
   const out = { ...serverBase };
   for (const qid of Object.keys(persisted)) {
     out[qid] = { ...(out[qid] || {}), ...persisted[qid] };
@@ -450,7 +463,7 @@ export function mergeStepDoneBase(serverBase, persisted) {
 export function graphHasCycle(graph) {
   /** @type {Map<string, string[]>} */
   const out = new Map();
-  for (const q of graph.quests || []) out.set(q.id, []);
+  for (const q of graphNodes(graph)) out.set(q.id, []);
   for (const e of graph.edges || []) {
     if (!out.has(e.from)) out.set(e.from, []);
     out.get(e.from).push(e.to);

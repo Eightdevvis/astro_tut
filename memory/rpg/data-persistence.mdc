@@ -13,9 +13,11 @@
 
 ## Datenmodell
 
+Kanonisch gilt: `graph.nodes` + `nodeDone`. `graph.quests` bleibt als Legacy-Importpfad lesbar.
+
 ### GET `/api/rpg/quests`
 
-Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locationCatalog`, `questmakerItems`, `persisted`, `schemaVersion` (ohne Legacy-Felder `main`/`side`).
+Antwort enthaelt `graph`, `addedIds`, `nodeDone`, `vitals`, `location`, `locationCatalog`, `questmakerItems`, `persisted`, `schemaVersion` (ohne Legacy-Felder `main`/`side`).
 
 ### `schemaVersion` (Pflicht ab Speicherung)
 
@@ -27,7 +29,7 @@ Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locatio
 ### PUT `/api/rpg/quests`
 
 - `{ "resetToDefault": true }`: loescht gespeicherten State; naechstes GET liefert Sample-Graph.
-- `{ "graph", "addedIds", "stepDone" }`: Client-Snapshot; serverseitig Merge mit vorhandenem JSON.
+- `{ "graph", "addedIds", "nodeDone" }`: Client-Snapshot; serverseitig Merge mit vorhandenem JSON.
 - Optional `questmakerItems`: neue, vollstaendige Katalog-Eintraege fuer bislang unbekannte referenzierte `itemId`s; ohne passende Eintraege antwortet der Server mit `400` (`missing`).
 
 ### POST `/api/rpg/quests-normalize-payload`
@@ -37,7 +39,7 @@ Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locatio
 ### POST `/api/rpg/quests-import`
 
 - Restore-/Import-Endpoint fuer bestehende Nutzer (superuser-only).
-- Erwartet Zielnutzer + Payload und validiert u. a. `graph`, `addedIds`, `stepDone` vor dem Speichern.
+- Erwartet Zielnutzer + Payload und validiert u. a. `graph`, `addedIds`, `nodeDone` vor dem Speichern.
 
 ### API `/api/rpg/locations`
 
@@ -66,7 +68,7 @@ Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locatio
 
 ## Persistenz (Client, Legacy-Migration)
 
-- Alte Keys (`rpg-quest-graph-custom`, `rpg-quest-added-ids`, `rpg-quest-step-done`) werden nach erfolgreicher Migration entfernt.
+- Alte Keys (`rpg-quest-graph-custom`, `rpg-quest-added-ids`, `rpg-node-done`) werden nach erfolgreicher Migration entfernt.
 - Modul: `src/lib/rpg-persistence.js`.
 - Zusaetzlich Session-Bootstrap-Cache in `sessionStorage` (`rpg-bootstrap-v1`) fuer schnellen Initialzustand pro Tab.
 
@@ -93,6 +95,6 @@ Antwort enthaelt `graph`, `addedIds`, `stepDone`, `vitals`, `location`, `locatio
 
 ## Siehe auch
 
-- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/nodes-rewards.mdc`
 - `memory/rpg/ui.mdc`
 - `memory/rpg/architecture.mdc`

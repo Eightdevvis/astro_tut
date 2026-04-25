@@ -1,22 +1,43 @@
 /**
- * Default-/Sample-Quests und Kanon-Form für GET /api/rpg/quests.
- * Später: gleiche Struktur von KI oder DB liefern lassen.
+ * Default-/Sample-Nodes und Kanon-Form für GET /api/rpg/quests.
  */
 
-/** @typedef {import('./rpg-quest-steps.js').RpgQuestStepNode} RpgQuestStep */
-/** @typedef {import('./rpg-quest-steps.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
-/** @typedef {{ id: string; parentId: null; title: string; description: string; children: RpgQuestStep[]; rewards?: string[] }} RpgQuest */
+/** @typedef {import('./rpg-quest-nodes.js').RpgQuestStepNode} RpgNode */
+/** @typedef {import('./rpg-quest-nodes.js').RpgQuestRewardEntry} RpgQuestRewardEntry */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; children: RpgNode[]; rewards?: string[] }} RpgQuest */
 /** @typedef {{ main: RpgQuest[]; side: RpgQuest[] }} RpgQuestPayloadLegacy */
-/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgQuestStep[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; questmakerPrompt?: string }} RpgGraphQuest */
+/** @typedef {{ id: string; parentId: null; title: string; description: string; cityLocation?: string; children: RpgNode[]; rewards?: string[]; questRewards?: RpgQuestRewardEntry[]; questmakerPrompt?: string }} RpgGraphNode */
 /** @typedef {{ from: string; to: string }} RpgGraphEdge */
-/** @typedef {{ quests: RpgGraphQuest[]; edges: RpgGraphEdge[] }} RpgGraph */
+/** @typedef {{ nodes?: RpgGraphNode[]; quests?: RpgGraphNode[]; edges: RpgGraphEdge[] }} RpgGraph */
+
+/**
+ * Einheitlicher Zugriff: nodes sind primär, quests ist Legacy-Alias.
+ * @param {RpgGraph | null | undefined} graph
+ * @returns {RpgGraphNode[]}
+ */
+export function graphNodes(graph) {
+  if (!graph || typeof graph !== 'object') return [];
+  if (Array.isArray(graph.nodes)) return graph.nodes;
+  if (Array.isArray(graph.quests)) return graph.quests;
+  return [];
+}
+
+/**
+ * Schreibt kanonischen Graph inkl. Legacy-Alias.
+ * @param {RpgGraphNode[]} nodes
+ * @param {RpgGraphEdge[]} edges
+ * @returns {{ nodes: RpgGraphNode[]; quests: RpgGraphNode[]; edges: RpgGraphEdge[] }}
+ */
+export function makeRpgGraph(nodes, edges) {
+  return { nodes, quests: nodes, edges };
+}
 
 /** Leerer Graph: Initialzustand bis Server-Bootstrap (kein Sample-Flash beim Laden). */
-export const EMPTY_RPG_GRAPH = /** @type {RpgGraph} */ ({ quests: [], edges: [] });
+export const EMPTY_RPG_GRAPH = /** @type {RpgGraph} */ (makeRpgGraph([], []));
 
 /** @type {RpgGraph} */
 export const SAMPLE_RPG_GRAPH = {
-  quests: [
+  nodes: [
     {
       id: 'main-architect',
       parentId: null,
@@ -83,6 +104,7 @@ export const SAMPLE_RPG_GRAPH = {
     { from: 'side-cook', to: 'main-bridge' },
   ],
 };
+SAMPLE_RPG_GRAPH.quests = SAMPLE_RPG_GRAPH.nodes;
 
 /**
  * Legacy-Shape: leere Listen; aktive Quests kommen nur aus localStorage + graph.

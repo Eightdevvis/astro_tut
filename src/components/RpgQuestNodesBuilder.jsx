@@ -1,8 +1,8 @@
 import {
-  createEmptyStepDraft,
+  createEmptyNodeDraft,
   newDraftKey,
   createEmptyRewardRow,
-  reorderDraftSteps,
+  reorderDraftNodes,
 } from '../lib/rpg-quest-editor-draft.js';
 import { RPG_ITEM_CATEGORY_IDS } from '../lib/rpg-item-categories.js';
 
@@ -18,13 +18,13 @@ const ITEM_CAT_UI = {
 };
 
 /**
- * @typedef {import('../lib/rpg-quest-editor-draft.js').QuestStepDraft} QuestStepDraft
+ * @typedef {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft} QuestNodeDraft
  * @typedef {import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow} QuestRewardDraftRow
  */
 
 function IconPencil() {
   return (
-    <svg class="rpg-step-card__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg class="rpg-node-card__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4L16.5 3.5z"
         stroke="currentColor"
@@ -38,29 +38,29 @@ function IconPencil() {
 
 function IconPlus() {
   return (
-    <span class="rpg-step-builder__plus" aria-hidden="true">
+    <span class="rpg-node-builder__plus" aria-hidden="true">
       +
     </span>
   );
 }
 
 function IconLock() {
-  return <span class="rpg-step-builder__plus" aria-hidden="true">🔒</span>;
+  return <span class="rpg-node-builder__plus" aria-hidden="true">🔒</span>;
 }
 
-/** @returns {QuestStepDraft} */
+/** @returns {QuestNodeDraft} */
 function createNodeDraft() {
   return {
-    ...createEmptyStepDraft(false),
+    ...createEmptyNodeDraft(false),
     key: newDraftKey(),
-    substepsOn: false,
+    subnodesOn: false,
     children: [],
   };
 }
 
 function IconGrip() {
   return (
-    <svg class="rpg-step-builder__grip-svg" width="14" height="18" viewBox="0 0 14 18" aria-hidden="true">
+    <svg class="rpg-node-builder__grip-svg" width="14" height="18" viewBox="0 0 14 18" aria-hidden="true">
       {[0, 1, 2].map((row) => (
         <g key={row} transform={`translate(0 ${row * 6})`}>
           <circle cx="4" cy="3" r="1.5" fill="currentColor" />
@@ -73,14 +73,14 @@ function IconGrip() {
 
 /**
  * @param {{
- *   draft: QuestStepDraft;
+ *   draft: QuestNodeDraft;
  *   depth: number;
- *   onChange: (next: QuestStepDraft) => void;
+ *   onChange: (next: QuestNodeDraft) => void;
  *   onRemove?: () => void;
  * }} props
  */
-function StepDraftCard({ draft, depth, onChange, onRemove }) {
-  const update = (/** @type {Partial<QuestStepDraft>} */ partial) => onChange({ ...draft, ...partial });
+function NodeDraftCard({ draft, depth, onChange, onRemove }) {
+  const update = (/** @type {Partial<QuestNodeDraft>} */ partial) => onChange({ ...draft, ...partial });
 
   const save = () => {
     const t = (draft.title || '').trim();
@@ -95,29 +95,29 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
   if (draft.saved) {
     return (
       <div
-        class={`rpg-step-card rpg-step-card--collapsed rpg-step-card--depth-${Math.min(depth, 4)}`}
-        style={{ '--step-depth': String(depth) }}
+        class={`rpg-node-card rpg-node-card--collapsed rpg-node-card--depth-${Math.min(depth, 4)}`}
+        style={{ '--node-depth': String(depth) }}
       >
-        <div class="rpg-step-card__collapsed-main">
-          <p class="rpg-step-card__preview-title">{titlePreview}</p>
-          <div class="rpg-step-card__badges">
+        <div class="rpg-node-card__collapsed-main">
+          <p class="rpg-node-card__preview-title">{titlePreview}</p>
+          <div class="rpg-node-card__badges">
             {draft.orderLinked ? (
-              <span class="rpg-step-card__badge" title="In der Reihenfolge verknüpft">
+              <span class="rpg-node-card__badge" title="In der Reihenfolge verknüpft">
                 Reihenfolge
               </span>
             ) : null}
             {draft.isLock ? (
-              <span class="rpg-step-card__badge" title="Lock-Node">
+              <span class="rpg-node-card__badge" title="Lock-Node">
                 Lock
               </span>
             ) : null}
             {draft.optional ? (
-              <span class="rpg-step-card__badge" title="Optional">
+              <span class="rpg-node-card__badge" title="Optional">
                 Optional
               </span>
             ) : null}
             {draft.timeLimitOn && (draft.timeDueAt || '').trim() ? (
-              <span class="rpg-step-card__badge rpg-step-card__badge--due" title="Frist">
+              <span class="rpg-node-card__badge rpg-node-card__badge--due" title="Frist">
                 bis {draft.timeDueAt}
               </span>
             ) : null}
@@ -127,18 +127,18 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
               : draft.rewardKind === 'points'
                 ? (draft.pointsAmount || '').trim()
                 : (draft.rewardText || '').trim()) ? (
-              <span class="rpg-step-card__badge" title="Mit Belohnung">
+              <span class="rpg-node-card__badge" title="Mit Belohnung">
                 Belohnung
               </span>
             ) : null}
-            {draft.substepsOn && draft.children.length > 0 ? (
-              <span class="rpg-step-card__badge">
+            {draft.subnodesOn && draft.children.length > 0 ? (
+              <span class="rpg-node-card__badge">
                 {draft.children.length} Child-Node{draft.children.length === 1 ? '' : 's'}
               </span>
             ) : null}
           </div>
         </div>
-        <button type="button" class="rpg-step-card__edit-btn" onClick={edit} aria-label="Node bearbeiten" title="Bearbeiten">
+        <button type="button" class="rpg-node-card__edit-btn" onClick={edit} aria-label="Node bearbeiten" title="Bearbeiten">
           <IconPencil />
         </button>
       </div>
@@ -147,11 +147,11 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
 
   return (
     <div
-      class={`rpg-step-card rpg-step-card--open rpg-step-card--depth-${Math.min(depth, 4)}`}
-      style={{ '--step-depth': String(depth) }}
+      class={`rpg-node-card rpg-node-card--open rpg-node-card--depth-${Math.min(depth, 4)}`}
+      style={{ '--node-depth': String(depth) }}
     >
-      <div class="rpg-step-card__field">
-        <span class="rpg-step-card__field-label">Node-Titel</span>
+      <div class="rpg-node-card__field">
+        <span class="rpg-node-card__field-label">Node-Titel</span>
         <input
           type="text"
           class="rpg-graph-editor__input"
@@ -161,12 +161,12 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         />
       </div>
 
-      <div class="rpg-step-card__order-block">
-        <span class="rpg-step-card__field-label">Reihenfolge (gleiche Ebene)</span>
-        <div class="rpg-step-order-switch" role="group" aria-label="Abhängigkeit in der Reihenfolge">
+      <div class="rpg-node-card__order-block">
+        <span class="rpg-node-card__field-label">Reihenfolge (gleiche Ebene)</span>
+        <div class="rpg-node-order-switch" role="group" aria-label="Abhängigkeit in der Reihenfolge">
           <button
             type="button"
-            class={`rpg-step-order-switch__btn${!draft.orderLinked ? ' rpg-step-order-switch__btn--on' : ''}`}
+            class={`rpg-node-order-switch__btn${!draft.orderLinked ? ' rpg-node-order-switch__btn--on' : ''}`}
             onClick={() =>
               update({
                 orderLinked: false,
@@ -178,19 +178,19 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           </button>
           <button
             type="button"
-            class={`rpg-step-order-switch__btn${draft.orderLinked ? ' rpg-step-order-switch__btn--on' : ''}`}
+            class={`rpg-node-order-switch__btn${draft.orderLinked ? ' rpg-node-order-switch__btn--on' : ''}`}
             onClick={() => update({ orderLinked: true, legacyDependsOn: undefined })}
           >
             Abhängig
           </button>
         </div>
-        <p class="rpg-step-card__order-hint">
+        <p class="rpg-node-card__order-hint">
           Abhängig: kann erst erledigt werden, wenn der vorherige <strong>abhängige</strong> Node in dieser Liste fertig ist. Die Reihenfolge
           der gespeicherten Nodes änderst du per Ziehen am Griff.
         </p>
       </div>
 
-      <label class="rpg-step-card__toggle">
+      <label class="rpg-node-card__toggle">
         <input
           type="checkbox"
           checked={draft.rewardOn}
@@ -216,8 +216,8 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         <span>Belohnung für diesen Node</span>
       </label>
       {draft.rewardOn ? (
-        <div class="rpg-step-card__field rpg-step-card__field--indented rpg-step-card__reward-block">
-          <span class="rpg-step-card__field-label">Art</span>
+        <div class="rpg-node-card__field rpg-node-card__field--indented rpg-node-card__reward-block">
+          <span class="rpg-node-card__field-label">Art</span>
           <div class="rpg-reward-kind-switch" role="group" aria-label="Belohnungsart">
             <button
               type="button"
@@ -243,7 +243,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           </div>
           {draft.rewardKind === 'text' ? (
             <>
-              <span class="rpg-step-card__field-label">Text</span>
+              <span class="rpg-node-card__field-label">Text</span>
               <input
                 type="text"
                 class="rpg-graph-editor__input"
@@ -254,7 +254,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             </>
           ) : draft.rewardKind === 'points' ? (
             <>
-              <span class="rpg-step-card__field-label">Punktart</span>
+              <span class="rpg-node-card__field-label">Punktart</span>
               <select
                 class="rpg-graph-editor__input"
                 value={draft.pointKind === 'mana' ? 'mana' : 'heart'}
@@ -265,7 +265,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 <option value="heart">Herz — körperliche Energie</option>
                 <option value="mana">Mana — geistige Energie</option>
               </select>
-              <span class="rpg-step-card__field-label">Wert</span>
+              <span class="rpg-node-card__field-label">Wert</span>
               <input
                 type="text"
                 inputmode="numeric"
@@ -278,7 +278,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             </>
           ) : (
             <>
-              <span class="rpg-step-card__field-label">Item-ID</span>
+              <span class="rpg-node-card__field-label">Item-ID</span>
               <input
                 type="text"
                 class="rpg-graph-editor__input"
@@ -286,7 +286,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 placeholder="technische Id (Katalog)"
                 onInput={(ev) => update({ itemId: ev.currentTarget.value })}
               />
-              <span class="rpg-step-card__field-label">Anzeigename</span>
+              <span class="rpg-node-card__field-label">Anzeigename</span>
               <input
                 type="text"
                 class="rpg-graph-editor__input"
@@ -294,7 +294,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                 placeholder="Name in der Reward-Pill"
                 onInput={(ev) => update({ itemDisplayName: ev.currentTarget.value })}
               />
-              <span class="rpg-step-card__field-label">Kategorie (Katalog)</span>
+              <span class="rpg-node-card__field-label">Kategorie (Katalog)</span>
               <select
                 class="rpg-graph-editor__input"
                 value={
@@ -310,7 +310,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
                   </option>
                 ))}
               </select>
-              <span class="rpg-step-card__field-label">Kurzbeschreibung (neue Items)</span>
+              <span class="rpg-node-card__field-label">Kurzbeschreibung (neue Items)</span>
               <input
                 type="text"
                 class="rpg-graph-editor__input"
@@ -323,7 +323,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         </div>
       ) : null}
 
-      <label class="rpg-step-card__toggle">
+      <label class="rpg-node-card__toggle">
         <input
           type="checkbox"
           checked={draft.optional}
@@ -332,7 +332,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         <span>Optional — zählt nicht für den Pflicht-Abschluss</span>
       </label>
 
-      <label class="rpg-step-card__toggle">
+      <label class="rpg-node-card__toggle">
         <input
           type="checkbox"
           checked={draft.isLock}
@@ -349,7 +349,7 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
 
       {draft.children.length === 0 ? (
         <>
-          <label class="rpg-step-card__toggle">
+          <label class="rpg-node-card__toggle">
             <input
               type="checkbox"
               checked={draft.timeLimitOn}
@@ -364,8 +364,8 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
             <span>Zeitbegrenzt — Frist (nur bei Pflicht-Leafs relevant für die Quest)</span>
           </label>
           {draft.timeLimitOn ? (
-            <div class="rpg-step-card__field rpg-step-card__field--indented">
-              <span class="rpg-step-card__field-label">Frist (Datum)</span>
+            <div class="rpg-node-card__field rpg-node-card__field--indented">
+              <span class="rpg-node-card__field-label">Frist (Datum)</span>
               <input
                 type="date"
                 class="rpg-graph-editor__input"
@@ -376,24 +376,24 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
           ) : null}
         </>
       ) : null}
-      <div class="rpg-step-card__nest">
-        <span class="rpg-step-card__nest-label">Children</span>
+      <div class="rpg-node-card__nest">
+        <span class="rpg-node-card__nest-label">Children</span>
         {draft.children.length > 0 ? (
-          <DraggableStepList
-            steps={draft.children}
+          <DraggableNodeList
+            nodes={draft.children}
             depth={depth + 1}
-            onStepsChange={(next) => update({ children: next, substepsOn: next.length > 0 })}
+            onNodesChange={(next) => update({ children: next, subnodesOn: next.length > 0 })}
           />
         ) : (
-          <p class="rpg-step-card__order-hint">Keine Children. Dieser Node ist aktuell ein Leaf.</p>
+          <p class="rpg-node-card__order-hint">Keine Children. Dieser Node ist aktuell ein Leaf.</p>
         )}
         <button
           type="button"
-          class="rpg-step-builder__add-nested"
+          class="rpg-node-builder__add-nested"
           onClick={() =>
             update({
               children: [...draft.children, createNodeDraft()],
-              substepsOn: true,
+              subnodesOn: true,
               timeLimitOn: false,
               timeDueAt: '',
             })
@@ -403,11 +403,11 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         </button>
         <button
           type="button"
-          class="rpg-step-builder__add-nested"
+          class="rpg-node-builder__add-nested"
           onClick={() =>
             update({
               children: [...draft.children, { ...createNodeDraft(), isLock: true, optional: false }],
-              substepsOn: true,
+              subnodesOn: true,
               timeLimitOn: false,
               timeDueAt: '',
             })
@@ -417,9 +417,9 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
         </button>
       </div>
 
-      <div class="rpg-step-card__actions">
+      <div class="rpg-node-card__actions">
         {onRemove ? (
-          <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost rpg-step-card__remove" onClick={onRemove}>
+          <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost rpg-node-card__remove" onClick={onRemove}>
             Entfernen
           </button>
         ) : (
@@ -440,16 +440,16 @@ function StepDraftCard({ draft, depth, onChange, onRemove }) {
 
 /**
  * @param {{
- *   steps: QuestStepDraft[];
+ *   nodes: QuestNodeDraft[];
  *   depth: number;
- *   onStepsChange: (next: QuestStepDraft[]) => void;
+ *   onNodesChange: (next: QuestNodeDraft[]) => void;
  * }} props
  */
-function DraggableStepList({ steps, depth, onStepsChange }) {
+function DraggableNodeList({ nodes, depth, onNodesChange }) {
   return (
-    <ul class={`rpg-step-builder__list${depth > 0 ? ' rpg-step-builder__list--nested' : ''}`}>
-      {steps.map((step, i) => {
-        const canDrag = step.saved;
+    <ul class={`rpg-node-builder__list${depth > 0 ? ' rpg-node-builder__list--nested' : ''}`}>
+      {nodes.map((node, i) => {
+        const canDrag = node.saved;
         const startDrag = (/** @type {DragEvent} */ e) => {
           if (!canDrag) {
             e.preventDefault();
@@ -458,21 +458,21 @@ function DraggableStepList({ steps, depth, onStepsChange }) {
           const dt = e.dataTransfer;
           if (dt) {
             dt.setData('text/plain', String(i));
-            dt.setData('application/x-rpg-step-index', String(i));
+            dt.setData('application/x-rpg-node-index', String(i));
             dt.effectAllowed = 'move';
           }
         };
         const readFromIndex = (/** @type {DragEvent} */ e) => {
           const dt = e.dataTransfer;
           if (!dt) return NaN;
-          let raw = dt.getData('application/x-rpg-step-index');
+          let raw = dt.getData('application/x-rpg-node-index');
           if (!raw) raw = dt.getData('text/plain');
           return Number(raw);
         };
         return (
           <li
-            key={step.key}
-            class={`rpg-step-builder__row${canDrag ? ' rpg-step-builder__row--draggable' : ''}`}
+            key={node.key}
+            class={`rpg-node-builder__row${canDrag ? ' rpg-node-builder__row--draggable' : ''}`}
             onDragEnter={(e) => {
               e.preventDefault();
             }}
@@ -484,12 +484,12 @@ function DraggableStepList({ steps, depth, onStepsChange }) {
               e.preventDefault();
               const from = readFromIndex(e);
               if (Number.isNaN(from) || from === i) return;
-              onStepsChange(reorderDraftSteps(steps, from, i));
+              onNodesChange(reorderDraftNodes(nodes, from, i));
             }}
           >
             {canDrag ? (
               <span
-                class="rpg-step-builder__drag-handle"
+                class="rpg-node-builder__drag-handle"
                 title="Zum Sortieren ziehen"
                 draggable
                 onDragStart={(e) => {
@@ -503,18 +503,18 @@ function DraggableStepList({ steps, depth, onStepsChange }) {
                 <IconGrip />
               </span>
             ) : (
-              <span class="rpg-step-builder__drag-placeholder" aria-hidden="true" />
+              <span class="rpg-node-builder__drag-placeholder" aria-hidden="true" />
             )}
-            <div class="rpg-step-builder__card-wrap">
-              <StepDraftCard
-                draft={step}
+            <div class="rpg-node-builder__card-wrap">
+              <NodeDraftCard
+                draft={node}
                 depth={depth}
                 onChange={(next) => {
-                  const copy = [...steps];
+                  const copy = [...nodes];
                   copy[i] = next;
-                  onStepsChange(copy);
+                  onNodesChange(copy);
                 }}
-                onRemove={() => onStepsChange(steps.filter((_, j) => j !== i))}
+                onRemove={() => onNodesChange(nodes.filter((_, j) => j !== i))}
               />
             </div>
           </li>
@@ -526,32 +526,32 @@ function DraggableStepList({ steps, depth, onStepsChange }) {
 
 /**
  * @param {{
- *   steps: QuestStepDraft[];
- *   onStepsChange: (next: QuestStepDraft[]) => void;
+ *   nodes: QuestNodeDraft[];
+ *   onNodesChange: (next: QuestNodeDraft[]) => void;
  * }} props
  */
-export function RpgQuestStepsBuilder({ steps, onStepsChange }) {
+export function RpgQuestNodesBuilder({ nodes, onNodesChange }) {
   return (
-    <div class="rpg-step-builder">
-      <div class="rpg-step-builder__section-head">
-        <span class="rpg-step-builder__section-title">Quest-Nodes</span>
-        <p class="rpg-step-builder__section-intro">
+    <div class="rpg-node-builder">
+      <div class="rpg-node-builder__section-head">
+        <span class="rpg-node-builder__section-title">Quest-Nodes</span>
+        <p class="rpg-node-builder__section-intro">
           Baue den Baum direkt: Ein Node ohne Children ist automatisch ein Leaf. „Abhängig“ verknüpft mit dem vorherigen abhängigen Node in derselben Liste.
         </p>
       </div>
-      <DraggableStepList steps={steps} depth={0} onStepsChange={onStepsChange} />
+      <DraggableNodeList nodes={nodes} depth={0} onNodesChange={onNodesChange} />
       <button
         type="button"
-        class="rpg-step-builder__add-root"
-        onClick={() => onStepsChange([...steps, createNodeDraft()])}
+        class="rpg-node-builder__add-root"
+        onClick={() => onNodesChange([...nodes, createNodeDraft()])}
       >
         <IconPlus />
         Node hinzufügen
       </button>
       <button
         type="button"
-        class="rpg-step-builder__add-root"
-        onClick={() => onStepsChange([...steps, { ...createNodeDraft(), isLock: true, optional: false }])}
+        class="rpg-node-builder__add-root"
+        onClick={() => onNodesChange([...nodes, { ...createNodeDraft(), isLock: true, optional: false }])}
       >
         <IconLock />
         Lock-Node hinzufügen
@@ -569,9 +569,9 @@ export function RpgQuestStepsBuilder({ steps, onStepsChange }) {
 export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
   return (
     <div class="rpg-reward-builder">
-      <div class="rpg-step-builder__section-head">
-        <span class="rpg-step-builder__section-title">Belohnungen der Quest</span>
-        <p class="rpg-step-builder__section-intro">
+      <div class="rpg-node-builder__section-head">
+        <span class="rpg-node-builder__section-title">Belohnungen der Quest</span>
+        <p class="rpg-node-builder__section-intro">
           Optional. Pro Zeile kannst du ein Freischalt‑Prozent (0–100) setzen; leer = automatische Verteilung (fest pro Quest-ID
           pseudo‑zufällig gemischt). Fortschritt zählt inkl. Vorgänger- und Folgequests im Baum.
         </p>
@@ -750,7 +750,7 @@ export function RpgQuestRewardsBuilder({ rows, onRowsChange }) {
       )}
       <button
         type="button"
-        class="rpg-step-builder__add-root rpg-reward-builder__add"
+        class="rpg-node-builder__add-root rpg-reward-builder__add"
         onClick={() => onRowsChange([...rows, createEmptyRewardRow()])}
       >
         <IconPlus />

@@ -64,9 +64,9 @@ export async function POST({ request, cookies }) {
     ...payload,
     graph: { ...payload.graph, quests: payload.graph.quests, edges: payload.graph.edges },
     addedIds: Array.isArray(payload.addedIds) ? payload.addedIds.filter((x) => typeof x === 'string') : [],
-    stepDone:
-      payload.stepDone && typeof payload.stepDone === 'object' && !Array.isArray(payload.stepDone)
-        ? payload.stepDone
+    nodeDone:
+      payload.nodeDone && typeof payload.nodeDone === 'object' && !Array.isArray(payload.nodeDone)
+        ? payload.nodeDone
         : {},
     vitals: normalizeRpgVitalsState(payload.vitals),
     location: normalizeRpgLocationState(payload.location),

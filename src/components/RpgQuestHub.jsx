@@ -6,30 +6,31 @@ import {
   isQuestCompleted,
   isQuestUnlocked,
   questProgress,
-  mergeStepDoneBase,
-  buildInitialStepMapFromGraph,
+  mergeNodeDoneBase,
+  buildInitialNodeMapFromGraph,
 } from '../lib/rpg-quest-graph.js';
 import {
   fetchRpgBootstrap,
   migrateLocalRpgToServerIfNeeded,
   deriveRpgUiStateFromPayload,
+  loadSessionCachedPayload,
   saveSessionCachedPayload,
   persistRpgState,
 } from '../lib/rpg-server-sync.js';
 import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
-import RpgQuestStepsView from './RpgQuestStepsView.jsx';
+import RpgQuestNodesView from './RpgQuestNodesView.jsx';
 import './rpg-quest-hub.css';
 
 function firstId(list) {
   return list?.[0]?.id ?? null;
 }
 
-function activeQuests(graph, added, stepDone) {
+function activeNodes(graph, added, nodeDone) {
   const out = [];
   for (const q of graph.quests || []) {
     if (!added.has(q.id)) continue;
-    if (isQuestCompleted(q, stepDone)) continue;
+    if (isQuestCompleted(q, nodeDone)) continue;
     out.push(q);
   }
   return out;
@@ -40,7 +41,7 @@ function RpgTreeDeepLink({ questId }) {
     <a
       class="rpg-hub-tree-deep"
       href={`/rpg/tree?focus=${encodeURIComponent(questId)}`}
-      aria-label="Im Quest-Baum anzeigen"
+      aria-label="Im Node-Baum anzeigen"
     >
       <svg viewBox="0 0 32 24" width="20" height="20" aria-hidden="true">
         <line x1="16" y1="20" x2="8" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -55,8 +56,8 @@ function RpgTreeDeepLink({ questId }) {
 
 function QuestDetail({
   quest,
-  stepDone,
-  onToggleStep,
+  nodeDone,
+  onToggleNode,
   showFocusBadge,
   variant = 'hero',
   graph,
@@ -72,13 +73,13 @@ function QuestDetail({
       {showFocusBadge && <div class="rpg-quest-block__badge">Fokus</div>}
       <TitleTag class="rpg-quest-block__title">{quest.title}</TitleTag>
       <p class="rpg-quest-block__desc">{quest.description}</p>
-      <p class="rpg-section-label">Schritte</p>
-      <RpgQuestStepsView
-        quest={quest}
-        stepDone={stepDone}
-        onToggleStep={onToggleStep}
+      <p class="rpg-section-label">Nodes</p>
+      <RpgQuestNodesView
+        node={quest}
+        nodeDone={nodeDone}
+        onToggleNode={onToggleNode}
         interactive
-        stepsClass="rpg-steps"
+        childrenClass="rpg-nodes"
         rewardsClass="rpg-rewards"
         graph={graph}
         itemCatalog={itemCatalog}
@@ -94,8 +95,8 @@ export default function RpgQuestHub() {
   const [added, setAdded] = useState(() => new Set());
   const [focusedId, setFocusedId] = useState(/** @type {string | null} */ (null));
   const [expanded, setExpanded] = useState(() => new Set());
-  const [stepDone, setStepDone] = useState(() =>
-    mergeStepDoneBase(buildInitialStepMapFromGraph(EMPTY_RPG_GRAPH), {})
+  const [nodeDone, setNodeDone] = useState(() =>
+    mergeNodeDoneBase(buildInitialNodeMapFromGraph(EMPTY_RPG_GRAPH), {})
   );
   const itemCatalogRef = useRef(
     /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
@@ -131,7 +132,7 @@ export default function RpgQuestHub() {
       saveSessionCachedPayload({
         graph,
         addedIds: [...added],
-        stepDone,
+        nodeDone,
         vitals,
         location,
         locationCatalog,
@@ -141,18 +142,33 @@ export default function RpgQuestHub() {
     };
     window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
     return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, stepDone, vitals, location, locationCatalog, locations]);
+  }, [graph, added, nodeDone, vitals, location, locationCatalog, locations]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const cached = loadSessionCachedPayload();
+      if (cached && !cancelled) {
+        const d = deriveRpgUiStateFromPayload(cached);
+        setGraph(d.graph);
+        setAdded(d.added);
+        setNodeDone(d.nodeDone || {});
+        setVitals(d.vitals);
+        setLocation(d.location);
+        setLocationCatalog(d.locationCatalog);
+        setLocations(d.locations);
+        setItemCatalog(d.itemCatalog);
+        itemCatalogRef.current = d.itemCatalog;
+        setBootstrapped(true);
+        setCanPersist(false);
+      }
       let data = await fetchRpgBootstrap();
       if (cancelled) return;
       if (!data) {
-        const d = deriveRpgUiStateFromPayload(null);
+        const d = deriveRpgUiStateFromPayload(cached ?? null);
         setGraph(d.graph);
         setAdded(d.added);
-        setStepDone(d.stepDone);
+        setNodeDone(d.nodeDone || {});
         setVitals(d.vitals);
         setLocation(d.location);
         setLocationCatalog(d.locationCatalog);
@@ -161,6 +177,7 @@ export default function RpgQuestHub() {
         itemCatalogRef.current = d.itemCatalog;
         setBootstrapped(true);
         setCanPersist(true);
+        setDirtySinceBootstrap(false);
         return;
       }
       data = await migrateLocalRpgToServerIfNeeded(data);
@@ -168,7 +185,7 @@ export default function RpgQuestHub() {
       const d = deriveRpgUiStateFromPayload(data);
       setGraph(d.graph);
       setAdded(d.added);
-      setStepDone(d.stepDone);
+      setNodeDone(d.nodeDone || {});
       setVitals(d.vitals);
       setLocation(d.location);
       setLocationCatalog(d.locationCatalog);
@@ -178,7 +195,7 @@ export default function RpgQuestHub() {
       saveSessionCachedPayload({
         graph: d.graph,
         addedIds: [...d.added],
-        stepDone: d.stepDone,
+        nodeDone: d.nodeDone || {},
         vitals: d.vitals,
         location: d.location,
         locationCatalog: d.locationCatalog,
@@ -200,7 +217,7 @@ export default function RpgQuestHub() {
       const payload = {
         graph,
         addedIds: [...added],
-        stepDone,
+        nodeDone,
         vitals,
         location,
         locationCatalog,
@@ -241,7 +258,7 @@ export default function RpgQuestHub() {
     dirtySinceBootstrap,
     graph,
     added,
-    stepDone,
+    nodeDone,
     vitals,
     location,
     locationCatalog,
@@ -250,10 +267,10 @@ export default function RpgQuestHub() {
 
   useEffect(() => {
     setVitals((prev) => {
-      const out = reconcileRpgVitals(graph, stepDone, prev);
+      const out = reconcileRpgVitals(graph, nodeDone, prev);
       return out.changed ? out.state : prev;
     });
-  }, [graph, stepDone]);
+  }, [graph, nodeDone]);
 
   useEffect(() => {
     const m = questMap(graph);
@@ -262,16 +279,16 @@ export default function RpgQuestHub() {
       for (const id of prev) {
         const q = m.get(id);
         if (!q) continue;
-        if (isQuestCompleted(q, stepDone)) continue;
-        if (!isQuestUnlocked(id, graph, stepDone, m)) continue;
+        if (isQuestCompleted(q, nodeDone)) continue;
+        if (!isQuestUnlocked(id, graph, nodeDone, m)) continue;
         next.add(id);
       }
       if (next.size === prev.size && [...next].every((id) => prev.has(id))) return prev;
       return next;
     });
-  }, [graph, stepDone]);
+  }, [graph, nodeDone]);
 
-  const quests = useMemo(() => activeQuests(graph, added, stepDone), [graph, added, stepDone]);
+  const quests = useMemo(() => activeNodes(graph, added, nodeDone), [graph, added, nodeDone]);
 
   useEffect(() => {
     if (focusedId && quests.some((q) => q.id === focusedId)) return;
@@ -287,13 +304,13 @@ export default function RpgQuestHub() {
     [quests, focusedQuest]
   );
 
-  const onToggleStep = useCallback(
-    (questId, stepId) => {
+  const onToggleNode = useCallback(
+    (questId, nodeId) => {
       setDirtySinceBootstrap(true);
-      setStepDone((prev) => {
+      setNodeDone((prev) => {
         const next = {
           ...prev,
-          [questId]: { ...prev[questId], [stepId]: !prev[questId]?.[stepId] },
+          [questId]: { ...prev[questId], [nodeId]: !prev[questId]?.[nodeId] },
         };
         setVitals((old) => reconcileRpgVitals(graph, next, old).state);
         return next;
@@ -320,18 +337,18 @@ export default function RpgQuestHub() {
   return (
     <div class="rpg-hub">
       <aside class="rpg-hub__rail" aria-label="Quests">
-        <div class="rpg-hub__rail-label">Aktive Quests</div>
+        <div class="rpg-hub__rail-label">Aktive Nodes</div>
         <div class="rpg-hub__rail-spacer" />
         <a class="rpg-hub__tree-link" href="/rpg/tree">
-          Quest-Baum
+          Node-Baum
         </a>
       </aside>
 
       <main class="rpg-hub__main">
         {!focusedQuest && (
           <p class="rpg-hub__empty">
-            Keine aktiven Quests. Im{' '}
-            <a href="/rpg/tree">Quest-Baum</a> Quests hinzufügen.
+            Keine aktiven Nodes. Im{' '}
+            <a href="/rpg/tree">Node-Baum</a> Nodes hinzufügen.
           </p>
         )}
 
@@ -340,8 +357,8 @@ export default function RpgQuestHub() {
             <div class="rpg-quest-block-wrap">
               <QuestDetail
                 quest={focusedQuest}
-                stepDone={stepDone}
-                onToggleStep={onToggleStep}
+                nodeDone={nodeDone}
+                onToggleNode={onToggleNode}
                 showFocusBadge
                 variant="hero"
                 graph={graph}
@@ -353,9 +370,9 @@ export default function RpgQuestHub() {
 
             {others.length > 0 && (
               <>
-                <p class="rpg-list-label">Weitere Quests</p>
+                <p class="rpg-list-label">Weitere Nodes</p>
                 {others.map((q) => {
-                  const pct = questProgress(q, stepDone, graph);
+                  const pct = questProgress(q, nodeDone, graph);
                   const open = expanded.has(q.id);
                   const teaser = (q.description || '').replace(/\s+/g, ' ').trim();
 
@@ -387,8 +404,8 @@ export default function RpgQuestHub() {
                           <div class="rpg-quest-block-wrap rpg-quest-block-wrap--strip">
                             <QuestDetail
                               quest={q}
-                              stepDone={stepDone}
-                              onToggleStep={onToggleStep}
+                              nodeDone={nodeDone}
+                              onToggleNode={onToggleNode}
                               showFocusBadge={false}
                               variant="embedded"
                               graph={graph}

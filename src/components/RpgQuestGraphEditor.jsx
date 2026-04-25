@@ -4,16 +4,16 @@ import {
   removeQuestFromGraph,
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
-import { getQuestRewardRows, normalizeQuestRewardRows } from '../lib/rpg-quest-steps.js';
+import { getQuestRewardRows, normalizeQuestRewardRows } from '../lib/rpg-quest-nodes.js';
 import {
-  questStepsToDrafts,
-  draftStepsToQuestNodes,
-  aiLabelsToDraftSteps,
-  aiQuestNodesToDraftSteps,
+  questNodesToDrafts,
+  draftNodesToQuestNodes,
+  aiLabelsToDraftNodes,
+  aiQuestNodesToDraftNodes,
   questRewardRowsToDraftRows,
   draftRewardRowsToStoredQuestRewards,
-  isDraftStepMeaningful,
-  ensureStepDraftFields,
+  isDraftNodeMeaningful,
+  ensureNodeDraftFields,
   ensureRewardRowFields,
   collectQuestmakerItemsFromDrafts,
   hydrateItemFieldsFromCatalog,
@@ -27,12 +27,25 @@ import {
   removeManualQuestDraft,
   loadManualQuestDrafts,
 } from '../lib/rpg-quest-manual-drafts.js';
-import { RpgQuestStepsBuilder, RpgQuestRewardsBuilder } from './RpgQuestStepsBuilder.jsx';
-import RpgQuestStepsView from './RpgQuestStepsView.jsx';
+import { RpgQuestNodesBuilder, RpgQuestRewardsBuilder } from './RpgQuestNodesBuilder.jsx';
+import RpgQuestNodesView from './RpgQuestNodesView.jsx';
 import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 
 export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 const RPG_QUESTMAKER_ENABLED = false;
+
+/**
+ * @param {string} baseId
+ * @param {Set<string>} existingIds
+ */
+function makeUniqueQuestId(baseId, existingIds) {
+  const base = String(baseId || '').trim();
+  if (!base) return '';
+  if (!existingIds.has(base)) return base;
+  let n = 2;
+  while (existingIds.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
 
 /**
  * @param {{
@@ -65,8 +78,8 @@ export default function RpgQuestGraphEditor({
   const [id, setId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  /** @type {import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[]} */
-  const [stepDrafts, setStepDrafts] = useState([]);
+  /** @type {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[]} */
+  const [nodeDrafts, setNodeDrafts] = useState([]);
   /** @type {import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[]} */
   const [rewardRows, setRewardRows] = useState([]);
   const [orderInLayer, setOrderInLayer] = useState(0);
@@ -77,7 +90,7 @@ export default function RpgQuestGraphEditor({
   const [qmPhase, setQmPhase] = useState('prompt');
   const editQmBaselineRef = useRef(
     /** @type {{
-     *   stepDrafts: import('../lib/rpg-quest-editor-draft.js').QuestStepDraft[];
+     *   nodeDrafts: import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[];
      *   title: string;
      *   description: string;
      *   rewardRows: import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[];
@@ -137,7 +150,7 @@ export default function RpgQuestGraphEditor({
     const byCode = {
       clarify_limit_reached:
         'Zu viele Rückfragen hintereinander. Bitte ergänze deinen Prompt mit festen Fakten (Zeit, Budget, vorhandene Ressourcen).',
-      quality_placeholder_steps:
+      quality_placeholder_nodes:
         'Die KI hat zu generische Schritte erzeugt. Bitte gib konkrete Teilaufgaben und erwartete Ergebnisse an.',
       quality_too_flat:
         'Die Struktur ist für das Vorhaben zu flach. Bitte nenne die Hauptblöcke (z. B. Beschaffung, Setup, Implementierung, Test).',
@@ -153,7 +166,7 @@ export default function RpgQuestGraphEditor({
         'Die KI konnte die Item-Treffer nicht sauber auflösen. Bitte erneut generieren oder Prompt präzisieren.',
       invalid_package_payload:
         'Das KI-Paket war unvollständig. Bitte den Unterabschnitt enger und konkreter beschreiben.',
-      package_placeholder_steps:
+      package_placeholder_nodes:
         'Das KI-Paket enthält Platzhalter-Nodes. Bitte konkrete Leafs und Branches angeben.',
     };
     const mapped = code && byCode[code] ? byCode[code] : msg;
@@ -187,10 +200,10 @@ export default function RpgQuestGraphEditor({
       setId(q.id);
       setTitle(q.title || '');
       setDescription(q.description || '');
-      const drafts = questStepsToDrafts(q.children || []);
+      const drafts = questNodesToDrafts(q.children || []);
       const rrows = questRewardRowsToDraftRows(getQuestRewardRows(q));
       hydrateItemFieldsFromCatalog(drafts, rrows, itemCatalogRef.current);
-      setStepDrafts(drafts);
+      setNodeDrafts(drafts);
       setRewardRows(rrows);
       setOrderInLayer(typeof q.orderInLayer === 'number' ? q.orderInLayer : 0);
       const preds = new Set();
@@ -199,7 +212,7 @@ export default function RpgQuestGraphEditor({
       }
       setPrereqIds(preds);
       editQmBaselineRef.current = {
-        stepDrafts: drafts,
+        nodeDrafts: drafts,
         title: q.title || '',
         description: q.description || '',
         rewardRows: rrows.map((r) => ({ ...r })),
@@ -215,7 +228,7 @@ export default function RpgQuestGraphEditor({
       setId('');
       setTitle('');
       setDescription('');
-      setStepDrafts([]);
+      setNodeDrafts([]);
       setRewardRows([]);
       setOrderInLayer(0);
       setPrereqIds(new Set());
@@ -246,7 +259,7 @@ export default function RpgQuestGraphEditor({
     if (prereqIds.size > 0) return true;
     const o = Number(orderInLayer);
     if (Number.isFinite(o) && o !== 0) return true;
-    if (stepDrafts.some((s) => isDraftStepMeaningful(s))) return true;
+    if (nodeDrafts.some((s) => isDraftNodeMeaningful(s))) return true;
     if (
       rewardRows.some((r) =>
         r.kind === 'item'
@@ -274,7 +287,7 @@ export default function RpgQuestGraphEditor({
         id,
         title,
         description,
-        stepDrafts: JSON.parse(JSON.stringify(stepDrafts)),
+        nodeDrafts: JSON.parse(JSON.stringify(nodeDrafts)),
         rewardRows: JSON.parse(JSON.stringify(rewardRows)),
         orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
         prereqIds: [...prereqIds],
@@ -293,9 +306,9 @@ export default function RpgQuestGraphEditor({
     setId(typeof p.id === 'string' ? p.id : '');
     setTitle(typeof p.title === 'string' ? p.title : '');
     setDescription(typeof p.description === 'string' ? p.description : '');
-    setStepDrafts(
-      Array.isArray(p.stepDrafts)
-        ? JSON.parse(JSON.stringify(p.stepDrafts)).map((d) => ensureStepDraftFields(d))
+    setNodeDrafts(
+      Array.isArray(p.nodeDrafts)
+        ? JSON.parse(JSON.stringify(p.nodeDrafts)).map((d) => ensureNodeDraftFields(d))
         : []
     );
     setRewardRows(
@@ -319,11 +332,12 @@ export default function RpgQuestGraphEditor({
 
   if (!open) return null;
 
-  const normalizedCreateId = mode === 'create' ? normalizeQuestId(id) : '';
-  const duplicateQuestId =
-    mode === 'create' &&
-    normalizedCreateId.length > 0 &&
-    graph.quests.some((q) => q.id === normalizedCreateId);
+  const normalizedCreateId = useMemo(() => {
+    if (mode !== 'create') return '';
+    const baseId = normalizeQuestId(title) || normalizeQuestId(id);
+    const existingIds = new Set(graph.quests.map((q) => q.id));
+    return makeUniqueQuestId(baseId, existingIds);
+  }, [mode, title, id, graph.quests]);
 
   const otherQuests = graph.quests.filter((q) => (mode === 'edit' ? q.id !== questId : true));
 
@@ -332,7 +346,7 @@ export default function RpgQuestGraphEditor({
       mode === 'edit' && questId
         ? questId
         : normalizedCreateId || 'preview';
-    const children = draftStepsToQuestNodes(stepDrafts, nid);
+    const children = draftNodesToQuestNodes(nodeDrafts, nid);
     return {
       id: nid,
       title: title.trim() || nid,
@@ -340,7 +354,7 @@ export default function RpgQuestGraphEditor({
       children,
       questRewards: draftRewardRowsToStoredQuestRewards(rewardRows),
     };
-  }, [mode, questId, normalizedCreateId, title, description, stepDrafts, rewardRows]);
+  }, [mode, questId, normalizedCreateId, title, description, nodeDrafts, rewardRows]);
 
   const togglePrereq = (pid) => {
     setPrereqIds((prev) => {
@@ -353,7 +367,7 @@ export default function RpgQuestGraphEditor({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const nid = mode === 'create' ? normalizeQuestId(id) : questId;
+    const nid = mode === 'create' ? normalizedCreateId : questId;
     if (
       mode === 'create' &&
       onlyQuestmaker &&
@@ -395,13 +409,10 @@ export default function RpgQuestGraphEditor({
       return;
     }
     if (!nid) {
-      window.alert('Bitte eine gültige ID angeben (Buchstaben, Zahlen, Bindestrich).');
+      window.alert('Bitte zuerst einen Titel eingeben (daraus wird die ID automatisch erzeugt).');
       return;
     }
-    if (mode === 'create' && graph.quests.some((q) => q.id === nid)) {
-      return;
-    }
-    const children = draftStepsToQuestNodes(stepDrafts, nid);
+    const children = draftNodesToQuestNodes(nodeDrafts, nid);
     if (children.length === 0) {
       window.alert('Bitte mindestens einen Leaf- oder Branch-Node anlegen und speichern.');
       return;
@@ -430,7 +441,7 @@ export default function RpgQuestGraphEditor({
       const n = normalizeQuestmakerCatalogPayloadItem(x);
       if (n) mergedMap.set(n.id, n);
     }
-    for (const x of collectQuestmakerItemsFromDrafts(stepDrafts, rewardRows, catalogIds)) {
+    for (const x of collectQuestmakerItemsFromDrafts(nodeDrafts, rewardRows, catalogIds)) {
       mergedMap.set(x.id, x);
     }
     const needed = collectAllItemIdsFromGraph(next);
@@ -467,12 +478,12 @@ export default function RpgQuestGraphEditor({
     setTitle(typeof data.title === 'string' ? data.title : '');
     setDescription(typeof data.description === 'string' ? data.description : '');
     if (Array.isArray(data.children) && data.children.length > 0) {
-      setStepDrafts(aiQuestNodesToDraftSteps(/** @type {any} */ (data.children)));
-    } else if (Array.isArray(data.steps) && data.steps.length > 0) {
-      setStepDrafts(aiQuestNodesToDraftSteps(/** @type {any} */ (data.steps)));
+      setNodeDrafts(aiQuestNodesToDraftNodes(/** @type {any} */ (data.children)));
+    } else if (Array.isArray(data.nodes) && data.nodes.length > 0) {
+      setNodeDrafts(aiQuestNodesToDraftNodes(/** @type {any} */ (data.nodes)));
     } else {
-      const labels = Array.isArray(data.stepLabels) ? data.stepLabels : [];
-      setStepDrafts(labels.length ? aiLabelsToDraftSteps(labels.map((x) => String(x))) : []);
+      const labels = Array.isArray(data.nodeLabels) ? data.nodeLabels : [];
+      setNodeDrafts(labels.length ? aiLabelsToDraftNodes(labels.map((x) => String(x))) : []);
     }
     const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
     const qRows =
@@ -595,13 +606,13 @@ export default function RpgQuestGraphEditor({
     setAiPrompt(seed);
     if (mode === 'edit' && editQmBaselineRef.current) {
       const b = editQmBaselineRef.current;
-      setStepDrafts(b.stepDrafts);
+      setNodeDrafts(b.nodeDrafts);
       setTitle(b.title);
       setDescription(b.description);
       setRewardRows(b.rewardRows);
       setOrderInLayer(b.orderInLayer);
     } else {
-      setStepDrafts([]);
+      setNodeDrafts([]);
       setTitle('');
       setDescription('');
       setId('');
@@ -821,43 +832,24 @@ export default function RpgQuestGraphEditor({
               <h3 class="rpg-graph-editor__qm-title">{title.trim() || '(ohne Titel)'}</h3>
               {description.trim() ? <p class="rpg-graph-editor__qm-desc">{description}</p> : null}
               <p class="rpg-graph-editor__label">Nodes & Rewards</p>
-              <RpgQuestStepsView
-                quest={previewQuest}
-                stepDone={{}}
-                onToggleStep={noopToggle}
+              <RpgQuestNodesView
+                node={previewQuest}
+                nodeDone={{}}
+                onToggleNode={noopToggle}
                 interactive={false}
-                stepsClass="rpg-graph-editor__qm-steps"
+                childrenClass="rpg-graph-editor__qm-nodes"
                 rewardsClass="rpg-graph-editor__qm-rewards"
                 graph={null}
                 itemCatalog={itemCatalog}
               />
             </div>
 
-            {mode === 'create' ? (
-              <label class="rpg-graph-editor__field">
-                <span class="rpg-graph-editor__label">ID (Kurzname)</span>
-                <input
-                  class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
-                  value={id}
-                  onInput={(ev) => setId(ev.currentTarget.value)}
-                  required
-                  placeholder="z. B. meine-nebenquest"
-                  aria-invalid={duplicateQuestId ? 'true' : undefined}
-                />
-                {duplicateQuestId && (
-                  <p class="rpg-graph-editor__warning" role="alert">
-                    Diese ID ist bereits vergeben.
-                  </p>
-                )}
-              </label>
-            ) : null}
-
             <label class="rpg-graph-editor__field">
               <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
               <input
                 class="rpg-graph-editor__input"
                 type="number"
-                step={1}
+                node={1}
                 value={orderInLayer}
                 onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
               />
@@ -897,7 +889,7 @@ export default function RpgQuestGraphEditor({
               <button
                 type="submit"
                 class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
-                disabled={duplicateQuestId || aiLoading}
+                disabled={aiLoading}
               >
                 Speichern
               </button>
@@ -937,38 +929,28 @@ export default function RpgQuestGraphEditor({
               </>
             ) : null}
             <label class="rpg-graph-editor__field">
-              <span class="rpg-graph-editor__label">ID (Kurzname)</span>
-              <input
-                class={`rpg-graph-editor__input${duplicateQuestId ? ' rpg-graph-editor__input--invalid' : ''}`}
-                value={id}
-                onInput={(ev) => setId(ev.currentTarget.value)}
-                disabled={mode === 'edit'}
-                required={mode === 'create'}
-                placeholder="z. B. meine-nebenquest"
-                aria-invalid={duplicateQuestId ? 'true' : undefined}
-                aria-describedby={duplicateQuestId ? 'rpg-graph-editor-id-dup-warn' : undefined}
-              />
-              {duplicateQuestId && (
-                <p id="rpg-graph-editor-id-dup-warn" class="rpg-graph-editor__warning" role="alert">
-                  Diese ID ist bereits vergeben (eindeutig pro Quest). Nach Normalisierung:{' '}
-                  <code class="rpg-graph-editor__code">{normalizedCreateId}</code>
-                </p>
-              )}
-            </label>
-            <label class="rpg-graph-editor__field">
               <span class="rpg-graph-editor__label">Titel</span>
               <input
                 class="rpg-graph-editor__input"
                 value={title}
                 onInput={(ev) => setTitle(ev.currentTarget.value)}
+                required={mode === 'create'}
               />
             </label>
+            {mode === 'create' ? (
+              <div class="rpg-graph-editor__field">
+                <span class="rpg-graph-editor__label">ID (automatisch, eindeutig)</span>
+                <code class="rpg-graph-editor__code">
+                  {normalizedCreateId || '(wird nach Eingabe des Titels erzeugt)'}
+                </code>
+              </div>
+            ) : null}
             <label class="rpg-graph-editor__field">
               <span class="rpg-graph-editor__label">Beschreibung</span>
               <textarea class="rpg-graph-editor__textarea" rows={3} value={description} onInput={(ev) => setDescription(ev.currentTarget.value)} />
             </label>
 
-            <RpgQuestStepsBuilder steps={stepDrafts} onStepsChange={setStepDrafts} />
+            <RpgQuestNodesBuilder nodes={nodeDrafts} onNodesChange={setNodeDrafts} />
             <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
 
             <label class="rpg-graph-editor__field">
@@ -976,7 +958,7 @@ export default function RpgQuestGraphEditor({
               <input
                 class="rpg-graph-editor__input"
                 type="number"
-                step={1}
+                node={1}
                 value={orderInLayer}
                 onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
               />
@@ -1012,7 +994,7 @@ export default function RpgQuestGraphEditor({
               <button
                 type="submit"
                 class="rpg-graph-editor__btn rpg-graph-editor__btn--primary"
-                disabled={duplicateQuestId || (mode === 'create' && aiLoading)}
+                disabled={mode === 'create' && aiLoading}
               >
                 Speichern
               </button>

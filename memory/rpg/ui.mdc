@@ -23,7 +23,7 @@
   - Quelle fertig -> weiss
   - Quelle aktiv mit Fortschritt -> anteiliges Leuchten
   - sonst dunkel
-- Detail-Panel unten fix bei Node-Auswahl: Titel, Beschreibung, eingeklappte Steps, Rewards, Add/Weg-Button mit Lock-Regeln.
+- Detail-Panel unten fix bei Node-Auswahl: zeigt nur quest-spezifische Meta-Infos (Titel/Beschreibung/Rewards, Add/Weg, Edit) und keine eingebettete Node-Checkbox-Liste mehr; abhakbare Schritte bleiben im Graph sichtbar.
 - Location-Status ist interaktiv als auf-/zuklappbarer Strip (Kompass-Button + Selects), nicht nur reine Textanzeige.
 - Location-Modal:
   - Modus Suchen: zentrale Suchleiste (`GET /api/rpg/locations?q=...`)
@@ -36,9 +36,9 @@
 - Fokusmodell ohne Kategorien: eine Fokus-Quest als Hero-Block; weitere aktive Quests als ein-/ausklappbare Strips.
 - Sidebar-Link "Quest-Baum" -> `/rpg/tree`.
 - Pro Quest Link mit Mini-Graph-SVG -> `/rpg/tree?focus=<id>`.
-- Steps beruecksichtigen Location-State:
+- Nodes beruecksichtigen Location-State:
   - Quest-Lock ueber `quest.cityLocation`
-  - Step-Hinweis ueber `step.placeLocation` (nur Hub, nicht Tree-Panel)
+  - Node-Hinweis ueber `node.placeLocation` (nur Hub, nicht Tree-Panel)
 - Globaler Location-Katalog in `rpg_locations`; user-relevante IDs in `payload.locationCatalog`.
 
 ## Einstellungen (UI)
@@ -52,14 +52,14 @@
 |------|-------|
 | Hub | `src/components/RpgQuestHub.jsx`, `src/components/rpg-quest-hub.css` |
 | Baum + Editor-Modal | `src/components/RpgQuestTree.jsx`, `src/components/RpgQuestGraphEditor.jsx`, `src/components/rpg-quest-tree.css` |
-| Steps-Ansicht | `src/components/RpgQuestStepsView.jsx` |
+| Nodes-Ansicht | `src/components/RpgQuestNodesView.jsx` |
 | Location | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
 | Vitals | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
 
 ## Siehe auch
 
-- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/nodes-rewards.mdc`
 - `memory/rpg/ai.mdc`
 - `memory/rpg/theme.mdc`
 - `memory/rpg/data-persistence.mdc`

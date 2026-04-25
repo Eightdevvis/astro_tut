@@ -5,9 +5,9 @@ import { getDb } from './db.js';
  * bleiben beim PUT erhalten, solange der Client sie nicht überschreibt (Merge mit vorherigem Stand).
  *
  * @typedef {{
- *   graph: { quests: unknown[]; edges: unknown[] } & Record<string, unknown>;
+ *   graph: { nodes?: unknown[]; quests?: unknown[]; edges: unknown[] } & Record<string, unknown>;
  *   addedIds: string[];
- *   stepDone: Record<string, Record<string, boolean>>;
+ *   nodeDone?: Record<string, Record<string, boolean>>;
  *   schemaVersion?: number;
  *   location?: { city: string; place: string };
  *   locationCatalog?: { cityIds: string[]; placeIds: string[] };

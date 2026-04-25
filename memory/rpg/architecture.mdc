@@ -14,18 +14,20 @@
 
 ## Nicht verhandelbare Invarianten
 
+- Modellregel: **Node-only** — jede Einheit ist ein Node; Parent/Child sind ebenfalls Nodes; keine fachliche Trennung Quest-vs-Node.
 - Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
 - Quest-Differenzierung erfolgt nicht mehr ueber `main`/`side`, sondern nur ueber Struktur (`children`) + Kanten.
+- Naming-Regel: `node*` ist kanonisch (`nodeDone`, `graph.nodes`); verbleibende `node*`/`quest*`-Begriffe gelten als Legacy-Alias bis zur Bereinigung.
 - `addedIds` repraesentiert Hub-Auswahl; Zustand "added aber gelockt" wird bereinigt.
 - `schemaVersion` steuert Strukturkompatibilitaet und Migrationen.
-- Steps/Rewards folgen eigener Spezifikation (rekursiv, optional, dependsOn, timeDueAt).
+- Nodes/Rewards folgen eigener Spezifikation (rekursiv, optional, dependsOn, timeDueAt).
 - Rollen-/Rechtegrenzen sind Teil der Systemlogik (z. B. `rpg_access` fuer RPG-Operationen, `super_access` fuer bestimmte Katalog-Schreiboperationen wie Location-Create).
 
 ## Fachliche Verantwortungsbereiche
 
 - **Datenmodell/Persistenz:** `memory/rpg/data-persistence.mdc` + `memory/database.mdc`
 - **Questmaker+/KI:** `memory/rpg/ai.mdc`
-- **Steps/Rewards:** `memory/rpg/steps-rewards.mdc`
+- **Nodes/Rewards:** `memory/rpg/nodes-rewards.mdc`
 - **UI (Hub/Tree/Editor/Location):** `memory/rpg/ui.mdc`
 - **Theme:** `memory/rpg/theme.mdc`
 - **Roadmap:** `memory/rpg/roadmap.mdc`
@@ -35,7 +37,7 @@
 - `src/pages/api/rpg/quests.js`
 - `src/pages/api/rpg/quests-generate.js`
 - `src/lib/rpg-quest-graph.js`
-- `src/lib/rpg-quest-steps.js`
+- `src/lib/rpg-quest-nodes.js`
 - `src/components/RpgQuestHub.jsx`
 - `src/components/RpgQuestTree.jsx`
 - `src/components/RpgQuestGraphEditor.jsx`

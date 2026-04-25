@@ -19,8 +19,10 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
 | RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |
+| RPG Qualitätskontrolle (Berichte, Stand, Trends) | [`rpg/quality-control.mdc`](rpg/quality-control.mdc) |
 | Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
 | Site — Theme-System (global, Light/Dark, Storage, Init) | [`site-theme-system.mdc`](site-theme-system.mdc) |
+| Testbarkeit — lokale Risiko-/Flaky-Notizen (**lokal:** `testability-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
 | Tester-Modus (Tester-Freigaben, Screenshot-Bugs, Feature-Toggles) | [`tester-features.mdc`](tester-features.mdc) |
 | Topic-Feeds (RSS, Allowlist, KI-Plan/Summary, Home + Settings) | [`custom-topic-feeds.mdc`](custom-topic-feeds.mdc) |
 

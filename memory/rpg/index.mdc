@@ -15,8 +15,10 @@ Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachb
 |--------|-------|---------------------------|
 | Gesamtbild & Invarianten | Was das RPG-System ist und welche Regeln immer gelten | `memory/rpg/architecture.mdc` |
 | KI / Questmaker+ | Prompt-/API-Flow, Clarify, Quality Gates, Item-Retrieval | `memory/rpg/ai.mdc` |
-| Steps & Rewards | Node-Baum (`children`), DependsOn, Optional, TimeDueAt, Reward-Typen | `memory/rpg/steps-rewards.mdc` |
+| Nodes & Rewards | Node-Baum (`children`), DependsOn, Optional, TimeDueAt, Reward-Typen | `memory/rpg/nodes-rewards.mdc` |
 | Datenmodell & Persistenz | Payload-Shape, Schema-Version, DB-/Client-Persistenz | `memory/rpg/data-persistence.mdc` |
+| Testbarkeit | Invarianten, Regression-Tests, Test-Einstieg | `memory/rpg/testability.mdc` |
+| Qualitätskontrolle | Laufende Verbesserungsreports + Systemstand | `memory/rpg/quality-control.mdc` |
 | UI (Hub/Baum/Editor/Location) | Sichtbares Verhalten und Interaktionslogik | `memory/rpg/ui.mdc` |
 | Theme | RPG-Themes auf Basis globaler Tokens | `memory/rpg/theme.mdc` |
 | Roadmap | Kandidaten fuer kommende Features | `memory/rpg/roadmap.mdc` |
@@ -33,8 +35,10 @@ Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachb
 - `memory/rpg/by-task.mdc`
 - `memory/rpg/source-map.mdc`
 - `memory/rpg/ai.mdc`
-- `memory/rpg/steps-rewards.mdc`
+- `memory/rpg/nodes-rewards.mdc`
 - `memory/rpg/data-persistence.mdc`
+- `memory/rpg/testability.mdc`
+- `memory/rpg/quality-control.mdc`
 - `memory/rpg/ui.mdc`
 - `memory/rpg/theme.mdc`
 - `memory/rpg/roadmap.mdc`

@@ -9,7 +9,7 @@ const STORAGE_KEY = 'rpg-quest-manual-drafts-v1';
  *   id: string;
  *   title: string;
  *   description: string;
- *   stepDrafts: import('./rpg-quest-editor-draft.js').QuestStepDraft[];
+ *   nodeDrafts: import('./rpg-quest-editor-draft.js').QuestNodeDraft[];
  *   rewardRows: import('./rpg-quest-editor-draft.js').QuestRewardDraftRow[];
  *   orderInLayer: number;
  *   prereqIds: string[];

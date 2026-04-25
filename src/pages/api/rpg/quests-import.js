@@ -9,6 +9,7 @@ import {
 } from '../../../lib/rpg-payload-schema.js';
 import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
 import { normalizeRpgLocationCatalog, normalizeRpgLocationState } from '../../../lib/rpg-location.js';
+import { graphNodes } from '../../../lib/rpg-quests-data.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -28,7 +29,7 @@ function forbidden() {
  *   "payload": {
  *     "graph": { "quests": [...], "edges": [...] },
  *     "addedIds": [...],
- *     "stepDone": { ... },
+ *     "nodeDone": { ... },
  *     ...weitere optionale Felder
  *   }
  * }
@@ -68,8 +69,9 @@ export async function POST({ request, cookies }) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (!incoming.stepDone || typeof incoming.stepDone !== 'object' || Array.isArray(incoming.stepDone)) {
-    return new Response(JSON.stringify({ error: 'payload.stepDone fehlt oder ist ungültig' }), {
+  const nodeDoneRaw = incoming.nodeDone;
+  if (!nodeDoneRaw || typeof nodeDoneRaw !== 'object' || Array.isArray(nodeDoneRaw)) {
+    return new Response(JSON.stringify({ error: 'payload.nodeDone fehlt oder ist ungültig' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -83,7 +85,7 @@ export async function POST({ request, cookies }) {
       edges: incoming.graph.edges,
     },
     addedIds: incoming.addedIds.filter((x) => typeof x === 'string'),
-    stepDone: incoming.stepDone,
+    nodeDone: nodeDoneRaw,
     vitals: normalizeRpgVitalsState(incoming.vitals),
     location: normalizeRpgLocationState(incoming.location),
     locationCatalog: normalizeRpgLocationCatalog(incoming.locationCatalog),
@@ -100,7 +102,7 @@ export async function POST({ request, cookies }) {
     JSON.stringify({
       ok: true,
       username: targetUsername,
-      questCount: Array.isArray(payload.graph.quests) ? payload.graph.quests.length : 0,
+      questCount: graphNodes(payload.graph).length,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }
   );

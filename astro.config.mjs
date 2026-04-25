@@ -16,5 +16,25 @@ export default defineConfig({
   site,
   output: 'server',
   adapter: vercel(),
-  integrations: [preact()]
+  integrations: [preact()],
+  vite: {
+    build: {
+      chunkSizeWarningLimit: 550,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('/three/examples/')) return 'vendor-three-extras';
+            if (id.includes('/three/src/renderers/')) return 'vendor-three-renderers';
+            if (id.includes('/three/src/math/') || id.includes('/three/src/core/')) {
+              return 'vendor-three-core';
+            }
+            if (id.includes('/three/')) return 'vendor-three-misc';
+            if (id.includes('/html2canvas/')) return 'vendor-html2canvas';
+            if (id.includes('/katex/')) return 'vendor-katex';
+          },
+        },
+      },
+    },
+  },
 });

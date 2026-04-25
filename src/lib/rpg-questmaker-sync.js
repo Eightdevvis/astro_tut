@@ -4,10 +4,11 @@
 
 import { isRpgItemCategoryId } from './rpg-item-categories.js';
 import {
-  walkStepsPreOrder,
+  walkNodesPreOrder,
   normalizeRewardEntry,
   getQuestRewardEntries,
-} from './rpg-quest-steps.js';
+} from './rpg-quest-nodes.js';
+import { graphNodes } from './rpg-quests-data.js';
 
 /**
  * Vollständige Item-Zeile für DB / PUT (keine Platzhalter).
@@ -42,8 +43,8 @@ export function collectAllItemIdsFromGraph(graph) {
 export function collectItemRewardRefsFromGraph(graph) {
   /** @type {Map<string, { displayName?: string }>} */
   const refs = new Map();
-  for (const q of graph.quests || []) {
-    walkStepsPreOrder(q.children || [], (s) => {
+  for (const q of graphNodes(graph)) {
+    walkNodesPreOrder(q.children || [], (s) => {
       const e = normalizeRewardEntry(s.reward);
       if (e?.type === 'item') {
         const prev = refs.get(e.itemId) || {};
@@ -65,14 +66,14 @@ export function collectItemRewardRefsFromGraph(graph) {
 }
 
 /**
- * Item-IDs aus einer Quest (Schritte + questRewards), z. B. für KI-Validierung.
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[] | undefined} steps
- * @param {import('./rpg-quest-steps.js').RpgQuestRewardEntry[] | undefined} questRewardEntries
+ * Item-IDs aus einer Quest (Nodes + questRewards), z. B. für KI-Validierung.
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
+ * @param {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[] | undefined} questRewardEntries
  * @returns {Set<string>}
  */
-export function collectItemIdsFromStepsAndQuestRewards(steps, questRewardEntries) {
+export function collectItemIdsFromNodesAndQuestRewards(nodes, questRewardEntries) {
   const ids = new Set();
-  walkStepsPreOrder(steps || [], (s) => {
+  walkNodesPreOrder(nodes || [], (s) => {
     const e = normalizeRewardEntry(s.reward);
     if (e?.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
   });

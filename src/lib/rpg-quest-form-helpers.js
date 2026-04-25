@@ -1,12 +1,12 @@
 import {
-  normalizeQuestStepsTree,
-  flatLegacyStepsToNormalized,
+  normalizeQuestNodesTree,
+  flatLegacyNodesToNormalized,
   distributeQuestRewardPercents,
   normalizeQuestRewards,
-} from './rpg-quest-steps.js';
+} from './rpg-quest-nodes.js';
 
 /** @param {string} text */
-export function linesToSteps(text) {
+export function linesToNodes(text) {
   return text
     .split('\n')
     .map((l) => l.trim())
@@ -33,7 +33,7 @@ export function normalizeQuestId(raw) {
  * @param {string[]} labels
  * @returns {{ id: string; label: string }[]}
  */
-export function labelsToSteps(labels) {
+export function labelsToNodes(labels) {
   /** @type {{ id: string; label: string }[]} */
   const out = [];
   for (const raw of labels) {
@@ -45,11 +45,11 @@ export function labelsToSteps(labels) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[] | undefined} steps
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
  */
-export function isSimpleFlatStepsForEditor(steps) {
-  if (!Array.isArray(steps) || steps.length === 0) return true;
-  return steps.every(
+export function isSimpleFlatNodesForEditor(nodes) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return true;
+  return nodes.every(
     (s) =>
       !s?.children?.length &&
       !s?.optional &&
@@ -60,32 +60,32 @@ export function isSimpleFlatStepsForEditor(steps) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode[]} nodes
  */
-export function serializeStepsToEditorText(steps) {
-  if (!Array.isArray(steps) || steps.length === 0) return '';
-  if (isSimpleFlatStepsForEditor(steps)) {
-    return steps.map((s) => s.label).join('\n');
+export function serializeNodesToEditorText(nodes) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return '';
+  if (isSimpleFlatNodesForEditor(nodes)) {
+    return nodes.map((s) => s.label).join('\n');
   }
-  return JSON.stringify(steps, null, 2);
+  return JSON.stringify(nodes, null, 2);
 }
 
 /**
  * @param {string} text
- * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode[]}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
-export function parseStepsFromEditorText(text) {
+export function parseNodesFromEditorText(text) {
   const t = text.trim();
   if (t.startsWith('[')) {
     const parsed = JSON.parse(t);
     if (!Array.isArray(parsed)) {
       throw new Error('Schritte: JSON muss ein Array sein.');
     }
-    return normalizeQuestStepsTree(parsed);
+    return normalizeQuestNodesTree(parsed);
   }
-  const flat = linesToSteps(text);
+  const flat = linesToNodes(text);
   if (flat.length === 0) return [];
-  return flatLegacyStepsToNormalized(flat);
+  return flatLegacyNodesToNormalized(flat);
 }
 
 /**
@@ -104,7 +104,7 @@ export function serializeQuestRewardsToEditorText(quest) {
 
 /**
  * @param {string} text
- * @returns {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[]}
  */
 export function parseQuestRewardsFromEditorText(text) {
   const t = text.trim();

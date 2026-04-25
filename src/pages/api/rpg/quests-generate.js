@@ -5,14 +5,14 @@ import {
   listQuestmakerCatalogRows,
   searchQuestmakerCatalogCandidates,
 } from '../../../lib/rpg-questmaker-catalog-db.js';
-import { normalizeQuestId, labelsToSteps } from '../../../lib/rpg-quest-form-helpers.js';
+import { normalizeQuestId, labelsToNodes } from '../../../lib/rpg-quest-form-helpers.js';
 import {
-  normalizeQuestStepsTree,
+  normalizeQuestNodesTree,
   normalizeQuestRewardRows,
   questRewardRowToStored,
-} from '../../../lib/rpg-quest-steps.js';
+} from '../../../lib/rpg-quest-nodes.js';
 import {
-  collectItemIdsFromStepsAndQuestRewards,
+  collectItemIdsFromNodesAndQuestRewards,
   normalizeQuestmakerCatalogPayloadItem,
 } from '../../../lib/rpg-questmaker-sync.js';
 import { AI_FEATURE_RPG, recordAiUsage } from '../../../lib/ai-usage-db.js';
@@ -86,7 +86,7 @@ Nutze "children" und "dependsOn", wenn die Aufgabe nicht nur eine flache Liste i
 
 Qualitätsregeln (verbindlich):
 - Keine Platzhalter oder reine Sammelphrasen ("etc", "do stuff", "später", ...).
-- Jeder Leaf-Step beschreibt eine nachvollziehbare reale Aktion (was wird erzeugt, geprüft oder eingereicht).
+- Jeder Leaf-Node beschreibt eine nachvollziehbare reale Aktion (was wird erzeugt, geprüft oder eingereicht).
 - Bei Sammelpunkten nutze children mit überprüfbaren Outcomes.
 - Bei fehlenden Kernfakten zuerst "clarify", nicht raten.`;
 
@@ -107,7 +107,7 @@ const SYSTEM_PROMPT = `Du hilfst beim Erstellen von Quests für ein persönliche
 
 Priorität:
 1) Wenn dir für sinnvolle, **in der Realität vollständig plausible** Schritte wichtige Fakten fehlen (Ort, Zeitraum, Zielinstitution, …), antworte mit responseType "clarify" und stelle gezielte Rückfragen — nicht raten, nicht halluzinieren.
-2) Wenn genug Kontext da ist oder der Nutzer Rückfragen beantwortet hat, liefere responseType "quest" mit strukturierten steps (Gruppen/Unterschritte/Abhängigkeiten wo sinnvoll). Jeder Schritt muss sich im echten Leben so umsetzen lassen, wie beschrieben.
+2) Wenn genug Kontext da ist oder der Nutzer Rückfragen beantwortet hat, liefere responseType "quest" mit strukturierten nodes (Gruppen/Unterschritte/Abhängigkeiten wo sinnvoll). Jeder Schritt muss sich im echten Leben so umsetzen lassen, wie beschrieben.
 
 **Ton:** Ermunternd. Quest-Titel, Beschreibung und Schritt-Labels dürfen metaphorisch sein, müssen aber handlungsleitend und konkret bleiben. Vermeide RPG-/Spielwelt-Klischees („Held“, „Dungeon“, „NPC“) und reine Verwaltungssprache.`;
 
@@ -152,9 +152,9 @@ function jsonError(code, message, hint, status = 400) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
  */
-function countLeafSteps(steps) {
+function countLeafNodes(nodes) {
   let n = 0;
   const walk = (arr) => {
     for (const s of arr || []) {
@@ -162,14 +162,14 @@ function countLeafSteps(steps) {
       else n += 1;
     }
   };
-  walk(steps);
+  walk(nodes);
   return n;
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
  */
-function hasNestedSubsteps(steps) {
+function hasNestedSubnodes(nodes) {
   const walk = (arr, depth) => {
     for (const s of arr || []) {
       const subs = Array.isArray(s.children) ? s.children : [];
@@ -178,13 +178,13 @@ function hasNestedSubsteps(steps) {
     }
     return false;
   };
-  return walk(steps, 0);
+  return walk(nodes, 0);
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
  */
-function collectLeafLabels(steps) {
+function collectLeafLabels(nodes) {
   /** @type {string[]} */
   const out = [];
   const walk = (arr) => {
@@ -194,23 +194,23 @@ function collectLeafLabels(steps) {
       else out.push(String(s.label || '').trim());
     }
   };
-  walk(steps);
+  walk(nodes);
   return out;
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
  * @param {string} prompt
  */
-function assessQuestStepQuality(steps, prompt) {
-  const leaves = collectLeafLabels(steps);
+function assessQuestNodeQuality(nodes, prompt) {
+  const leaves = collectLeafLabels(nodes);
   const hasPlaceholder = leaves.some((label) => PLACEHOLDER_PATTERNS.some((re) => re.test(label)));
   const noConcreteLeaf = leaves.some((label) => {
     const words = label.split(/\s+/).filter(Boolean);
     if (words.length >= 3) return false;
     return !/\b(antrag|mail|formular|termin|liste|dokument|test|check|abgabe|kauf|call|ticket)\b/i.test(label);
   });
-  const hasShallowShape = countLeafSteps(steps) < 4 && !hasNestedSubsteps(steps);
+  const hasShallowShape = countLeafNodes(nodes) < 4 && !hasNestedSubnodes(nodes);
   const hasOnlyGeneric =
     leaves.length > 0 &&
     leaves.every((label) => {
@@ -275,11 +275,11 @@ function normalizeLookupRequest(raw) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-steps.js').RpgQuestStepNode[]} steps
+ * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
  * @param {ReturnType<typeof normalizeQuestRewardRows>} questRewardRows
  * @param {Map<string, string>} idMap
  */
-function remapItemIdsInQuest(steps, questRewardRows, idMap) {
+function remapItemIdsInQuest(nodes, questRewardRows, idMap) {
   const walk = (arr) => {
     for (const s of arr || []) {
       if (s?.reward && typeof s.reward === 'object' && s.reward.type === 'item' && idMap.has(s.reward.itemId)) {
@@ -288,7 +288,7 @@ function remapItemIdsInQuest(steps, questRewardRows, idMap) {
       if (Array.isArray(s?.children) && s.children.length > 0) walk(s.children);
     }
   };
-  walk(steps);
+  walk(nodes);
   for (const row of questRewardRows) {
     const entry = row?.entry;
     if (entry?.type === 'item' && idMap.has(entry.itemId)) {
@@ -505,7 +505,7 @@ function ensureUniqueQuestId(baseId, existing) {
  * @param {unknown} raw
  * @returns {unknown[]}
  */
-function coerceStepsArray(raw) {
+function coerceNodesArray(raw) {
   if (!Array.isArray(raw)) return [];
   return raw;
 }
@@ -618,10 +618,10 @@ export async function POST({ request, cookies }) {
 
   await logRpgAiUsage(username, model, completion);
 
-  const stepLabels = Array.isArray(parsed.stepLabels) ? parsed.stepLabels : [];
+  const nodeLabels = Array.isArray(parsed.nodeLabels) ? parsed.nodeLabels : [];
   /** @type {unknown[]} */
-  let stepsRaw = coerceStepsArray(Array.isArray(parsed.children) ? parsed.children : parsed.steps);
-  const hasStepPayload = stepsRaw.length > 0 || stepLabels.length > 0;
+  let nodesRaw = coerceNodesArray(Array.isArray(parsed.children) ? parsed.children : parsed.nodes);
+  const hasNodePayload = nodesRaw.length > 0 || nodeLabels.length > 0;
   const questionsFromAi = Array.isArray(parsed.questions)
     ? parsed.questions.map((x) => String(x).trim()).filter(Boolean)
     : [];
@@ -629,7 +629,7 @@ export async function POST({ request, cookies }) {
     ? parsed.itemLookupRequests.map((x) => normalizeLookupRequest(x)).filter(Boolean).slice(0, MAX_LOOKUP_REQUESTS)
     : [];
 
-  if (!hasStepPayload) {
+  if (!hasNodePayload) {
     if (questionsFromAi.length > 0) {
       if (clarifyRounds >= MAX_CLARIFY_ROUNDS) {
         return jsonError(
@@ -684,24 +684,24 @@ export async function POST({ request, cookies }) {
       const q = rawQuests[i] && typeof rawQuests[i] === 'object' ? rawQuests[i] : {};
       const qTitle = typeof q.title === 'string' ? q.title.trim() : '';
       const qDesc = typeof q.description === 'string' ? q.description.trim() : '';
-      const qStepLabels = Array.isArray(q.stepLabels) ? q.stepLabels : [];
-      let qStepsRaw = coerceStepsArray(Array.isArray(q.children) ? q.children : q.steps);
-      if (qStepsRaw.length === 0 && qStepLabels.length > 0) {
-        qStepsRaw = labelsToSteps(qStepLabels.map((x) => String(x)));
+      const qNodeLabels = Array.isArray(q.nodeLabels) ? q.nodeLabels : [];
+      let qNodesRaw = coerceNodesArray(Array.isArray(q.children) ? q.children : q.nodes);
+      if (qNodesRaw.length === 0 && qNodeLabels.length > 0) {
+        qNodesRaw = labelsToNodes(qNodeLabels.map((x) => String(x)));
       }
-      let qSteps = normalizeQuestStepsTree(qStepsRaw);
-      if (qSteps.length === 0) {
+      let qNodes = normalizeQuestNodesTree(qNodesRaw);
+      if (qNodes.length === 0) {
         return jsonError(
-          'package_invalid_steps',
+          'package_invalid_nodes',
           `Quest ${i + 1} im Paket enthält keine gültigen Schritte.`,
-          'Erzeuge pro Quest konkrete Leaf-Steps oder children.',
+          'Erzeuge pro Quest konkrete Leaf-Nodes oder children.',
           502
         );
       }
-      const qQuality = assessQuestStepQuality(qSteps, prompt);
+      const qQuality = assessQuestNodeQuality(qNodes, prompt);
       if (qQuality.hasPlaceholder || qQuality.hasOnlyGeneric) {
         return jsonError(
-          'package_placeholder_steps',
+          'package_placeholder_nodes',
           `Quest ${i + 1} im Paket enthält Platzhalter-Schritte.`,
           'Nutze konkrete Handlungen statt generischer Sammelphrasen.',
           400
@@ -716,7 +716,7 @@ export async function POST({ request, cookies }) {
           : qRewardStrings.map((text) => ({ entry: { type: 'text', text } }));
       const qQuestRewards = qRewardRows.map(questRewardRowToStored);
       const qQuestRewardEntries = qRewardRows.map((r) => r.entry);
-      const qCatalogNeed = collectItemIdsFromStepsAndQuestRewards(qSteps, qQuestRewardEntries);
+      const qCatalogNeed = collectItemIdsFromNodesAndQuestRewards(qNodes, qQuestRewardEntries);
       for (const id of qCatalogNeed) allNeedItemIds.add(id);
       const rawId = normalizeQuestId(typeof q.id === 'string' ? q.id : '');
       const uniqueId =
@@ -726,8 +726,8 @@ export async function POST({ request, cookies }) {
         parentId: null,
         title: qTitle || uniqueId,
         description: qDesc,
-        stepLabels: qSteps.map((s) => s.label),
-        children: normalizeQuestStepsTree(qSteps, uniqueId),
+        nodeLabels: qNodes.map((s) => s.label),
+        children: normalizeQuestNodesTree(qNodes, uniqueId),
         rewards: qRewardStrings,
         questRewards: qQuestRewards,
       };
@@ -784,25 +784,25 @@ export async function POST({ request, cookies }) {
     );
   }
 
-  if (stepsRaw.length === 0 && stepLabels.length > 0) {
-    stepsRaw = labelsToSteps(stepLabels.map((x) => String(x)));
+  if (nodesRaw.length === 0 && nodeLabels.length > 0) {
+    nodesRaw = labelsToNodes(nodeLabels.map((x) => String(x)));
   }
 
-  let steps = normalizeQuestStepsTree(stepsRaw);
-  if (steps.length === 0 && stepLabels.length > 0) {
-    steps = normalizeQuestStepsTree(labelsToSteps(stepLabels.map((x) => String(x))));
+  let nodes = normalizeQuestNodesTree(nodesRaw);
+  if (nodes.length === 0 && nodeLabels.length > 0) {
+    nodes = normalizeQuestNodesTree(labelsToNodes(nodeLabels.map((x) => String(x))));
   }
 
-  if (steps.length === 0) {
+  if (nodes.length === 0) {
     return jsonError(
-      'invalid_steps',
+      'invalid_nodes',
       'Die KI hat keine gültigen Schritte geliefert.',
       'Bitte gib Ziel, Kontext und konkrete Randbedingungen an.',
       502
     );
   }
 
-  const quality = assessQuestStepQuality(steps, prompt);
+  const quality = assessQuestNodeQuality(nodes, prompt);
   if (quality.hasPlaceholder || quality.hasOnlyGeneric) {
     const fallbackQuestions = buildFallbackClarifyQuestions(prompt, clarifyRounds);
     if (fallbackQuestions.length > 0) {
@@ -815,7 +815,7 @@ export async function POST({ request, cookies }) {
       );
     }
     return jsonError(
-      'quality_placeholder_steps',
+      'quality_placeholder_nodes',
       'Die KI hat zu generische Platzhalter-Schritte geliefert.',
       'Bitte nenne konkrete Teilaufgaben, vorhandene Ressourcen und gewünschte Ergebnisse.',
       400
@@ -843,7 +843,7 @@ export async function POST({ request, cookies }) {
     return jsonError(
       'quality_leaf_not_concrete',
       'Mindestens ein Schritt ist nicht konkret genug.',
-      'Formuliere Leaf-Steps mit überprüfbarer Aktion und klarem Objekt/Ziel.',
+      'Formuliere Leaf-Nodes mit überprüfbarer Aktion und klarem Objekt/Ziel.',
       400
     );
   }
@@ -873,8 +873,8 @@ export async function POST({ request, cookies }) {
   }
 
   const catalogIds = new Set(catalogRows.map((r) => r.id));
-  steps = normalizeQuestStepsTree(steps, nid);
-  const neededItemIds = collectItemIdsFromStepsAndQuestRewards(steps, questRewardEntries);
+  nodes = normalizeQuestNodesTree(nodes, nid);
+  const neededItemIds = collectItemIdsFromNodesAndQuestRewards(nodes, questRewardEntries);
   const needsNewDefinition = [...neededItemIds].filter((id) => !catalogIds.has(id));
   /** @type {{ id: string; category: string; title: string; description: string }[]} */
   let questmakerItemsOut = [];
@@ -894,7 +894,7 @@ export async function POST({ request, cookies }) {
     });
     if (!resolved.ok) return resolved.error;
     await logRpgAiUsage(username, model, resolved.completion);
-    remapItemIdsInQuest(steps, questRewardRows, resolved.remap);
+    remapItemIdsInQuest(nodes, questRewardRows, resolved.remap);
     questRewards.length = 0;
     for (const row of questRewardRows.map(questRewardRowToStored)) questRewards.push(row);
     questmakerItemsOut = resolved.newItems;
@@ -907,8 +907,8 @@ export async function POST({ request, cookies }) {
       parentId: null,
       title: title || nid,
       description,
-      stepLabels: steps.map((s) => s.label),
-      children: steps,
+      nodeLabels: nodes.map((s) => s.label),
+      children: nodes,
       rewards: rewardStrings,
       questRewards,
       questmakerItems: questmakerItemsOut,

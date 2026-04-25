@@ -1,0 +1,25 @@
+# RPG Quality Control
+
+## Zweck
+
+- Knappes, fortlaufendes Qualitätsprotokoll für interne RPG-Verbesserungen.
+- Fokus: Konsistenz, Testbarkeit, Wartbarkeit und Risiken.
+
+## Report
+
+### 2026-04-25
+
+- **Scope:** Qualitätsstabilisierung von API/Core/UI-Schnittstellen rund um Tree/Graph/Node.
+- **Konsistenz verbessert:** Server validiert jetzt Graph-Referenzen (`edges`, `dependsOn`, doppelte Node-IDs) zentral über `rpg-graph-validation.js`.
+- **Subtree-Guard stabilisiert:** Node-Toggle-Guards im Panel nutzen die Root-Quest statt pseudo-IDs (`quest::node`).
+- **Kanon vereinheitlicht:** Core-Pfade arbeiten auf `graphNodes(...)`; Migration gibt kanonisch `nodes` plus Legacy-Alias zurück.
+- **Wartbarkeit verbessert:** Auswahl- und Panel-State-Logik aus `RpgQuestTree` in testbare Lib-Module ausgelagert (`rpg-tree-selection.js`, `rpg-tree-panel-state.js`).
+- **Testabdeckung erweitert:** Node-Tests für Referenzvalidierung, Guard-Resolution, Migrationsform und Panel-State (`tests/rpg-consistency.test.js`, `tests/rpg-tree-panel-state.test.js`).
+- **Test-Entry ergänzt:** `npm run test:quality` als schneller Qualitätslauf.
+- **Build-Qualität verbessert:** Vite-Chunking für große Vendor-Pakete konfiguriert (`three`, `katex`, `html2canvas`); noisy Warnung für knapp über 500 kB liegenden `three`-Chunk pragmatisch über `chunkSizeWarningLimit` auf 550 entschärft.
+
+## Aktueller Gesamtstand
+
+- **Systemstatus:** Stabil und deutlich besser abgesichert gegen interne Daten-/Scope-Inkonsistenzen.
+- **Testbarkeit:** Solide für Core-Invarianten; API-HTTP- und UI-Interaktionstests sind nächste Ausbauphase.
+- **Wartbarkeit:** Verbesserter Trend durch Logik-Extraktion; `RpgQuestTree` bleibt groß, ist aber nun schrittweise modularisierbar.

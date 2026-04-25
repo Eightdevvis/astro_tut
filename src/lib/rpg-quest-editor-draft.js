@@ -1,9 +1,9 @@
 /**
- * Entwurfs-Modell für den Quest-Schritt-Editor (UI) ↔ API-Bäume (`rpg-quest-steps`).
+ * Entwurfs-Modell für den Quest-Schritt-Editor (UI) ↔ API-Bäume (`rpg-quest-nodes`).
  */
 
 import { isRpgItemCategoryId } from './rpg-item-categories.js';
-import { normalizeQuestStepsTree, normalizeRewardEntry } from './rpg-quest-steps.js';
+import { normalizeQuestNodesTree, normalizeRewardEntry } from './rpg-quest-nodes.js';
 import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js';
 
 /**
@@ -21,15 +21,15 @@ import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js'
  *   itemDescription: string;
  *   pointKind: 'heart' | 'mana';
  *   pointsAmount: string;
- *   substepsOn: boolean;
- *   children: QuestStepDraft[];
+ *   subnodesOn: boolean;
+ *   children: QuestNodeDraft[];
  *   saved: boolean;
  *   orderLinked: boolean;
  *   isLock: boolean;
  *   legacyDependsOn?: string[];
  *   timeLimitOn?: boolean;
  *   timeDueAt?: string;
- * }} QuestStepDraft
+ * }} QuestNodeDraft
  */
 
 /** @returns {string} */
@@ -39,9 +39,9 @@ export function newDraftKey() {
 }
 
 /** @param {boolean} [saved]
- * @returns {QuestStepDraft}
+ * @returns {QuestNodeDraft}
  */
-export function createEmptyStepDraft(saved = false) {
+export function createEmptyNodeDraft(saved = false) {
   return {
     key: newDraftKey(),
     title: '',
@@ -55,7 +55,7 @@ export function createEmptyStepDraft(saved = false) {
     itemDescription: '',
     pointKind: 'heart',
     pointsAmount: '',
-    substepsOn: false,
+    subnodesOn: false,
     children: [],
     saved,
     orderLinked: false,
@@ -67,8 +67,8 @@ export function createEmptyStepDraft(saved = false) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode} node
- * @returns {QuestStepDraft}
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode} node
+ * @returns {QuestNodeDraft}
  */
 export function questNodeToDraft(node) {
   const subs = Array.isArray(node.children) && node.children.length > 0;
@@ -102,7 +102,7 @@ export function questNodeToDraft(node) {
     itemDescription: '',
     pointKind,
     pointsAmount,
-    substepsOn: subs,
+    subnodesOn: subs,
     children: subs ? node.children.map(questNodeToDraft) : [],
     saved: true,
     orderLinked: node.orderLinked === true,
@@ -114,33 +114,33 @@ export function questNodeToDraft(node) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[] | undefined} nodes
- * @returns {QuestStepDraft[]}
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
+ * @returns {QuestNodeDraft[]}
  */
-export function questStepsToDrafts(nodes) {
+export function questNodesToDrafts(nodes) {
   if (!Array.isArray(nodes) || nodes.length === 0) return [];
   return nodes.map(questNodeToDraft);
 }
 
 /**
- * @param {QuestStepDraft} d
+ * @param {QuestNodeDraft} d
  * @returns {boolean}
  */
-export function isDraftStepMeaningful(d) {
+export function isDraftNodeMeaningful(d) {
   if ((d.title || '').trim().length > 0) return true;
   if (d.children.length > 0) {
-    return d.children.some(isDraftStepMeaningful);
+    return d.children.some(isDraftNodeMeaningful);
   }
   return false;
 }
 
 /**
- * @param {QuestStepDraft[]} arr
+ * @param {QuestNodeDraft[]} arr
  * @param {number} fromIdx
  * @param {number} toIdx
- * @returns {QuestStepDraft[]}
+ * @returns {QuestNodeDraft[]}
  */
-export function reorderDraftSteps(arr, fromIdx, toIdx) {
+export function reorderDraftNodes(arr, fromIdx, toIdx) {
   if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= arr.length || toIdx >= arr.length) {
     return arr;
   }
@@ -151,17 +151,17 @@ export function reorderDraftSteps(arr, fromIdx, toIdx) {
 }
 
 /**
- * @param {QuestStepDraft} d
+ * @param {QuestNodeDraft} d
  * @param {string} id
  * @param {string[]} chainDependsOn
  * @param {{ n: number }} idCounter
  * @param {string | null} parentId
- * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestNode}
  */
 function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
   const optional = !!d.optional;
-  /** @type {import('./rpg-quest-steps.js').RpgQuestRewardEntry | undefined} */
+  /** @type {import('./rpg-quest-nodes.js').RpgQuestRewardEntry | undefined} */
   let reward;
   if (d.rewardOn) {
     if (d.rewardKind === 'item' && (d.itemId || '').trim()) {
@@ -182,11 +182,11 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
     d.timeLimitOn && (d.timeDueAt || '').trim()
       ? (d.timeDueAt || '').trim().slice(0, 10)
       : undefined;
-  const meaningfulKids = d.children.filter(isDraftStepMeaningful);
+  const meaningfulKids = d.children.filter(isDraftNodeMeaningful);
 
   if (meaningfulKids.length > 0) {
     const children = processDraftSiblings(meaningfulKids, idCounter, id);
-    /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode} */
+    /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
     const out = { id, parentId, label, optional, children };
     if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
     if (reward) out.reward = reward;
@@ -196,7 +196,7 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
     return out;
   }
 
-  /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode} */
+  /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
   const leaf = { id, parentId, label, optional, children: [] };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
   if (reward) leaf.reward = reward;
@@ -207,14 +207,14 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
 }
 
 /**
- * @param {QuestStepDraft[]} meaningfulSiblings
+ * @param {QuestNodeDraft[]} meaningfulSiblings
  * @param {{ n: number }} idCounter
  * @param {string | null} parentId
- * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode[]}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
 function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
   let lastChainId = /** @type {string | null} */ (null);
-  /** @type {import('./rpg-quest-steps.js').RpgQuestStepNode[]} */
+  /** @type {import('./rpg-quest-nodes.js').RpgQuestNode[]} */
   const out = [];
 
   for (const d of meaningfulSiblings) {
@@ -233,25 +233,25 @@ function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
 }
 
 /**
- * @param {QuestStepDraft[]} drafts
+ * @param {QuestNodeDraft[]} drafts
  * @param {string | null} [rootParentId]
- * @returns {import('./rpg-quest-steps.js').RpgQuestStepNode[]}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
-export function draftStepsToQuestNodes(drafts, rootParentId = null) {
+export function draftNodesToQuestNodes(drafts, rootParentId = null) {
   const idCounter = { n: 0 };
-  const meaningful = drafts.filter(isDraftStepMeaningful);
+  const meaningful = drafts.filter(isDraftNodeMeaningful);
   const raw = processDraftSiblings(meaningful, idCounter, rootParentId);
-  return normalizeQuestStepsTree(raw, rootParentId);
+  return normalizeQuestNodesTree(raw, rootParentId);
 }
 
 /**
  * @param {string[]} labels
- * @returns {QuestStepDraft[]}
+ * @returns {QuestNodeDraft[]}
  */
-export function aiLabelsToDraftSteps(labels) {
+export function aiLabelsToDraftNodes(labels) {
   const arr = Array.isArray(labels) ? labels.map((x) => String(x).trim()).filter(Boolean) : [];
   return arr.map((title) => ({
-    ...createEmptyStepDraft(true),
+    ...createEmptyNodeDraft(true),
     title,
     key: newDraftKey(),
     orderLinked: false,
@@ -263,12 +263,12 @@ export function aiLabelsToDraftSteps(labels) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestStepNode[]} nodes
- * @returns {QuestStepDraft[]}
+ * @param {import('./rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @returns {QuestNodeDraft[]}
  */
-export function aiQuestNodesToDraftSteps(nodes) {
+export function aiQuestNodesToDraftNodes(nodes) {
   if (!Array.isArray(nodes) || nodes.length === 0) return [];
-  return questStepsToDrafts(normalizeQuestStepsTree(nodes));
+  return questNodesToDrafts(normalizeQuestNodesTree(nodes));
 }
 
 /**
@@ -355,11 +355,11 @@ export function ensureRewardRowFields(raw) {
 
 /**
  * @param {unknown} raw
- * @returns {QuestStepDraft}
+ * @returns {QuestNodeDraft}
  */
-export function ensureStepDraftFields(raw) {
-  if (!raw || typeof raw !== 'object') return createEmptyStepDraft(false);
-  const d = /** @type {QuestStepDraft} */ ({ ...createEmptyStepDraft(!!/** @type {any} */ (raw).saved), ...raw });
+export function ensureNodeDraftFields(raw) {
+  if (!raw || typeof raw !== 'object') return createEmptyNodeDraft(false);
+  const d = /** @type {QuestNodeDraft} */ ({ ...createEmptyNodeDraft(!!/** @type {any} */ (raw).saved), ...raw });
   if (d.rewardKind !== 'text' && d.rewardKind !== 'item' && d.rewardKind !== 'points') {
     d.rewardKind = (d.itemId || '').trim() ? 'item' : 'text';
   }
@@ -374,14 +374,14 @@ export function ensureStepDraftFields(raw) {
   if (typeof d.rewardText !== 'string') d.rewardText = '';
   d.isLock = d.isLock === true;
   if (Array.isArray(d.children) && d.children.length > 0) {
-    d.children = d.children.map((c) => ensureStepDraftFields(c));
-    d.substepsOn = true;
+    d.children = d.children.map((c) => ensureNodeDraftFields(c));
+    d.subnodesOn = true;
   }
   return d;
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestRewardRow[]} rows
+ * @param {import('./rpg-quest-nodes.js').RpgQuestRewardRow[]} rows
  * @returns {QuestRewardDraftRow[]}
  */
 export function questRewardRowsToDraftRows(rows) {
@@ -436,7 +436,7 @@ export function questRewardRowsToDraftRows(rows) {
 }
 
 /**
- * @param {import('./rpg-quest-steps.js').RpgQuestRewardEntry[] | undefined} entries
+ * @param {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[] | undefined} entries
  * @returns {QuestRewardDraftRow[]}
  */
 export function questRewardsToDraftRows(entries) {
@@ -446,7 +446,7 @@ export function questRewardsToDraftRows(entries) {
 
 /**
  * @param {QuestRewardDraftRow[]} rows
- * @returns {import('./rpg-quest-steps.js').RpgQuestRewardEntry[]}
+ * @returns {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[]}
  */
 export function draftRewardRowsToQuestRewards(rows) {
   return draftRewardRowsToStoredQuestRewards(rows).map((o) => {
@@ -510,12 +510,12 @@ export function draftRewardRowsToStoredQuestRewards(rows) {
 
 /**
  * Katalog-Daten in Item-Felder übernehmen, wenn Nutzer sie leer gelassen hat.
- * @param {QuestStepDraft[]} stepDrafts
+ * @param {QuestNodeDraft[]} nodeDrafts
  * @param {QuestRewardDraftRow[]} rewardRows
  * @param {Record<string, { title?: string; category?: string; description?: string }>} catalog
  */
-export function hydrateItemFieldsFromCatalog(stepDrafts, rewardRows, catalog) {
-  /** @param {QuestStepDraft} d */
+export function hydrateItemFieldsFromCatalog(nodeDrafts, rewardRows, catalog) {
+  /** @param {QuestNodeDraft} d */
   function walk(d) {
     if ((d.itemId || '').trim()) {
       const id = d.itemId.trim();
@@ -528,7 +528,7 @@ export function hydrateItemFieldsFromCatalog(stepDrafts, rewardRows, catalog) {
     }
     for (const c of d.children || []) walk(c);
   }
-  for (const d of stepDrafts) walk(d);
+  for (const d of nodeDrafts) walk(d);
   for (const r of rewardRows) {
     if (r.kind !== 'item' || !(r.itemId || '').trim()) continue;
     const row = catalog[(r.itemId || '').trim()];
@@ -542,19 +542,19 @@ export function hydrateItemFieldsFromCatalog(stepDrafts, rewardRows, catalog) {
 
 /**
  * Vollständige Katalog-Zeilen aus Entwürfen (nur IDs, die noch nicht im Katalog sind).
- * @param {QuestStepDraft[]} stepDrafts
+ * @param {QuestNodeDraft[]} nodeDrafts
  * @param {QuestRewardDraftRow[]} rewardRows
  * @param {Set<string> | Record<string, unknown>} catalogIdSet
  * @returns {{ id: string; category: string; title: string; description: string }[]}
  */
-export function collectQuestmakerItemsFromDrafts(stepDrafts, rewardRows, catalogIdSet) {
+export function collectQuestmakerItemsFromDrafts(nodeDrafts, rewardRows, catalogIdSet) {
   const inCatalog =
     catalogIdSet instanceof Set
       ? catalogIdSet
       : new Set(Object.keys(/** @type {Record<string, unknown>} */ (catalogIdSet)));
   /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
   const map = new Map();
-  /** @param {QuestStepDraft} d */
+  /** @param {QuestNodeDraft} d */
   function walk(d) {
     if (d.rewardOn && d.rewardKind === 'item' && (d.itemId || '').trim()) {
       const id = d.itemId.trim();
@@ -572,7 +572,7 @@ export function collectQuestmakerItemsFromDrafts(stepDrafts, rewardRows, catalog
     }
     for (const c of d.children || []) walk(c);
   }
-  for (const d of stepDrafts) walk(d);
+  for (const d of nodeDrafts) walk(d);
   for (const r of rewardRows) {
     if (r.kind !== 'item' || !(r.itemId || '').trim()) continue;
     const id = r.itemId.trim();
