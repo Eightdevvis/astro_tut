@@ -2,6 +2,28 @@ import { graphNodes } from './rpg-quests-data.js';
 
 /**
  * @param {import('./rpg-quests-data.js').RpgGraphNode[]} quests
+ * @returns {Set<string>}
+ */
+function collectGraphEntityIds(quests) {
+  const ids = new Set();
+  for (const quest of quests) {
+    if (!quest || typeof quest.id !== 'string') continue;
+    ids.add(quest.id);
+    /** @type {Array<import('./rpg-quest-nodes.js').RpgQuestNode>} */
+    const stack = Array.isArray(quest.children) ? [...quest.children] : [];
+    while (stack.length) {
+      const node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      const nodeId = typeof node.id === 'string' ? node.id.trim() : '';
+      if (nodeId) ids.add(nodeId);
+      if (Array.isArray(node.children) && node.children.length) stack.push(...node.children);
+    }
+  }
+  return ids;
+}
+
+/**
+ * @param {import('./rpg-quests-data.js').RpgGraphNode[]} quests
  * @returns {{ ok: true } | { ok: false; reason: string }}
  */
 export function validateQuestNodeDependencies(quests) {
@@ -56,13 +78,17 @@ export function validateQuestNodeDependencies(quests) {
  * @returns {{ ok: true } | { ok: false; reason: string }}
  */
 export function validateGraphEdges(quests, edges) {
-  const idSet = new Set(quests.map((q) => q.id));
+  const idSet = collectGraphEntityIds(quests);
   for (const edge of edges) {
-    const from = typeof edge?.from === 'string' ? edge.from.trim() : '';
-    const to = typeof edge?.to === 'string' ? edge.to.trim() : '';
+    const from = typeof edge?.fromNodeId === 'string' ? edge.fromNodeId.trim() : '';
+    const to = typeof edge?.toNodeId === 'string' ? edge.toNodeId.trim() : '';
+    const relation = typeof edge?.relation === 'string' ? edge.relation.trim() : '';
     if (!from || !to) return { ok: false, reason: 'Jede Kante braucht from/to als String' };
     if (!idSet.has(from) || !idSet.has(to)) {
       return { ok: false, reason: `Ungültige Kante ${from || '?'} -> ${to || '?'}: Quest-ID fehlt im Graph` };
+    }
+    if (relation !== 'structure' && relation !== 'dependency') {
+      return { ok: false, reason: `Ungültige Kanten-Relation bei ${from} -> ${to}` };
     }
   }
   return { ok: true };
@@ -85,8 +111,7 @@ export function resolveNodeGuardQuest(visibleNode, guardQuest) {
  * @returns {{ ok: true } | { ok: false; reason: string }}
  */
 export function validateRpgGraphReferences(graph, edges) {
-  const quests = graphNodes(graph);
-  const edgeCheck = validateGraphEdges(quests, edges);
+  const edgeCheck = validateGraphEdges(graphNodes(graph), edges);
   if (!edgeCheck.ok) return edgeCheck;
-  return validateQuestNodeDependencies(quests);
+  return validateQuestNodeDependencies(graphNodes(graph));
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
+import { graphEdges } from '../lib/rpg-quests-data.js';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
   computeLayeredLayout,
@@ -147,6 +148,86 @@ function countQuestLeaves(q) {
 }
 
 /**
+ * Maximale Tiefe eines Node-Teilbaums (Leaf = 1).
+ * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode} node
+ * @returns {number}
+ */
+function maxNodeDepth(node) {
+  const kids = Array.isArray(node?.children) ? node.children : [];
+  if (kids.length === 0) return 1;
+  let m = 0;
+  for (const ch of kids) m = Math.max(m, maxNodeDepth(ch));
+  return m + 1;
+}
+
+/**
+ * Geschätzter Radius des zusammenhängenden Quest-Node-Konstrukts.
+ * @param {import('../lib/rpg-quest-graph.js').RpgGraphQuest} q
+ * @param {boolean} compact
+ * @returns {number}
+ */
+function estimateQuestClusterRadius(q, compact) {
+  const roots = Array.isArray(q?.children) ? q.children : [];
+  if (roots.length === 0) return compact ? 76 : 92;
+  let leaves = 0;
+  let depth = 1;
+  for (const r of roots) {
+    leaves += countLeavesInNodeSubtree(r);
+    depth = Math.max(depth, maxNodeDepth(r));
+  }
+  const base = compact ? 82 : 98;
+  const byLeaves = Math.log2(leaves + 1) * (compact ? 30 : 38);
+  const byDepth = Math.max(0, depth - 1) * (compact ? 20 : 26);
+  return base + byLeaves + byDepth;
+}
+
+/**
+ * Root-Quests mit Cluster-Radien auseinanderdrücken.
+ * @param {Record<string, { x: number; y: number }>} basePositions
+ * @param {import('../lib/rpg-quest-graph.js').RpgGraphQuest[]} quests
+ * @param {boolean} compact
+ */
+function spreadQuestRootsByClusterRadius(basePositions, quests, compact) {
+  /** @type {Record<string, { x: number; y: number }>} */
+  const out = {};
+  for (const q of quests) {
+    const p = basePositions[q.id];
+    if (p) out[q.id] = { x: p.x, y: p.y };
+  }
+  const ids = quests.map((q) => q.id).filter((id) => out[id]);
+  if (ids.length < 2) return out;
+  const radById = new Map(quests.map((q) => [q.id, estimateQuestClusterRadius(q, compact)]));
+  const pad = compact ? 34 : 46;
+  for (let it = 0; it < 84; it++) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const ia = ids[i];
+        const ib = ids[j];
+        const a = out[ia];
+        const b = out[ib];
+        if (!a || !b) continue;
+        const ra = radById.get(ia) ?? 90;
+        const rb = radById.get(ib) ?? 90;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const need = ra + rb + pad;
+        if (d >= need) continue;
+        const push = (need - d) * 0.5;
+        const ux = dx / d;
+        const uy = dy / d;
+        a.x -= ux * push;
+        b.x += ux * push;
+        // Layer-Struktur erhalten: vertikales Drücken gedämpft.
+        a.y -= uy * push * 0.34;
+        b.y += uy * push * 0.34;
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * @param {number} count
  * @param {number} startDeg
  * @param {number} endDeg
@@ -180,6 +261,31 @@ function distributeAroundCircle(count, startDeg = -180) {
 }
 
 /**
+ * Gewichtet auf einem Winkelbereich verteilen (größeres Gewicht = mehr Winkelraum).
+ * @param {number[]} weights
+ * @param {number} startDeg
+ * @param {number} endDeg
+ * @returns {number[]}
+ */
+function distributeWeightedAngles(weights, startDeg, endDeg) {
+  if (!Array.isArray(weights) || weights.length === 0) return [];
+  if (weights.length === 1) return [(startDeg + endDeg) * 0.5];
+  const safe = weights.map((w) => (Number.isFinite(w) && w > 0 ? w : 1));
+  const total = safe.reduce((a, b) => a + b, 0) || safe.length;
+  const span = endDeg - startDeg;
+  /** @type {number[]} */
+  const out = [];
+  let acc = 0;
+  for (const w of safe) {
+    const seg = (w / total) * span;
+    out.push(startDeg + acc + seg * 0.5);
+    acc += seg;
+  }
+  return out;
+}
+
+
+/**
  * Für jede Kante stabile Ports am Knotenrand berechnen:
  * - Outgoing bevorzugt oben
  * - Incoming bevorzugt unten
@@ -193,13 +299,13 @@ function buildEdgePorts(graph, positions, radius) {
   const outByNode = new Map();
   /** @type {Map<string, number[]>} */
   const inByNode = new Map();
-  const edges = graph.edges || [];
+  const edges = graphEdges(graph).filter((e) => e.relation !== 'structure');
   for (let i = 0; i < edges.length; i++) {
     const e = edges[i];
-    if (!outByNode.has(e.from)) outByNode.set(e.from, []);
-    if (!inByNode.has(e.to)) inByNode.set(e.to, []);
-    outByNode.get(e.from).push(i);
-    inByNode.get(e.to).push(i);
+    if (!outByNode.has(e.fromNodeId)) outByNode.set(e.fromNodeId, []);
+    if (!inByNode.has(e.toNodeId)) inByNode.set(e.toNodeId, []);
+    outByNode.get(e.fromNodeId).push(i);
+    inByNode.get(e.toNodeId).push(i);
   }
 
   /** @type {Record<number, { x: number; y: number }>} */
@@ -216,12 +322,12 @@ function buildEdgePorts(graph, positions, radius) {
     outs.sort((a, b) => {
       const ea = edges[a];
       const eb = edges[b];
-      return String(ea?.to || '').localeCompare(String(eb?.to || ''));
+      return String(ea?.toNodeId || '').localeCompare(String(eb?.toNodeId || ''));
     });
     ins.sort((a, b) => {
       const ea = edges[a];
       const eb = edges[b];
-      return String(ea?.from || '').localeCompare(String(eb?.from || ''));
+      return String(ea?.fromNodeId || '').localeCompare(String(eb?.fromNodeId || ''));
     });
 
     const hasBoth = outs.length > 0 && ins.length > 0;
@@ -307,6 +413,9 @@ export default function RpgQuestTree() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
   const [editorNodeId, setEditorNodeId] = useState(/** @type {string | null} */ (null));
+  const [editorFocusNodeId, setEditorFocusNodeId] = useState(/** @type {string | null} */ (null));
+  const [treePickParentKey, setTreePickParentKey] = useState(/** @type {string | null} */ (null));
+  const [treePickNodeIds, setTreePickNodeIds] = useState(() => new Set());
   /** @type {'manual' | 'questmaker' | undefined} */
   const [editorCreateEntry, setEditorCreateEntry] = useState(undefined);
   /** @type {'choose' | 'form' | 'ai' | undefined} */
@@ -364,7 +473,6 @@ export default function RpgQuestTree() {
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
-
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(max-width: 560px)');
@@ -393,6 +501,9 @@ export default function RpgQuestTree() {
 
   const panelReserve = compact ? PANEL_RESERVE_MOBILE : PANEL_RESERVE_DESKTOP;
   const blockViewportGestures = compact && !!selectedId;
+
+  useEffect(() => {
+  }, [compact, selectedId, blockViewportGestures]);
 
   const nodeR = useCallback(() => (compact ? 26 : 24), [compact]);
 
@@ -547,6 +658,9 @@ export default function RpgQuestTree() {
     setEditorOpen(false);
     setEditorCreateEntry(undefined);
     setEditorEditEntry(undefined);
+    setEditorFocusNodeId(null);
+    setTreePickParentKey(null);
+    setTreePickNodeIds(new Set());
   }, []);
 
   const handleLocationChange = useCallback((next) => {
@@ -570,22 +684,40 @@ export default function RpgQuestTree() {
   const openCreateNode = useCallback((entry) => {
     setEditorMode('create');
     setEditorNodeId(null);
+    setEditorFocusNodeId(null);
     setEditorCreateEntry(entry);
     setEditorEditEntry(undefined);
     setEditorOpen(true);
+    setTreePickParentKey(null);
+    setTreePickNodeIds(new Set());
   }, []);
 
   /**
    * @param {string} qid
    * @param {'choose' | 'form' | 'ai'} entry
    */
-  const openEditNode = useCallback((qid, entry) => {
+  const openEditNode = useCallback((qid, entry, focusNodeId = null) => {
     setEditorMode('edit');
     setEditorNodeId(qid);
+    setEditorFocusNodeId(focusNodeId);
     setEditorEditEntry(entry);
     setEditorCreateEntry(undefined);
     setEditorOpen(true);
+    setTreePickParentKey(null);
+    setTreePickNodeIds(new Set());
   }, []);
+
+  const handleToggleTreePick = useCallback((parentDraftKey) => {
+    if (!parentDraftKey) return;
+    setTreePickParentKey((prev) => {
+      const next = prev === parentDraftKey ? null : parentDraftKey;
+      setTreePickNodeIds(new Set());
+      return next;
+    });
+  }, []);
+
+  const treePickActive = editorOpen && !!treePickParentKey;
+  const treePickIdList = useMemo(() => [...treePickNodeIds], [treePickNodeIds]);
 
   const onToggleNode = useCallback(
     (questId, nodeId) => {
@@ -630,10 +762,15 @@ export default function RpgQuestTree() {
       ),
     [graph, compact]
   );
-  const questEdgePorts = useMemo(
-    () => buildEdgePorts(graph, layout.positions, nodeR()),
-    [graph, layout.positions, nodeR]
+  const treePositions = useMemo(
+    () => spreadQuestRootsByClusterRadius(layout.positions, graph.quests || [], compact),
+    [layout.positions, graph.quests, compact]
   );
+  const questEdgePorts = useMemo(
+    () => buildEdgePorts(graph, treePositions, nodeR()),
+    [graph, treePositions, nodeR]
+  );
+  const dependencyEdges = useMemo(() => graphEdges(graph).filter((e) => e.relation !== 'structure'), [graph]);
   const nodeTreeOverlay = useMemo(() => {
     const childGapX = compact ? 88 : 102;
     const childGapY = compact ? 84 : 96;
@@ -653,11 +790,19 @@ export default function RpgQuestTree() {
      */
     function placeChildren(children, questId, parentX, parentY, depth) {
       if (!children?.length) return;
-      const radius = Math.max(childGapX * 0.95, childGapY * 0.95);
-      const ringAngles = distributeAroundCircle(children.length, -180);
+      const weights = children.map((ch) => Math.max(1, countLeavesInNodeSubtree(ch)));
+      const totalWeight = weights.reduce((a, b) => a + b, 0) || children.length;
+      const baseRadius =
+        Math.max(childGapX, childGapY) * (0.66 + Math.min(0.9, Math.log2(totalWeight + 1) * 0.24)) +
+        depth * (compact ? 4 : 5);
+      // Outgoing (Parent -> Child) bevorzugt nach unten, Parents bleiben visuell darüber.
+      const ringAngles = distributeWeightedAngles(weights, 12, 168);
       for (let i = 0; i < children.length; i++) {
         const child = children[i];
         const a = (ringAngles[i] * Math.PI) / 180;
+        const w = weights[i];
+        const radialBoost = Math.min(82, Math.log2(w + 1) * (compact ? 10 : 14));
+        const radius = baseRadius + radialBoost;
         const x = parentX + Math.cos(a) * radius;
         const y = parentY + Math.sin(a) * radius;
         const leaf = nodeIsLeaf(child);
@@ -682,20 +827,35 @@ export default function RpgQuestTree() {
     }
 
     for (const q of graph.quests || []) {
-      const p = layout.positions[q.id];
+      const p = treePositions[q.id];
       if (!p) continue;
       placeChildren(q.children || [], q.id, p.x, p.y, 1);
     }
 
-    let minX = 0;
-    let minY = 0;
-    let maxX = layout.width;
-    let maxY = layout.height;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const q of graph.quests || []) {
+      const p = treePositions[q.id];
+      if (!p) continue;
+      const rr = nodeR();
+      minX = Math.min(minX, p.x - rr - 96);
+      minY = Math.min(minY, p.y - rr - 96);
+      maxX = Math.max(maxX, p.x + rr + 96);
+      maxY = Math.max(maxY, p.y + rr + 96);
+    }
     for (const n of nodeNodes) {
-      minX = Math.min(minX, n.x - nodeRadius - 90);
-      minY = Math.min(minY, n.y - nodeRadius - 24);
-      maxX = Math.max(maxX, n.x + nodeRadius + 90);
-      maxY = Math.max(maxY, n.y + nodeRadius + 24);
+      minX = Math.min(minX, n.x - nodeRadius - 100);
+      minY = Math.min(minY, n.y - nodeRadius - 30);
+      maxX = Math.max(maxX, n.x + nodeRadius + 100);
+      maxY = Math.max(maxY, n.y + nodeRadius + 30);
+    }
+    if (!Number.isFinite(minX)) {
+      minX = 0;
+      minY = 0;
+      maxX = layout.width;
+      maxY = layout.height;
     }
     return {
       nodeNodes,
@@ -706,7 +866,7 @@ export default function RpgQuestTree() {
       width: Math.ceil(maxX - minX),
       height: Math.ceil(maxY - minY),
     };
-  }, [compact, graph.quests, layout.height, layout.positions, layout.width, nodeDone]);
+  }, [compact, graph.quests, layout.height, layout.width, nodeDone, treePositions, nodeR]);
 
   useEffect(() => {
     const m = questMap(graph);
@@ -739,7 +899,7 @@ export default function RpgQuestTree() {
   useEffect(() => {
     if (!focusIdFromUrl || didCenterFocusRef.current) return;
     const el = viewportRef.current;
-    const pos = layout.positions[focusIdFromUrl];
+    const pos = treePositions[focusIdFromUrl];
     if (!el || !pos) return;
     const vw = el.clientWidth;
     const vh = el.clientHeight;
@@ -747,7 +907,7 @@ export default function RpgQuestTree() {
     const s = scale;
     setPan({ x: vw / 2 - pos.x * s, y: cy - pos.y * s });
     didCenterFocusRef.current = true;
-  }, [focusIdFromUrl, layout.positions, layout.width, layout.height, scale, panelReserve]);
+  }, [focusIdFromUrl, treePositions, layout.width, layout.height, scale, panelReserve]);
 
   useEffect(() => {
     if (focusIdFromUrl || didCenterDefaultRef.current) return;
@@ -765,7 +925,9 @@ export default function RpgQuestTree() {
 
   useEffect(() => {
     const el = viewportRef.current;
-    if (!el || blockViewportGestures) return;
+    if (!el || blockViewportGestures) {
+      return;
+    }
     const onWheel = (/** @type {WheelEvent} */ e) => {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
@@ -774,7 +936,7 @@ export default function RpgQuestTree() {
       const factor = Math.exp(-e.deltaY * 0.0012);
       const panC = panRef.current;
       const scaleC = scaleRef.current;
-      const nextScale = Math.min(2.4, Math.max(0.38, scaleC * factor));
+      const nextScale = Math.min(2.4, Math.max(0.24, scaleC * factor));
       const wx = (mx - panC.x) / scaleC;
       const wy = (my - panC.y) / scaleC;
       setScale(nextScale);
@@ -814,7 +976,7 @@ export default function RpgQuestTree() {
       const mx = (t0.clientX + t1.clientX) / 2 - rect.left;
       const my = (t0.clientY + t1.clientY) / 2 - rect.top;
       const ratio = d / p.d0;
-      const nextScale = Math.min(2.4, Math.max(0.38, p.s0 * ratio));
+      const nextScale = Math.min(2.4, Math.max(0.24, p.s0 * ratio));
       setScale(nextScale);
       setPan({ x: mx - p.wx * nextScale, y: my - p.wy * nextScale });
     };
@@ -833,11 +995,13 @@ export default function RpgQuestTree() {
       el.removeEventListener('touchend', onTouchEndPinch);
       el.removeEventListener('touchcancel', onTouchEndPinch);
     };
-  }, [blockViewportGestures]);
+  }, [blockViewportGestures, bootstrapped]);
 
   const onPointerDownViewport = useCallback(
     (/** @type {PointerEvent} */ e) => {
-      if (blockViewportGestures) return;
+      if (blockViewportGestures) {
+        return;
+      }
       if (e.button !== 0) return;
       suppressNodeClickRef.current = false;
       dragRef.current = { px: e.clientX, py: e.clientY, vx: pan.x, vy: pan.y, moved: false };
@@ -886,9 +1050,18 @@ export default function RpgQuestTree() {
       suppressNodeClickRef.current = false;
       return;
     }
+    if (treePickActive) {
+      setTreePickNodeIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(qid)) next.delete(qid);
+        else next.add(qid);
+        return next;
+      });
+      return;
+    }
     setSelectedNode({ questId: qid, nodeId: null });
     setSelectedId(qid);
-  }, []);
+  }, [treePickActive]);
 
   const toggleAdded = useCallback(() => {
     const q = selectedId ? byId.get(selectedId) : null;
@@ -908,16 +1081,15 @@ export default function RpgQuestTree() {
     });
   }, [byId, graph, selectedId, nodeDone]);
 
-  const { selectedRootNode, selectedNodeView, selectedNodeJson, selectedIsRootNode } =
+  const { selectedQuest, selectedGraphNode, selectedNodeView } =
     deriveRpgTreeSelectionView(byId, selectedId, selectedNode);
-  const selectedUnlocked = selectedRootNode
-    ? isNodeUnlocked(selectedRootNode.id, graph, nodeDone, byId)
+  const selectedUnlocked = selectedQuest
+    ? isNodeUnlocked(selectedQuest.id, graph, nodeDone, byId)
     : false;
-  const selectedCompleted = selectedRootNode ? isNodeCompleted(selectedRootNode, nodeDone) : false;
-  const selectedAdded = selectedRootNode ? added.has(selectedRootNode.id) : false;
+  const selectedCompleted = selectedQuest ? isNodeCompleted(selectedQuest, nodeDone) : false;
+  const selectedAdded = selectedQuest ? added.has(selectedQuest.id) : false;
   const { panelAddLabel, addButtonDisabled, canEditSelected } = deriveRpgTreePanelState({
-    selectedRootNode,
-    selectedIsRootNode,
+    selectedNodeContext: selectedQuest,
     selectedUnlocked,
     selectedCompleted,
     selectedAdded,
@@ -1020,11 +1192,16 @@ export default function RpgQuestTree() {
       mode={editorMode}
       graph={graph}
       questId={editorMode === 'edit' ? editorNodeId : null}
+      focusNodeId={editorMode === 'edit' ? editorFocusNodeId : null}
       createEntry={editorMode === 'create' ? editorCreateEntry : undefined}
       editEntry={editorMode === 'edit' ? editorEditEntry : undefined}
       onClose={closeEditor}
       onApply={applyGraph}
       itemCatalog={itemCatalog}
+      embedded
+      treePickParentKey={treePickParentKey}
+      treePickNodeIds={treePickIdList}
+      onToggleTreePick={handleToggleTreePick}
     />
   );
 
@@ -1092,9 +1269,9 @@ export default function RpgQuestTree() {
             />
 
             <g class="rpg-tree-edges">
-              {(graph.edges || []).map((e, i) => {
-                const qa = byId.get(e.from);
-                const qb = byId.get(e.to);
+              {dependencyEdges.map((e, i) => {
+                const qa = byId.get(e.fromNodeId);
+                const qb = byId.get(e.toNodeId);
                 if (!qa || !qb) return null;
                 const pa = questEdgePorts.fromPorts[i];
                 const pb = questEdgePorts.toPorts[i];
@@ -1102,8 +1279,8 @@ export default function RpgQuestTree() {
                 const seg = edgeEndpoints(pa.x, pa.y, pb.x, pb.y, 0, 0);
                 const pct = nodeProgress(qa, nodeDone, graph);
                 const doneU = isNodeCompleted(qa, nodeDone);
-                const addedU = added.has(e.from);
-                const unlockedU = isNodeUnlocked(e.from, graph, nodeDone, byId);
+                const addedU = added.has(e.fromNodeId);
+                const unlockedU = isNodeUnlocked(e.fromNodeId, graph, nodeDone, byId);
                 const activeU = unlockedU && addedU && !doneU;
 
                 const dimStroke = 'rgba(78, 102, 126, 0.48)';
@@ -1127,7 +1304,7 @@ export default function RpgQuestTree() {
                 }
 
                 return (
-                  <g key={`${e.from}-${e.to}-${i}`}>
+                  <g key={`${e.fromNodeId}-${e.toNodeId}-${i}`}>
                     <line
                       x1={seg.x1}
                       y1={seg.y1}
@@ -1181,7 +1358,7 @@ export default function RpgQuestTree() {
 
             <g class="rpg-tree-nodes">
               {graph.quests.map((q) => {
-                const p = layout.positions[q.id];
+                const p = treePositions[q.id];
                 if (!p) return null;
                 const unlocked = isNodeUnlocked(q.id, graph, nodeDone, byId);
                 const completed = isNodeCompleted(q, nodeDone);
@@ -1196,7 +1373,7 @@ export default function RpgQuestTree() {
                 return (
                   <g
                     key={q.id}
-                    class={cls}
+                    class={`${cls}${treePickActive && treePickNodeIds.has(q.id) ? ' rpg-tree-node--pick-selected' : ''}`}
                     transform={`translate(${p.x},${p.y})`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onGraphNodeClick(q.id)}
@@ -1235,10 +1412,23 @@ export default function RpgQuestTree() {
                 return (
                   <g
                     key={n.id}
-                    class={cls}
+                    class={`${cls}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}`}
                     transform={`translate(${n.x},${n.y})`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => {
+                      if (suppressNodeClickRef.current) {
+                        suppressNodeClickRef.current = false;
+                        return;
+                      }
+                      if (treePickActive) {
+                        setTreePickNodeIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(n.nodeId)) next.delete(n.nodeId);
+                          else next.add(n.nodeId);
+                          return next;
+                        });
+                        return;
+                      }
                       setSelectedId(n.questId);
                       setSelectedNode({ questId: n.questId, nodeId: n.nodeId });
                     }}
@@ -1265,14 +1455,18 @@ export default function RpgQuestTree() {
         </div>
       </div>
 
-      {selectedRootNode && (
+      {(selectedQuest || editorOpen) && (
         <aside class="rpg-tree-panel" aria-label="Node-Details">
-          <div class="rpg-tree-panel__inner">
+          <div class={`rpg-tree-panel__inner${editorOpen ? ' rpg-tree-panel__inner--editor' : ''}`}>
+            {editorOpen ? (
+              graphEditor
+            ) : (
+              <>
             <div class="rpg-tree-panel__side-actions">
               <button
                 type="button"
                 class={`rpg-tree-panel__add${selectedAdded ? ' rpg-tree-panel__add--remove' : ''}`}
-                disabled={!selectedIsRootNode || addButtonDisabled}
+                disabled={addButtonDisabled}
                 onClick={toggleAdded}
                 aria-label={selectedAdded ? 'Node vom Hub entfernen' : 'Node zum Hub hinzufügen'}
               >
@@ -1281,7 +1475,9 @@ export default function RpgQuestTree() {
               <button
                 type="button"
                 class="rpg-tree-panel__edit-toggle"
-                onClick={() => openEditNode(selectedRootNode.id, 'form')}
+                onClick={() =>
+                  openEditNode(selectedNode?.nodeId || selectedQuest.id, 'form', selectedNode?.nodeId || null)
+                }
                 disabled={!canEditSelected}
                 aria-label="Node manuell bearbeiten"
                 title="Node manuell bearbeiten"
@@ -1291,7 +1487,7 @@ export default function RpgQuestTree() {
             </div>
             <div class="rpg-tree-panel__main">
               <div class="rpg-tree-panel__head">
-                <h2 class="rpg-tree-panel__title">{selectedNodeView?.title || selectedRootNode.title}</h2>
+                <h2 class="rpg-tree-panel__title">{selectedNodeView?.title || selectedQuest.title}</h2>
                 <button
                   type="button"
                   class="rpg-tree-panel__close"
@@ -1304,35 +1500,50 @@ export default function RpgQuestTree() {
                   ×
                 </button>
               </div>
-              <p class="rpg-tree-panel__desc">{selectedNodeView?.description || selectedRootNode.description}</p>
-              <details class="rpg-tree-panel__details" open>
-                <summary>Node JSON</summary>
-                <div class="rpg-tree-panel__nodes-wrap">
-                  {selectedNodeJson ? <pre class="rpg-tree-panel__code">{selectedNodeJson}</pre> : null}
-                  {selectedNodeView ? (
-                    <RpgQuestNodesView
-                      node={selectedNodeView}
-                      guardQuest={selectedRootNode}
-                      nodeDone={nodeDone}
-                      onToggleNode={onToggleNode}
-                      doneScopeNodeId={selectedRootNode.id}
-                      interactive
-                      showChildren
-                      childrenClass="rpg-tree-panel__nodes"
-                      rewardsClass="rpg-tree-panel__rewards"
-                      graph={graph}
-                      itemCatalog={itemCatalog}
-                      currentLocation={location}
-                      showLocationGuidance={false}
-                    />
-                  ) : null}
-                </div>
+              <p class="rpg-tree-panel__desc">{selectedNodeView?.description || selectedQuest.description}</p>
+              <ul class="rpg-tree-panel__meta-inline" aria-label="Quest-Details">
+                <li><span>Quest-ID</span><strong>{selectedQuest.id}</strong></li>
+                <li><span>Wurzel-Nodes</span><strong>{Array.isArray(selectedQuest.children) ? selectedQuest.children.length : 0}</strong></li>
+                <li><span>Leaf-Nodes</span><strong>{countQuestLeaves(selectedQuest)}</strong></li>
+                <li><span>Quest-Rewards</span><strong>{Array.isArray(selectedQuest.questRewards) ? selectedQuest.questRewards.length : 0}</strong></li>
+                <li><span>City-Lock</span><strong>{selectedQuest.cityLocation || '—'}</strong></li>
+                <li><span>Aktive Node</span><strong>{selectedGraphNode?.id || 'Quest-Root'}</strong></li>
+              </ul>
+              {selectedQuest.questmakerPrompt ? (
+                <p class="rpg-tree-panel__prompt-line">
+                  <span>Questmaker-Prompt</span> {selectedQuest.questmakerPrompt}
+                </p>
+              ) : null}
+              <details class="rpg-tree-panel__details">
+                <summary>Quest JSON</summary>
+                <pre class="rpg-tree-panel__code">{JSON.stringify(selectedQuest, null, 2)}</pre>
               </details>
+              <div class="rpg-tree-panel__nodes-wrap">
+                <h3 class="rpg-tree-panel__inline-label">Node-Ansicht</h3>
+                {selectedNodeView ? (
+                  <RpgQuestNodesView
+                    node={selectedNodeView}
+                    guardQuest={selectedQuest}
+                    nodeDone={nodeDone}
+                    onToggleNode={onToggleNode}
+                    doneScopeNodeId={selectedQuest.id}
+                    interactive
+                    showChildren
+                    childrenClass="rpg-tree-panel__nodes"
+                    rewardsClass="rpg-tree-panel__rewards"
+                    graph={graph}
+                    itemCatalog={itemCatalog}
+                    currentLocation={location}
+                    showLocationGuidance={false}
+                  />
+                ) : null}
+              </div>
             </div>
+              </>
+            )}
           </div>
         </aside>
       )}
-      {graphEditor}
     </div>
   );
 }

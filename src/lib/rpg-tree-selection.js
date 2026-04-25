@@ -6,33 +6,27 @@ import { findNodeById } from './rpg-quest-nodes.js';
  * @param {{ questId: string; nodeId: string | null } | null} selectedNode
  */
 export function deriveRpgTreeSelectionView(byId, selectedId, selectedNode) {
-  const selectedRootNode = selectedId ? byId.get(selectedId) : null;
-  const selectedTreeNode =
-    selectedRootNode && selectedNode && selectedNode.questId === selectedRootNode.id && selectedNode.nodeId
-      ? findNodeById(selectedRootNode.children || [], selectedNode.nodeId)
+  const selectedQuest = selectedId ? byId.get(selectedId) : null;
+  const selectedGraphNode =
+    selectedQuest && selectedNode && selectedNode.questId === selectedQuest.id && selectedNode.nodeId
+      ? findNodeById(selectedQuest.children || [], selectedNode.nodeId)
       : null;
-  const selectedNodeView = selectedTreeNode
+  const selectedNodeView = selectedGraphNode
     ? {
-        id: `${selectedRootNode.id}::${selectedTreeNode.id}`,
-        title: selectedTreeNode.label || selectedTreeNode.id,
+        id: `${selectedQuest.id}::${selectedGraphNode.id}`,
+        title: selectedGraphNode.label || selectedGraphNode.id,
         description: '',
-        children: selectedTreeNode.children || [],
+        children: selectedGraphNode.children || [],
         questRewards: [],
       }
-    : selectedRootNode
+    : selectedQuest
       ? {
-          id: selectedRootNode.id,
-          title: selectedRootNode.title,
-          description: selectedRootNode.description || '',
-          children: selectedRootNode.children || [],
-          questRewards: selectedRootNode.questRewards || [],
+          id: selectedQuest.id,
+          title: selectedQuest.title,
+          description: selectedQuest.description || '',
+          children: selectedQuest.children || [],
+          questRewards: selectedQuest.questRewards || [],
         }
       : null;
-  const selectedNodeJson = selectedTreeNode
-    ? JSON.stringify(selectedTreeNode, null, 2)
-    : selectedRootNode
-      ? JSON.stringify(selectedRootNode, null, 2)
-      : '';
-  const selectedIsRootNode = !!selectedRootNode && !selectedTreeNode;
-  return { selectedRootNode, selectedTreeNode, selectedNodeView, selectedNodeJson, selectedIsRootNode };
+  return { selectedQuest, selectedGraphNode, selectedNodeView };
 }

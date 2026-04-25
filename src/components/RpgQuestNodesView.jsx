@@ -229,7 +229,10 @@ function NodeBranch({
       >
         <details class="rpg-node__details" open={depth < 1}>
           <summary class="rpg-node__summary">
-            <span class="rpg-node__summary-text">{childNode.label}</span>
+            <span class="rpg-node__summary-text">
+              {childNode.label}
+              {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
+            </span>
             {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}
             {childNode.optional ? (
               <span class="rpg-node-badge" title="Optional">
@@ -313,6 +316,7 @@ function NodeBranch({
             <span class="rpg-node__location-hint">Go to {nodePlace}.</span>
           ) : null}
           <span class="rpg-node__text">{childNode.label}</span>
+          {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
         </span>
         {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}
         {childNode.optional ? (

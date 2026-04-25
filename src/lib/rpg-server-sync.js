@@ -5,7 +5,7 @@ import {
   clearAllRpgLocalStorage,
 } from './rpg-persistence.js';
 import { EMPTY_RPG_GRAPH } from './rpg-quests-data.js';
-import { graphNodes, makeRpgGraph } from './rpg-quests-data.js';
+import { graphNodes, makeRpgGraph, graphEdges } from './rpg-quests-data.js';
 import {
   isValidGraphShape,
   mergeNodeDoneBase,
@@ -223,7 +223,7 @@ export function pickRpgPayloadFromResponse(data) {
     });
   }
   const graph = migrateRpgGraphToV2(
-    makeRpgGraph(graphNodes(raw), Array.isArray(raw?.edges) ? raw.edges : [])
+    makeRpgGraph(graphNodes(raw), graphEdges(raw))
   );
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
   const nodeDoneRaw = data?.nodeDone;

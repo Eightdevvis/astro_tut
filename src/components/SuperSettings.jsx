@@ -631,13 +631,15 @@ export default function SuperSettings() {
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
           <code>super_access</code> = Vollzugriff (alle Rechte aus dieser Liste).{' '}
           <code>tester_access</code> markiert User als Tester (Bottom-Bar mit Kamera).{' '}
-          <code>rpg_access</code> erlaubt das RPG inkl. Questmaker.
+          <code>rpg_access</code> erlaubt das RPG inkl. Questmaker.{' '}
+          <code>minigames_access</code> schaltet Minigames in Nav/Home und auf den Minigame-Seiten frei.
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={tableStyle}>
             <thead>
               <tr>
                 <th style={thtd}>User</th>
+                <th style={thtd}>Global</th>
                 {knownPermissions.map((p) => (
                   <th key={p} style={thtd}>
                     {p}
@@ -656,6 +658,7 @@ export default function SuperSettings() {
                       </span>
                     ) : null}
                   </td>
+                  <td style={{ ...thtd, textAlign: 'center' }}>{u.global ? 'Ja' : 'Nein'}</td>
                   {knownPermissions.map((p) => {
                     const has = effectivePerm(u.permissions, p);
                     const lockedBySuper = p !== SUPER_PERM && (u.permissions || []).includes(SUPER_PERM);

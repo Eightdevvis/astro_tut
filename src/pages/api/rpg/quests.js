@@ -2,7 +2,7 @@ import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { EMPTY_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
-import { graphNodes, makeRpgGraph } from '../../../lib/rpg-quests-data.js';
+import { graphNodes, makeRpgGraph, graphEdges } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
 import {
@@ -59,7 +59,7 @@ export async function GET({ cookies }) {
   let schemaVersion = RPG_PAYLOAD_SCHEMA_VERSION;
   if (stored && isValidGraphShape(stored.graph)) {
     graph = /** @type {typeof EMPTY_RPG_GRAPH} */ (
-      makeRpgGraph(graphNodes(stored.graph), stored.graph.edges || [])
+      makeRpgGraph(graphNodes(stored.graph), graphEdges(stored.graph))
     );
     persisted = true;
     schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
@@ -85,7 +85,7 @@ export async function GET({ cookies }) {
 
   return new Response(
     JSON.stringify({
-      graph: makeRpgGraph(graphNodes(graph), graph.edges || []),
+      graph: makeRpgGraph(graphNodes(graph), graphEdges(graph)),
       addedIds,
       nodeDone,
       vitals,
@@ -144,7 +144,7 @@ export async function PUT({ request, cookies }) {
   if (idSet.size !== questIds.length) {
     return new Response(JSON.stringify({ error: 'Doppelte Quest-IDs im Graph' }), { status: 400 });
   }
-  const edges = Array.isArray(body.graph.edges) ? body.graph.edges : [];
+  const edges = graphEdges(body.graph);
   const refCheck = validateRpgGraphReferences(body.graph, edges);
   if (!refCheck.ok) {
     return new Response(JSON.stringify({ error: refCheck.reason }), { status: 400 });

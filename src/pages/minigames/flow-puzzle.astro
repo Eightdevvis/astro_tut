@@ -4,7 +4,15 @@ import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import FlowPuzzle from '../../components/FlowPuzzle.jsx';
+import { getUsernameFromCookies } from '../../lib/session.js';
+import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'minigames_access'));
+if (!canUseMinigames) {
+  return Astro.redirect('/');
+}
 ---
 
 <html lang="de" class="flow-puzzle-page">

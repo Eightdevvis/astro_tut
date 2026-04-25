@@ -3,7 +3,7 @@
  * Quest-Rewards mit Freischalt-Prozent. Fortschritt nur über nicht-optionale Blätter.
  */
 import { normalizeQuestCityLocation, normalizeNodePlaceLocation } from './rpg-location.js';
-import { graphNodes, makeRpgGraph } from './rpg-quests-data.js';
+import { graphNodes, makeRpgGraph, graphEdges } from './rpg-quests-data.js';
 
 const RPG_NODE_WARNED_KEYS = new Set();
 function warnNodeAnomalyOnce(key, message, details) {
@@ -60,6 +60,7 @@ export function formatRewardPointsAmount(n) {
  *   id: string;
  *   parentId: string | null;
  *   label: string;
+ *   description?: string;
  *   optional?: boolean;
  *   children: RpgQuestNode[];
  *   dependsOn?: string[];
@@ -149,6 +150,7 @@ function normalizeOneNode(raw, next, parentId) {
   const o = raw && typeof raw === 'object' ? /** @type {any} */ (raw) : {};
   const id = typeof o.id === 'string' && o.id.trim() ? o.id.trim() : `s-${next.n++}`;
   const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : id;
+  const description = typeof o.description === 'string' && o.description.trim() ? o.description.trim() : '';
   const optional = !!o.optional;
   const dependsOn = Array.isArray(o.dependsOn)
     ? o.dependsOn.map((x) => String(x).trim()).filter(Boolean)
@@ -171,6 +173,7 @@ function normalizeOneNode(raw, next, parentId) {
   const kidsRaw = Array.isArray(o.children) ? o.children : o.subnodes;
   /** @type {RpgQuestNode} */
   let out = { id, parentId, label, optional, children: [] };
+  if (description) out = { ...out, description };
   if (dependsOn.length) out = { ...out, dependsOn };
   if (reward) out = { ...out, reward };
   if (cityLocation) out = { ...out, cityLocation };
@@ -829,5 +832,5 @@ export function migrateQuestToV2Shape(q) {
  */
 export function migrateRpgGraphToV2(graph) {
   const nodes = graphNodes(graph).map((q) => migrateQuestToV2Shape(q));
-  return makeRpgGraph(nodes, graph?.edges || []);
+  return makeRpgGraph(nodes, graphEdges(graph));
 }

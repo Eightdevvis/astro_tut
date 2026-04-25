@@ -5,7 +5,7 @@ import {
   nodeIsLeaf,
   questLeafProgressRatio,
 } from './rpg-quest-nodes.js';
-import { graphNodes, makeRpgGraph } from './rpg-quests-data.js';
+import { graphNodes, makeRpgGraph, graphEdges } from './rpg-quests-data.js';
 
 const RPG_GRAPH_WARNED_KEYS = new Set();
 function warnGraphOnce(key, message, details) {
@@ -29,7 +29,8 @@ export function isValidGraphShape(g) {
     !!g &&
     typeof g === 'object' &&
     (Array.isArray(/** @type {any} */ (g).nodes) ||
-      Array.isArray(/** @type {any} */ (g).quests)) &&
+      Array.isArray(/** @type {any} */ (g).quests) ||
+      (!!/** @type {any} */ (g).nodesById && typeof /** @type {any} */ (g).nodesById === 'object')) &&
     Array.isArray(/** @type {any} */ (g).edges)
   );
 }
@@ -66,10 +67,11 @@ export function collectQuestIdsForAggregatedProgress(graph, questId) {
     const id = down.pop();
     if (typeof id !== 'string') continue;
     out.add(id);
-    for (const e of graph.edges || []) {
-      if (e.from === id && !seenDown.has(e.to)) {
-        seenDown.add(e.to);
-        down.push(e.to);
+    for (const e of graphEdges(graph)) {
+      if (e.relation === 'structure') continue;
+      if (e.fromNodeId === id && !seenDown.has(e.toNodeId)) {
+        seenDown.add(e.toNodeId);
+        down.push(e.toNodeId);
       }
     }
   }
@@ -128,12 +130,13 @@ export function buildIncomingMap(graph) {
     incoming.set(q.id, []);
     knownIds.add(q.id);
   }
-  for (const e of graph.edges || []) {
-    if (!knownIds.has(e.from) || !knownIds.has(e.to)) {
-      warnGraphOnce(`danglingEdge.${e.from}->${e.to}`, 'Dangling edge references missing node id', e);
+  for (const e of graphEdges(graph)) {
+    if (e.relation === 'structure') continue;
+    if (!knownIds.has(e.fromNodeId) || !knownIds.has(e.toNodeId)) {
+      warnGraphOnce(`danglingEdge.${e.fromNodeId}->${e.toNodeId}`, 'Dangling edge references missing node id', e);
     }
-    if (!incoming.has(e.to)) incoming.set(e.to, []);
-    incoming.get(e.to).push(e.from);
+    if (!incoming.has(e.toNodeId)) incoming.set(e.toNodeId, []);
+    incoming.get(e.toNodeId).push(e.fromNodeId);
   }
   return incoming;
 }
@@ -424,9 +427,17 @@ export function upsertQuestInGraph(graph, node, prerequisiteIds) {
   }
   const nodes = graphNodes(graph).filter((q) => q.id !== node.id);
   nodes.push(mergedNode);
-  const edges = (graph.edges || []).filter((e) => e.to !== node.id);
+  const edges = graphEdges(graph).filter((e) => e.relation === 'structure' || e.toNodeId !== node.id);
   for (const from of ids) {
-    if (nodes.some((q) => q.id === from)) edges.push({ from, to: node.id });
+    if (nodes.some((q) => q.id === from)) {
+      edges.push({
+        fromNodeId: from,
+        toNodeId: node.id,
+        relation: 'dependency',
+        from,
+        to: node.id,
+      });
+    }
   }
   return makeRpgGraph(nodes, edges);
 }
@@ -434,7 +445,7 @@ export function upsertQuestInGraph(graph, node, prerequisiteIds) {
 /** @param {RpgGraph} graph @param {string} questId */
 export function removeQuestFromGraph(graph, questId) {
   const nodes = graphNodes(graph).filter((q) => q.id !== questId);
-  const edges = (graph.edges || []).filter((e) => e.from !== questId && e.to !== questId);
+  const edges = graphEdges(graph).filter((e) => e.fromNodeId !== questId && e.toNodeId !== questId);
   return makeRpgGraph(nodes, edges);
 }
 
@@ -464,9 +475,10 @@ export function graphHasCycle(graph) {
   /** @type {Map<string, string[]>} */
   const out = new Map();
   for (const q of graphNodes(graph)) out.set(q.id, []);
-  for (const e of graph.edges || []) {
-    if (!out.has(e.from)) out.set(e.from, []);
-    out.get(e.from).push(e.to);
+  for (const e of graphEdges(graph)) {
+    if (e.relation === 'structure') continue;
+    if (!out.has(e.fromNodeId)) out.set(e.fromNodeId, []);
+    out.get(e.fromNodeId).push(e.toNodeId);
   }
   const visiting = new Set();
   const done = new Set();

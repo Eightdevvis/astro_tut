@@ -11,6 +11,7 @@ import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js'
  *   key: string;
  *   stableId?: string;
  *   title: string;
+ *   description: string;
  *   optional: boolean;
  *   rewardOn: boolean;
  *   rewardKind: 'text' | 'item' | 'points';
@@ -45,6 +46,7 @@ export function createEmptyNodeDraft(saved = false) {
   return {
     key: newDraftKey(),
     title: '',
+    description: '',
     optional: false,
     rewardOn: false,
     rewardKind: 'text',
@@ -73,11 +75,7 @@ export function createEmptyNodeDraft(saved = false) {
 export function questNodeToDraft(node) {
   const subs = Array.isArray(node.children) && node.children.length > 0;
   const legacyDeps =
-    node.orderLinked === true
-      ? undefined
-      : Array.isArray(node.dependsOn) && node.dependsOn.length > 0
-        ? [...node.dependsOn]
-        : undefined;
+    Array.isArray(node.dependsOn) && node.dependsOn.length > 0 ? [...node.dependsOn] : undefined;
   const due = typeof node.timeDueAt === 'string' && node.timeDueAt.trim() ? node.timeDueAt.trim().slice(0, 10) : '';
   const rent = normalizeRewardEntry(node.reward);
   const rewardOn = !!rent;
@@ -92,6 +90,7 @@ export function questNodeToDraft(node) {
     key: node.id || newDraftKey(),
     stableId: typeof node.id === 'string' ? node.id : undefined,
     title: typeof node.label === 'string' ? node.label : '',
+    description: typeof node.description === 'string' ? node.description : '',
     optional: !!node.optional,
     rewardOn,
     rewardKind,
@@ -160,6 +159,7 @@ export function reorderDraftNodes(arr, fromIdx, toIdx) {
  */
 function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
+  const description = (d.description || '').trim();
   const optional = !!d.optional;
   /** @type {import('./rpg-quest-nodes.js').RpgQuestRewardEntry | undefined} */
   let reward;
@@ -187,8 +187,8 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   if (meaningfulKids.length > 0) {
     const children = processDraftSiblings(meaningfulKids, idCounter, id);
     /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
-    const out = { id, parentId, label, optional, children };
-    if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
+    const out = { id, parentId, label, optional, children, ...(description ? { description } : {}) };
+  if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
     if (reward) out.reward = reward;
     if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) out.timeDueAt = due;
     if (d.orderLinked) out.orderLinked = true;
@@ -197,7 +197,7 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   }
 
   /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
-  const leaf = { id, parentId, label, optional, children: [] };
+  const leaf = { id, parentId, label, optional, children: [], ...(description ? { description } : {}) };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
   if (reward) leaf.reward = reward;
   if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) leaf.timeDueAt = due;
@@ -213,20 +213,13 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
  * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
 function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
-  let lastChainId = /** @type {string | null} */ (null);
   /** @type {import('./rpg-quest-nodes.js').RpgQuestNode[]} */
   const out = [];
 
   for (const d of meaningfulSiblings) {
     const id = d.stableId?.trim() || `s-${idCounter.n++}`;
     /** @type {string[]} */
-    let deps = [];
-    if (d.orderLinked) {
-      deps = lastChainId ? [lastChainId] : [];
-      lastChainId = id;
-    } else if (d.legacyDependsOn?.length) {
-      deps = [...d.legacyDependsOn];
-    }
+    const deps = d.legacyDependsOn?.length ? [...d.legacyDependsOn] : [];
     out.push(buildRawFromDraft(d, id, deps, idCounter, parentId));
   }
   return out;
@@ -372,6 +365,7 @@ export function ensureNodeDraftFields(raw) {
   }
   if (typeof d.pointsAmount !== 'string') d.pointsAmount = '';
   if (typeof d.rewardText !== 'string') d.rewardText = '';
+  if (typeof d.description !== 'string') d.description = '';
   d.isLock = d.isLock === true;
   if (Array.isArray(d.children) && d.children.length > 0) {
     d.children = d.children.map((c) => ensureNodeDraftFields(c));

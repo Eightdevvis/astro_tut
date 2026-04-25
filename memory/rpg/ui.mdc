@@ -8,7 +8,7 @@
 
 - Verwalten-Modus: `Verwalten` aktiviert Editiermodus, `Fertig` beendet ihn.
 - Neuanlage und Bearbeitung trennen `manuell+` und `questmaker+` als eigene Einstiege.
-- Manuelle Entwuerfe im Browser-`localStorage` (`rpg-quest-manual-drafts-v1`) bei Abbruch/Schliessen mit relevantem Inhalt; Draft-UI unterstuetzt Laden und Loeschen gespeicherter Entwuerfe.
+- Manuelle Entwuerfe im Browser-`localStorage`: persistente Entwurfsliste (`rpg-quest-manual-drafts-v1`) bei Abbruch/Schliessen plus laufender In-Progress-Snapshot (`rpg-quest-manual-draft-in-progress-v1`) mit Auto-Restore beim erneuten Oeffnen von `manuell+` (auch fuer abruptes Tab/Fenster-Schliessen via `pagehide`/`visibilitychange`/`beforeunload`).
 - Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeLayeredLayout`.
 - Vitals-Deko links unten (Mana + Herz) ueber `LiquidVessels` (`variant="rpg-tree"`), Fuellstand aus persistentem `vitals`-Konto.
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`) und blockiert Viewport-Gesten, bis das Detail geschlossen wird.
@@ -17,13 +17,13 @@
   - Einheitliche Node-Form (keine Main/Side-Differenz mehr)
   - State-Styling fuer gesperrt, frei-nicht-hinzugefuegt, aktiv, fertig
   - Roter Punkt bei offenen Pflicht-Schritten mit Frist < 7 Tage oder ueberfaellig
-- Child-Nodes im Baum werden wieder als eigene Mini-Nodes inkl. Parent->Child-Kanten gezeigt.
-- Lock-Nodes erscheinen als Schloss (`🔒`) und waehlen beim Klick die zugehoerige Quest (Bearbeiten weiter ueber Quest-Panel).
+- Child-Nodes im Baum werden als eigene Mini-Nodes inkl. Parent->Child-Kanten gezeigt.
+- Lock-Nodes erscheinen als Schloss (`🔒`); Bearbeiten oeffnet die konkrete selektierte Node als Edit-Entity.
 - Kanten:
   - Quelle fertig -> weiss
   - Quelle aktiv mit Fortschritt -> anteiliges Leuchten
   - sonst dunkel
-- Detail-Panel unten fix bei Node-Auswahl: zeigt nur quest-spezifische Meta-Infos (Titel/Beschreibung/Rewards, Add/Weg, Edit) und keine eingebettete Node-Checkbox-Liste mehr; abhakbare Schritte bleiben im Graph sichtbar.
+- Detail-Panel unten fix bei Node-Auswahl: zeigt Meta-Infos (Titel/Beschreibung/Rewards, Add/Weg, Edit), direkte Quest-Details als feste Felder (Quest-ID, Root-/Leaf-Count, Rewards, City-Lock, aktive Node, optional Questmaker-Prompt) und keine eingebettete Node-Checkbox-Liste mehr; abhakbare Schritte bleiben im Graph sichtbar.
 - Location-Status ist interaktiv als auf-/zuklappbarer Strip (Kompass-Button + Selects), nicht nur reine Textanzeige.
 - Location-Modal:
   - Modus Suchen: zentrale Suchleiste (`GET /api/rpg/locations?q=...`)

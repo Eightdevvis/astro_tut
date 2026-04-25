@@ -1,21 +1,19 @@
 /**
  * @param {{
- *   selectedRootNode: { id: string } | null;
- *   selectedIsRootNode: boolean;
+ *   selectedNodeContext: { id: string } | null;
  *   selectedUnlocked: boolean;
  *   selectedCompleted: boolean;
  *   selectedAdded: boolean;
  }} input
  */
 export function deriveRpgTreePanelState(input) {
-  const selectedRootNode = input.selectedRootNode || null;
-  const selectedIsRootNode = !!input.selectedIsRootNode;
+  const selectedNodeContext = input.selectedNodeContext || null;
   const selectedUnlocked = !!input.selectedUnlocked;
   const selectedCompleted = !!input.selectedCompleted;
   const selectedAdded = !!input.selectedAdded;
   const panelAddLabel = selectedAdded ? 'Weg' : 'Add';
   const addButtonDisabled = selectedCompleted || !selectedUnlocked;
-  const canEditSelected = !!selectedRootNode && selectedIsRootNode;
+  const canEditSelected = !!selectedNodeContext;
   return {
     panelAddLabel,
     addButtonDisabled,

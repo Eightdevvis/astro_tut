@@ -3,6 +3,7 @@
  */
 
 const STORAGE_KEY = 'rpg-quest-manual-drafts-v1';
+const IN_PROGRESS_STORAGE_KEY = 'rpg-quest-manual-draft-in-progress-v1';
 
 /**
  * @typedef {{
@@ -79,4 +80,50 @@ export function addManualQuestDraft(payload) {
 export function removeManualQuestDraft(key) {
   const next = loadManualQuestDrafts().filter((d) => d.key !== key);
   persistManualQuestDrafts(next);
+}
+
+/**
+ * @returns {{ savedAt: string; payload: ManualQuestDraftPayload } | null}
+ */
+export function loadManualQuestInProgressDraft() {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(IN_PROGRESS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.savedAt !== 'string' || !parsed.payload || typeof parsed.payload !== 'object') {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {ManualQuestDraftPayload} payload
+ */
+export function saveManualQuestInProgressDraft(payload) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(
+      IN_PROGRESS_STORAGE_KEY,
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        payload,
+      })
+    );
+  } catch {
+    // Quota oder private mode — still ignore
+  }
+}
+
+export function clearManualQuestInProgressDraft() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(IN_PROGRESS_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }

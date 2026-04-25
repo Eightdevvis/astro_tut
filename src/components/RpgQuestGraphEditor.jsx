@@ -26,6 +26,9 @@ import {
   addManualQuestDraft,
   removeManualQuestDraft,
   loadManualQuestDrafts,
+  loadManualQuestInProgressDraft,
+  saveManualQuestInProgressDraft,
+  clearManualQuestInProgressDraft,
 } from '../lib/rpg-quest-manual-drafts.js';
 import { RpgQuestNodesBuilder, RpgQuestRewardsBuilder } from './RpgQuestNodesBuilder.jsx';
 import RpgQuestNodesView from './RpgQuestNodesView.jsx';
@@ -48,11 +51,110 @@ function makeUniqueQuestId(baseId, existingIds) {
 }
 
 /**
+ * @param {import('../lib/rpg-quest-graph.js').RpgGraph} graph
+ * @param {string} entityId
+ */
+function resolveEditTarget(graph, entityId) {
+  const id = String(entityId || '').trim();
+  if (!id) return null;
+  for (const q of graph.quests || []) {
+    if (q.id === id) {
+      return { containerQuestId: q.id, targetNode: q, isTopLevel: true };
+    }
+    /** @type {Array<any>} */
+    const stack = Array.isArray(q.children) ? [...q.children] : [];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (!cur || typeof cur !== 'object') continue;
+      if (cur.id === id) {
+        return { containerQuestId: q.id, targetNode: cur, isTopLevel: false };
+      }
+      if (Array.isArray(cur.children) && cur.children.length > 0) stack.push(...cur.children);
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {string} targetId
+ * @param {(node: any) => any} mapFn
+ */
+function mapNodeRecursive(nodes, targetId, mapFn) {
+  return (nodes || []).map((node) => {
+    if (!node || typeof node !== 'object') return node;
+    if (node.id === targetId) return mapFn(node);
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      return { ...node, children: mapNodeRecursive(node.children, targetId, mapFn) };
+    }
+    return node;
+  });
+}
+
+/**
+ * Öffnet im Draft-Baum den Pfad zur fokussierten Node.
+ * @param {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[]} drafts
+ * @param {string | null | undefined} focusNodeId
+ * @returns {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[]}
+ */
+function expandDraftsToFocusedNode(drafts, focusNodeId) {
+  const focus = String(focusNodeId || '').trim();
+  if (!focus) return drafts;
+  /**
+   * @param {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft} draft
+   * @returns {{ draft: import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft; hasFocus: boolean }}
+   */
+  const walk = (draft) => {
+    let hasFocus = draft.stableId === focus || draft.key === focus;
+    const nextChildren = (draft.children || []).map((child) => {
+      const out = walk(child);
+      if (out.hasFocus) hasFocus = true;
+      return out.draft;
+    });
+    if (!hasFocus) return { draft, hasFocus: false };
+    return {
+      draft: {
+        ...draft,
+        saved: false,
+        ...(nextChildren.length > 0 ? { children: nextChildren } : {}),
+      },
+      hasFocus: true,
+    };
+  };
+  return drafts.map((draft) => walk(draft).draft);
+}
+
+/**
+ * @param {import('../lib/rpg-quest-graph.js').RpgGraph} graph
+ * @param {string} nodeId
+ * @returns {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft | null}
+ */
+function graphNodeIdToDraft(graph, nodeId) {
+  const resolved = resolveEditTarget(graph, nodeId);
+  if (!resolved || !resolved.targetNode) return null;
+  const entity = resolved.isTopLevel
+    ? {
+        id: resolved.targetNode.id,
+        label: resolved.targetNode.title || resolved.targetNode.id,
+        description: resolved.targetNode.description || '',
+        children: Array.isArray(resolved.targetNode.children) ? resolved.targetNode.children : [],
+      }
+    : resolved.targetNode;
+  const out = questNodesToDrafts([entity]);
+  return out[0] || null;
+}
+
+/**
  * @param {{
  *   open: boolean;
  *   mode: 'create' | 'edit';
  *   graph: import('../lib/rpg-quest-graph.js').RpgGraph;
  *   questId: string | null;
+ *   focusNodeId?: string | null;
+ *   embedded?: boolean;
+ *   treePickParentKey?: string | null;
+ *   treePickNodeIds?: string[];
+ *   onToggleTreePick?: (parentDraftKey: string) => void;
  *   onClose: () => void;
  *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph, opts?: { questmakerItems?: { id: string; category: string; title: string; description: string }[] }) => void;
  *   createEntry?: 'manual' | 'questmaker';
@@ -65,6 +167,11 @@ export default function RpgQuestGraphEditor({
   mode,
   graph,
   questId,
+  focusNodeId = null,
+  embedded = false,
+  treePickParentKey = null,
+  treePickNodeIds = [],
+  onToggleTreePick,
   onClose,
   onApply,
   createEntry,
@@ -83,7 +190,7 @@ export default function RpgQuestGraphEditor({
   /** @type {import('../lib/rpg-quest-editor-draft.js').QuestRewardDraftRow[]} */
   const [rewardRows, setRewardRows] = useState([]);
   const [orderInLayer, setOrderInLayer] = useState(0);
-  const [prereqIds, setPrereqIds] = useState(() => new Set());
+  const [editContainerQuestId, setEditContainerQuestId] = useState('');
   /** Nur wenn kein createEntry gesetzt (Fallback) */
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
   /** @type {'prompt' | 'result'} */
@@ -195,45 +302,65 @@ export default function RpgQuestGraphEditor({
     lastQmPromptRef.current = '';
     if (mode === 'edit' && questId) {
       aiQuestmakerItemsRef.current = [];
-      const q = graph.quests.find((x) => x.id === questId);
-      if (!q) return;
-      setId(q.id);
-      setTitle(q.title || '');
-      setDescription(q.description || '');
-      const drafts = questNodesToDrafts(q.children || []);
-      const rrows = questRewardRowsToDraftRows(getQuestRewardRows(q));
-      hydrateItemFieldsFromCatalog(drafts, rrows, itemCatalogRef.current);
-      setNodeDrafts(drafts);
+      const resolved = resolveEditTarget(graph, questId);
+      if (!resolved) return;
+      const containerQuest = graph.quests.find((x) => x.id === resolved.containerQuestId);
+      if (!containerQuest) return;
+      setEditContainerQuestId(containerQuest.id);
+      const target = resolved.targetNode;
+      setId(target.id || '');
+      setTitle((target.title || target.label || '').trim());
+      setDescription(target.description || '');
+      const drafts = questNodesToDrafts(target.children || []);
+      const expandedDrafts = expandDraftsToFocusedNode(drafts, focusNodeId);
+      const rrows = questRewardRowsToDraftRows(getQuestRewardRows(containerQuest));
+      hydrateItemFieldsFromCatalog(expandedDrafts, rrows, itemCatalogRef.current);
+      setNodeDrafts(expandedDrafts);
       setRewardRows(rrows);
-      setOrderInLayer(typeof q.orderInLayer === 'number' ? q.orderInLayer : 0);
-      const preds = new Set();
-      for (const e of graph.edges || []) {
-        if (e.to === questId) preds.add(e.from);
-      }
-      setPrereqIds(preds);
+      setOrderInLayer(typeof containerQuest.orderInLayer === 'number' ? containerQuest.orderInLayer : 0);
       editQmBaselineRef.current = {
-        nodeDrafts: drafts,
-        title: q.title || '',
-        description: q.description || '',
+        nodeDrafts: expandedDrafts,
+        title: (target.title || target.label || '').trim(),
+        description: target.description || '',
         rewardRows: rrows.map((r) => ({ ...r })),
-        orderInLayer: typeof q.orderInLayer === 'number' ? q.orderInLayer : 0,
+        orderInLayer: typeof containerQuest.orderInLayer === 'number' ? containerQuest.orderInLayer : 0,
       };
       resetAiSession();
-      const storedQm = typeof q.questmakerPrompt === 'string' ? q.questmakerPrompt : '';
+      const storedQm = typeof containerQuest.questmakerPrompt === 'string' ? containerQuest.questmakerPrompt : '';
       setAiPrompt((resolvedEditEntry ?? 'form') === 'ai' ? storedQm : '');
       setCreateMode('manual');
       setAiLoading(false);
       setQmPhase((resolvedEditEntry ?? 'form') === 'ai' ? 'prompt' : 'result');
     } else {
-      setId('');
-      setTitle('');
-      setDescription('');
-      setNodeDrafts([]);
-      setRewardRows([]);
-      setOrderInLayer(0);
-      setPrereqIds(new Set());
-      editQmBaselineRef.current = null;
       const ce = resolvedCreateEntry ?? 'manual';
+      const canRestoreInProgress = mode === 'create' && ce !== 'questmaker';
+      const inProgress = canRestoreInProgress ? loadManualQuestInProgressDraft() : null;
+      if (inProgress?.payload) {
+        const p = inProgress.payload;
+        setId(typeof p.id === 'string' ? p.id : '');
+        setTitle(typeof p.title === 'string' ? p.title : '');
+        setDescription(typeof p.description === 'string' ? p.description : '');
+        setNodeDrafts(
+          Array.isArray(p.nodeDrafts)
+            ? JSON.parse(JSON.stringify(p.nodeDrafts)).map((d) => ensureNodeDraftFields(d))
+            : []
+        );
+        setRewardRows(
+          Array.isArray(p.rewardRows)
+            ? JSON.parse(JSON.stringify(p.rewardRows)).map((r) => ensureRewardRowFields(r))
+            : []
+        );
+        setOrderInLayer(typeof p.orderInLayer === 'number' ? p.orderInLayer : 0);
+      } else {
+        setId('');
+        setTitle('');
+        setDescription('');
+        setNodeDrafts([]);
+        setRewardRows([]);
+        setOrderInLayer(0);
+      }
+      editQmBaselineRef.current = null;
+      setEditContainerQuestId('');
       setCreateMode(ce === 'questmaker' ? 'ai' : 'manual');
       setQmPhase(ce === 'questmaker' ? 'prompt' : 'result');
       setAiPrompt('');
@@ -241,7 +368,7 @@ export default function RpgQuestGraphEditor({
       setAiLoading(false);
       resetAiSession();
     }
-  }, [open, mode, questId, graph, resolvedCreateEntry, resolvedEditEntry]);
+  }, [open, mode, questId, focusNodeId, graph, resolvedCreateEntry, resolvedEditEntry]);
 
   useEffect(() => {
     if (open) setDraftListTick((t) => t + 1);
@@ -252,16 +379,30 @@ export default function RpgQuestGraphEditor({
   const showManualCreateDrafts =
     mode === 'create' && (resolvedCreateEntry ?? 'manual') !== 'questmaker';
 
-  const manualAbortDraftHasContent = () => {
-    if ((id || '').trim().length > 0) return true;
-    if ((title || '').trim().length > 0) return true;
-    if ((description || '').trim().length > 0) return true;
-    if (prereqIds.size > 0) return true;
-    const o = Number(orderInLayer);
+  const isManualCreateContext =
+    mode === 'create' && (resolvedCreateEntry ?? 'manual') !== 'questmaker';
+
+  const buildManualDraftPayload = () => ({
+    id,
+    title,
+    description,
+    nodeDrafts: JSON.parse(JSON.stringify(nodeDrafts)),
+    rewardRows: JSON.parse(JSON.stringify(rewardRows)),
+    orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+  });
+
+  /**
+   * @param {ReturnType<typeof buildManualDraftPayload>} payload
+   */
+  const manualDraftPayloadHasContent = (payload) => {
+    if ((payload.id || '').trim().length > 0) return true;
+    if ((payload.title || '').trim().length > 0) return true;
+    if ((payload.description || '').trim().length > 0) return true;
+    const o = Number(payload.orderInLayer);
     if (Number.isFinite(o) && o !== 0) return true;
-    if (nodeDrafts.some((s) => isDraftNodeMeaningful(s))) return true;
+    if ((payload.nodeDrafts || []).some((s) => isDraftNodeMeaningful(s))) return true;
     if (
-      rewardRows.some((r) =>
+      (payload.rewardRows || []).some((r) =>
         r.kind === 'item'
           ? (r.itemId || '').trim().length > 0
           : r.kind === 'points'
@@ -273,6 +414,69 @@ export default function RpgQuestGraphEditor({
     return false;
   };
 
+  const manualAbortDraftHasContent = () => {
+    return manualDraftPayloadHasContent(buildManualDraftPayload());
+  };
+
+  const manualDraftPayloadRef = useRef(/** @type {ReturnType<typeof buildManualDraftPayload> | null} */ (null));
+  useEffect(() => {
+    if (!open || !isManualCreateContext) {
+      manualDraftPayloadRef.current = null;
+      return;
+    }
+    manualDraftPayloadRef.current = buildManualDraftPayload();
+  }, [
+    open,
+    isManualCreateContext,
+    id,
+    title,
+    description,
+    nodeDrafts,
+    rewardRows,
+    orderInLayer,
+  ]);
+
+  useEffect(() => {
+    if (!open || !isManualCreateContext) return;
+    const t = setTimeout(() => {
+      const payload = manualDraftPayloadRef.current;
+      if (!payload) return;
+      if (manualDraftPayloadHasContent(payload)) saveManualQuestInProgressDraft(payload);
+      else clearManualQuestInProgressDraft();
+    }, 180);
+    return () => clearTimeout(t);
+  }, [
+    open,
+    isManualCreateContext,
+    id,
+    title,
+    description,
+    nodeDrafts,
+    rewardRows,
+    orderInLayer,
+  ]);
+
+  useEffect(() => {
+    if (!open || !isManualCreateContext) return;
+    const flush = () => {
+      const payload = manualDraftPayloadRef.current;
+      if (!payload) return;
+      if (manualDraftPayloadHasContent(payload)) saveManualQuestInProgressDraft(payload);
+      else clearManualQuestInProgressDraft();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, [open, isManualCreateContext]);
+
   const handleRequestClose = () => {
     const legacyManual =
       resolvedCreateEntry === undefined && createMode === 'manual';
@@ -283,16 +487,9 @@ export default function RpgQuestGraphEditor({
       (explicitManual || legacyManual) &&
       manualAbortDraftHasContent()
     ) {
-      addManualQuestDraft({
-        id,
-        title,
-        description,
-        nodeDrafts: JSON.parse(JSON.stringify(nodeDrafts)),
-        rewardRows: JSON.parse(JSON.stringify(rewardRows)),
-        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
-        prereqIds: [...prereqIds],
-      });
+      addManualQuestDraft(buildManualDraftPayload());
       setDraftListTick((t) => t + 1);
+      clearManualQuestInProgressDraft();
     }
     setDraftsOpen(false);
     onClose();
@@ -317,7 +514,6 @@ export default function RpgQuestGraphEditor({
         : []
     );
     setOrderInLayer(typeof p.orderInLayer === 'number' ? p.orderInLayer : 0);
-    setPrereqIds(new Set(Array.isArray(p.prereqIds) ? p.prereqIds.map(String) : []));
     if (resolvedCreateEntry === undefined) setCreateMode('manual');
     setDraftsOpen(false);
   };
@@ -339,8 +535,6 @@ export default function RpgQuestGraphEditor({
     return makeUniqueQuestId(baseId, existingIds);
   }, [mode, title, id, graph.quests]);
 
-  const otherQuests = graph.quests.filter((q) => (mode === 'edit' ? q.id !== questId : true));
-
   const previewQuest = useMemo(() => {
     const nid =
       mode === 'edit' && questId
@@ -356,13 +550,37 @@ export default function RpgQuestGraphEditor({
     };
   }, [mode, questId, normalizedCreateId, title, description, nodeDrafts, rewardRows]);
 
-  const togglePrereq = (pid) => {
-    setPrereqIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(pid)) next.delete(pid);
-      else next.add(pid);
-      return next;
-    });
+  const handleToggleTreePick = (parentDraftKey) => {
+    if (!onToggleTreePick) return;
+    const ROOT_PICK = '__root__';
+    if (treePickParentKey === parentDraftKey) {
+      const selectedIds = (treePickNodeIds || []).map((x) => String(x || '').trim()).filter(Boolean);
+      const selectedDrafts = selectedIds
+        .map((id) => graphNodeIdToDraft(graph, id))
+        .filter(Boolean);
+      if (selectedDrafts.length > 0) {
+        if (parentDraftKey === ROOT_PICK) {
+          setNodeDrafts((prev) => [...prev, ...selectedDrafts]);
+        } else {
+          setNodeDrafts((prev) =>
+            prev.map((draft) =>
+              draft.key === parentDraftKey
+                ? {
+                    ...draft,
+                    children: [...(draft.children || []), ...selectedDrafts],
+                    subnodesOn: true,
+                    timeLimitOn: false,
+                    timeDueAt: '',
+                  }
+                : draft
+            )
+          );
+        }
+      }
+      onToggleTreePick(parentDraftKey);
+      return;
+    }
+    onToggleTreePick(parentDraftKey);
   };
 
   const handleSubmit = (e) => {
@@ -385,18 +603,22 @@ export default function RpgQuestGraphEditor({
         }
       }
       const nextQuests = [...graph.quests, ...pkgQuests];
-      const existingEdgeKeys = new Set((graph.edges || []).map((e) => `${e.from}=>${e.to}`));
+      const existingEdgeKeys = new Set(
+        (graph.edges || [])
+          .filter((e) => (e.relation || 'dependency') === 'dependency')
+          .map((e) => `${e.fromNodeId || e.from}=>${e.toNodeId || e.to}`)
+      );
       const pkgEdges = Array.isArray(aiPackageDraft.edges) ? aiPackageDraft.edges : [];
       const mergedEdges = [...(graph.edges || [])];
       for (const e of pkgEdges) {
-        const from = String(e?.from || '').trim();
-        const to = String(e?.to || '').trim();
+        const from = String(e?.fromNodeId ?? e?.from ?? '').trim();
+        const to = String(e?.toNodeId ?? e?.to ?? '').trim();
         if (!from || !to || from === to) continue;
         if (!pkgQuests.some((q) => q.id === from) || !pkgQuests.some((q) => q.id === to)) continue;
         const k = `${from}=>${to}`;
         if (existingEdgeKeys.has(k)) continue;
         existingEdgeKeys.add(k);
-        mergedEdges.push({ from, to });
+        mergedEdges.push({ fromNodeId: from, toNodeId: to, relation: 'dependency', from, to });
       }
       const nextGraph = { quests: nextQuests, edges: mergedEdges };
       if (graphHasCycle(nextGraph)) {
@@ -413,26 +635,42 @@ export default function RpgQuestGraphEditor({
       return;
     }
     const children = draftNodesToQuestNodes(nodeDrafts, nid);
-    if (children.length === 0) {
-      window.alert('Bitte mindestens einen Leaf- oder Branch-Node anlegen und speichern.');
-      return;
-    }
     const questRewards = draftRewardRowsToStoredQuestRewards(rewardRows);
     const qmSaved = lastQmPromptRef.current.trim();
-    const quest = {
-      id: nid,
-      parentId: null,
-      title: title.trim() || nid,
-      description: description.trim(),
-      children,
-      questRewards,
-      orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
-      ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
-    };
-    const next = upsertQuestInGraph(graph, quest, [...prereqIds]);
-    if (graphHasCycle(next)) {
-      window.alert('Diese Vorgänger würden einen Kreis erzeugen — bitte anpassen.');
-      return;
+    let next;
+    if (mode === 'edit' && questId && editContainerQuestId && editContainerQuestId !== questId) {
+      const container = graph.quests.find((q) => q.id === editContainerQuestId);
+      if (!container) {
+        window.alert('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        return;
+      }
+      const targetId = String(questId).trim();
+      const updatedChildren = mapNodeRecursive(container.children || [], targetId, (node) => ({
+        ...node,
+        label: title.trim() || targetId,
+        description: description.trim(),
+        children: draftNodesToQuestNodes(nodeDrafts, targetId),
+      }));
+      const updatedContainer = {
+        ...container,
+        children: updatedChildren,
+        questRewards,
+        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+        ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
+      };
+      next = upsertQuestInGraph(graph, updatedContainer, []);
+    } else {
+      const quest = {
+        id: nid,
+        parentId: null,
+        title: title.trim() || nid,
+        description: description.trim(),
+        children,
+        questRewards,
+        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+        ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
+      };
+      next = upsertQuestInGraph(graph, quest, []);
     }
     const catalogIds = new Set(Object.keys(itemCatalog));
     /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
@@ -456,6 +694,7 @@ export default function RpgQuestGraphEditor({
     const toSend = [...mergedMap.values()].filter((row) => needed.has(row.id));
     aiQuestmakerItemsRef.current = [];
     onApply(next, toSend.length ? { questmakerItems: toSend } : undefined);
+    clearManualQuestInProgressDraft();
     setDraftsOpen(false);
     onClose();
   };
@@ -543,8 +782,12 @@ export default function RpgQuestGraphEditor({
         const quests = data.quests.filter((q) => q && typeof q === 'object');
         const edges = Array.isArray(data.edges)
           ? data.edges
-              .map((e) => ({ from: String(e?.from || '').trim(), to: String(e?.to || '').trim() }))
-              .filter((e) => e.from && e.to && e.from !== e.to)
+              .map((e) => ({
+                fromNodeId: String(e?.fromNodeId ?? e?.from ?? '').trim(),
+                toNodeId: String(e?.toNodeId ?? e?.to ?? '').trim(),
+                relation: 'dependency',
+              }))
+              .filter((e) => e.fromNodeId && e.toNodeId && e.fromNodeId !== e.toNodeId)
           : [];
         setAiPackageDraft({
           title: typeof data.title === 'string' ? data.title : '',
@@ -704,14 +947,16 @@ export default function RpgQuestGraphEditor({
     </div>
   );
 
-  return (
-    <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
+  const editorContent = (
+    <div
+      class={`rpg-graph-editor rpg-graph-editor--wide${
+        embedded ? ' rpg-graph-editor--embedded' : ''
+      }${onlyQuestmaker ? ' rpg-graph-editor--questmaker' : ''}${showQmPrompt ? ' rpg-graph-editor--qm-prompt' : ''}`}
+    >
       <div
-        class={`rpg-graph-editor rpg-graph-editor--wide${
-          onlyQuestmaker ? ' rpg-graph-editor--questmaker' : ''
-        }${showQmPrompt ? ' rpg-graph-editor--qm-prompt' : ''}`}
+        class="rpg-graph-editor__head"
       >
-        <div class="rpg-graph-editor__head">
+        
           <h2 id="rpg-graph-editor-title" class="rpg-graph-editor__title">
             {dialogTitle}
           </h2>
@@ -790,7 +1035,7 @@ export default function RpgQuestGraphEditor({
               ×
             </button>
           </div>
-        </div>
+      </div>
 
         {showQmPrompt ? <div class="rpg-graph-editor__form rpg-graph-editor__qm-only">{aiBlock}</div> : null}
 
@@ -854,25 +1099,6 @@ export default function RpgQuestGraphEditor({
                 onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
               />
             </label>
-            <fieldset class="rpg-graph-editor__fieldset">
-              <legend class="rpg-graph-editor__legend">Vorgänger-Quests (müssen fertig sein)</legend>
-              {otherQuests.length === 0 ? (
-                <p class="rpg-graph-editor__hint">Noch keine anderen Quests im Graph.</p>
-              ) : (
-                <ul class="rpg-graph-editor__checks">
-                  {otherQuests.map((q) => (
-                    <li key={q.id}>
-                      <label class="rpg-graph-editor__check">
-                        <input type="checkbox" checked={prereqIds.has(q.id)} onChange={() => togglePrereq(q.id)} />
-                        <span>
-                          {q.title} <code class="rpg-graph-editor__code">{q.id}</code>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </fieldset>
 
             <div class="rpg-graph-editor__actions">
               <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleQmRegenerate}>
@@ -950,7 +1176,12 @@ export default function RpgQuestGraphEditor({
               <textarea class="rpg-graph-editor__textarea" rows={3} value={description} onInput={(ev) => setDescription(ev.currentTarget.value)} />
             </label>
 
-            <RpgQuestNodesBuilder nodes={nodeDrafts} onNodesChange={setNodeDrafts} />
+            <RpgQuestNodesBuilder
+              nodes={nodeDrafts}
+              onNodesChange={setNodeDrafts}
+              treePickParentKey={treePickParentKey}
+              onToggleTreePick={onToggleTreePick ? handleToggleTreePick : undefined}
+            />
             <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
 
             <label class="rpg-graph-editor__field">
@@ -963,25 +1194,6 @@ export default function RpgQuestGraphEditor({
                 onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
               />
             </label>
-            <fieldset class="rpg-graph-editor__fieldset">
-              <legend class="rpg-graph-editor__legend">Vorgänger-Quests (müssen fertig sein)</legend>
-              {otherQuests.length === 0 ? (
-                <p class="rpg-graph-editor__hint">Noch keine anderen Quests im Graph.</p>
-              ) : (
-                <ul class="rpg-graph-editor__checks">
-                  {otherQuests.map((q) => (
-                    <li key={q.id}>
-                      <label class="rpg-graph-editor__check">
-                        <input type="checkbox" checked={prereqIds.has(q.id)} onChange={() => togglePrereq(q.id)} />
-                        <span>
-                          {q.title} <code class="rpg-graph-editor__code">{q.id}</code>
-                        </span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </fieldset>
             <div class="rpg-graph-editor__actions">
               {mode === 'edit' && (
                 <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
@@ -1001,7 +1213,14 @@ export default function RpgQuestGraphEditor({
             </div>
           </form>
         ) : null}
-      </div>
+    </div>
+  );
+
+  if (embedded) return editorContent;
+
+  return (
+    <div class="rpg-graph-editor-overlay" role="dialog" aria-modal="true" aria-labelledby="rpg-graph-editor-title">
+      {editorContent}
     </div>
   );
 }

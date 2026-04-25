@@ -14,7 +14,7 @@ export async function GET({ cookies }) {
   await ensureDbSchema();
   const db = getDb();
   const usersResult = await db.execute({
-    sql: 'SELECT username, birthday FROM users ORDER BY username ASC',
+    sql: 'SELECT username, birthday, COALESCE("global", 0) AS global_flag FROM users ORDER BY username ASC',
   });
 
   const users = [];
@@ -22,6 +22,7 @@ export async function GET({ cookies }) {
     users.push({
       username: row.username,
       birthday: row.birthday,
+      global: Boolean(row.global_flag),
       permissions: await getPermissions(row.username),
     });
   }

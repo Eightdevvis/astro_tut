@@ -26,7 +26,7 @@ export async function POST({ request, cookies }) {
 
   const hash = await bcrypt.hash(password, 10);
   await db.execute({
-    sql: 'INSERT INTO users (username, birthday, password) VALUES (?, ?, ?)',
+    sql: 'INSERT INTO users (username, birthday, password, "global") VALUES (?, ?, ?, 0)',
     args: [username, birthday, hash]
   });
 
@@ -51,6 +51,7 @@ export async function POST({ request, cookies }) {
         permissions,
         isTester,
         canUseRpg: isSuperuser || permissions.includes('rpg_access'),
+        canUseMinigames: isSuperuser || permissions.includes('minigames_access'),
         testerUiEnabled,
       },
     }),

@@ -423,6 +423,12 @@ html:not(.dark) .rpg-tree {
   filter: drop-shadow(0 0 10px color-mix(in srgb, var(--rpg-accent) 38%, transparent));
 }
 
+.rpg-tree-node--pick-selected .rpg-tree-node__shape {
+  stroke: color-mix(in srgb, #7dff9f 80%, var(--rpg-page-bg));
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, #7dff9f 35%, transparent));
+}
+
 .rpg-tree-node--done .rpg-tree-node__shape {
   fill: color-mix(in srgb, var(--rpg-ink) 10%, var(--rpg-page-bg));
   stroke: color-mix(in srgb, var(--rpg-ink) 72%, var(--rpg-page-bg));
@@ -472,6 +478,12 @@ html:not(.dark) .rpg-tree {
 .rpg-tree-node-node--container .rpg-tree-node-node__shape {
   fill: color-mix(in srgb, var(--rpg-ink) 10%, var(--rpg-page-bg));
   stroke: color-mix(in srgb, var(--rpg-ink) 52%, var(--rpg-page-bg));
+}
+
+.rpg-tree-node-node--pick-selected .rpg-tree-node-node__shape {
+  stroke: color-mix(in srgb, #7dff9f 80%, var(--rpg-page-bg));
+  stroke-width: 2;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, #7dff9f 35%, transparent));
 }
 
 .rpg-tree-node-node--done .rpg-tree-node-node__shape {
@@ -526,19 +538,15 @@ html:not(.dark) .rpg-tree .rpg-tree-panel {
 
 @media (min-width: 561px) {
   .rpg-tree-panel {
-    /* Breite bis knapp an die Gefäße (rechte Gefäßkante + Abstand), rechts normaler Rand */
-    left: calc(
-      var(--rpg-tree-vessel-inset-x) + var(--rpg-tree-vessel-w) + env(safe-area-inset-left, 0px) + 1rem
-    );
-    right: max(1.25rem, calc(1.25rem + env(safe-area-inset-right, 0px)));
-    transform: none;
-    width: auto;
-    max-width: none;
-    border-radius: 14px 14px 0 0;
-    border-left: 1px solid var(--rpg-border);
-    border-right: 1px solid var(--rpg-border);
-    max-height: min(32vh, 340px);
-    box-shadow: 0 -16px 52px color-mix(in srgb, var(--rpg-void) 50%, var(--rpg-page-bg));
+    left: auto;
+    right: max(1rem, calc(1rem + env(safe-area-inset-right, 0px)));
+    top: max(4.5rem, calc(4.5rem + env(safe-area-inset-top, 0px)));
+    bottom: max(1rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
+    width: min(36rem, calc(100vw - 2rem));
+    max-height: none;
+    border-radius: 14px;
+    border: 1px solid var(--rpg-border);
+    box-shadow: 0 14px 36px color-mix(in srgb, var(--rpg-void) 45%, var(--rpg-page-bg));
   }
 }
 
@@ -551,6 +559,11 @@ html:not(.dark) .rpg-tree .rpg-tree-panel {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+}
+
+.rpg-tree-panel__inner--editor {
+  padding: 0;
+  overflow: hidden;
 }
 
 .rpg-tree-panel__side-actions {
@@ -691,10 +704,9 @@ html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
 
 .rpg-tree-panel__details {
   margin: 0 0 0.55rem;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--rpg-ink) 8%, var(--rpg-page-bg));
-  background: var(--rpg-surface);
-  padding: 0.35rem 0.55rem;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .rpg-tree-panel__details summary {
@@ -844,6 +856,12 @@ html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
   min-width: 0;
 }
 
+.rpg-tree-panel__nodes-wrap .rpg-node__desc {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--rpg-ink) 55%, var(--rpg-page-bg));
+}
+
 .rpg-tree-panel__nodes-wrap .rpg-node__location-hint {
   font-size: 0.72rem;
   color: color-mix(in srgb, var(--rpg-accent) 74%, var(--rpg-ink));
@@ -869,8 +887,61 @@ html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
   font-size: 0.65rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--rpg-ink) 35%, var(--rpg-page-bg));
-  margin: 0 0 0.35rem;
+  color: color-mix(in srgb, var(--rpg-ink) 40%, var(--rpg-page-bg));
+  margin: 0.75rem 0 0.35rem;
+}
+
+.rpg-tree-panel__meta-inline {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem 0.5rem;
+}
+
+.rpg-tree-panel__meta-inline li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--rpg-ink) 70%, var(--rpg-page-bg));
+}
+
+.rpg-tree-panel__meta-inline li span {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--rpg-ink) 46%, var(--rpg-page-bg));
+}
+
+.rpg-tree-panel__meta-inline li strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--rpg-ink) 86%, var(--rpg-page-bg));
+  word-break: break-word;
+}
+
+.rpg-tree-panel__prompt-line {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--rpg-ink) 74%, var(--rpg-page-bg));
+}
+
+.rpg-tree-panel__prompt-line span {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--rpg-ink) 46%, var(--rpg-page-bg));
+  margin-right: 0.45rem;
+}
+
+.rpg-tree-panel__nodes-wrap {
+  margin-top: 0.2rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--rpg-ink) 9%, var(--rpg-page-bg));
 }
 
 .rpg-tree-panel__code {
@@ -1106,6 +1177,14 @@ html:not(.dark) .rpg-tree .rpg-tree-panel__add--remove:hover:not(:disabled) {
   border: 1px solid color-mix(in srgb, var(--rpg-ink) 12%, var(--rpg-page-bg));
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -8px 40px color-mix(in srgb, var(--rpg-void) 50%, var(--rpg-page-bg));
+}
+
+.rpg-graph-editor--embedded {
+  max-width: 100%;
+  max-height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 html.dark .rpg-tree .rpg-graph-editor {
@@ -1527,6 +1606,18 @@ html:not(.dark) .rpg-tree .rpg-graph-editor {
   padding: 0.15rem 0;
 }
 
+.rpg-graph-editor__qm-preview .rpg-node__summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.rpg-graph-editor__qm-preview .rpg-node__desc {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--rpg-ink) 58%, var(--rpg-page-bg));
+}
+
 .rpg-graph-editor__qm-preview .rpg-node__summary::-webkit-details-marker {
   display: none;
 }
@@ -1867,6 +1958,26 @@ html:not(.dark) .rpg-tree .rpg-graph-editor {
   color: color-mix(in srgb, var(--rpg-ink) 45%, var(--rpg-page-bg));
 }
 
+.rpg-node-builder__dep-toggle {
+  margin-top: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, #ff4d4d 35%, var(--rpg-page-bg));
+  background: color-mix(in srgb, #ff4d4d 10%, var(--rpg-page-bg));
+  color: color-mix(in srgb, #ff6a6a 78%, var(--rpg-ink));
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.rpg-node-builder__dep-toggle--on {
+  background: color-mix(in srgb, #ff4d4d 20%, var(--rpg-page-bg));
+  border-color: color-mix(in srgb, #ff4d4d 58%, var(--rpg-page-bg));
+}
+
 .rpg-node-builder__list {
   list-style: none;
   margin: 0;
@@ -1874,6 +1985,10 @@ html:not(.dark) .rpg-tree .rpg-graph-editor {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.rpg-node-builder__list-wrap {
+  position: relative;
 }
 
 .rpg-node-builder__list--nested {
@@ -1974,6 +2089,11 @@ html:not(.dark) .rpg-tree .rpg-node-card__badge--due {
   margin-bottom: 0.65rem;
 }
 
+.rpg-node-card__title-input {
+  width: 100%;
+  display: block;
+}
+
 .rpg-node-card__field-label {
   display: block;
   font-size: 0.62rem;
@@ -1981,6 +2101,18 @@ html:not(.dark) .rpg-tree .rpg-node-card__badge--due {
   text-transform: uppercase;
   color: color-mix(in srgb, var(--rpg-ink) 38%, var(--rpg-page-bg));
   margin-bottom: 0.3rem;
+}
+
+/*
+ * Node-Editor-Felder sollen die verfügbare Breite der Card nutzen.
+ * Ohne feste Breite behalten Input/Textarea ihre intrinsische Breite und
+ * wirken in Flex-Kontexten "zu kurz".
+ */
+.rpg-node-card__field .rpg-graph-editor__input,
+.rpg-node-card__field .rpg-graph-editor__textarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .rpg-node-card__field--indented {
@@ -2061,12 +2193,24 @@ html:not(.dark) .rpg-tree .rpg-node-card__badge--due {
 .rpg-node-builder__add-row {
   display: flex;
   gap: 0.45rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.rpg-node-builder__add-row .rpg-node-builder__add-root {
+  flex: 1 1 0;
+  width: auto;
 }
 
 .rpg-node-builder__add-nested {
   width: auto;
   margin-top: 0.45rem;
+}
+
+.rpg-node-builder__add-nested--active {
+  border-style: solid;
+  border-color: color-mix(in srgb, #7dff9f 52%, var(--rpg-page-bg));
+  background: color-mix(in srgb, #7dff9f 12%, var(--rpg-page-bg));
+  color: color-mix(in srgb, #7dff9f 82%, var(--rpg-ink));
 }
 
 .rpg-node-builder__plus {
@@ -2165,11 +2309,62 @@ html:not(.dark) .rpg-tree .rpg-node-card__badge--due {
 .rpg-node-builder__drag-handle {
   flex: 0 0 1.5rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding-top: 0.35rem;
   color: color-mix(in srgb, var(--rpg-ink) 38%, var(--rpg-page-bg));
   align-self: flex-start;
+}
+
+.rpg-node-builder__dep-anchors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.rpg-node-builder__dep-anchor {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 92, 92, 0.8);
+  background: rgba(255, 92, 92, 0.36);
+  cursor: pointer;
+}
+
+.rpg-node-builder__dep-anchor--used {
+  background: rgba(255, 92, 92, 0.7);
+}
+
+.rpg-node-builder__dep-anchor--active {
+  box-shadow: 0 0 0 2px rgba(255, 92, 92, 0.25);
+}
+
+.rpg-node-builder__dep-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.rpg-node-builder__dep-line {
+  fill: none;
+  stroke: rgba(255, 92, 92, 0.86);
+  stroke-width: 1.6;
+}
+
+.rpg-node-builder__dep-line--pending {
+  stroke-dasharray: 3 3;
+}
+
+.rpg-node-builder__dep-arrow {
+  fill: rgba(255, 92, 92, 0.92);
 }
 
 .rpg-node-builder__grip-svg {

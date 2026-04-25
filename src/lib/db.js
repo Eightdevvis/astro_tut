@@ -25,7 +25,8 @@ const SCHEMA_DDL = `
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     birthday TEXT NOT NULL,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    "global" INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS user_permissions (
@@ -266,6 +267,16 @@ async function ensureGraffitiFunctionalColumn() {
   }
 }
 
+async function ensureUsersGlobalColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE users ADD COLUMN "global" INTEGER NOT NULL DEFAULT 0');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     const db = createDbClient();
@@ -278,6 +289,7 @@ export async function ensureDbSchema() {
   await ensureQuotesAuthorColumn();
   await ensureUserFeedItemsImageUrlColumn();
   await ensureGraffitiFunctionalColumn();
+  await ensureUsersGlobalColumn();
   const db = createDbClient();
   await seedFeedPolicyDefaults(db);
 }

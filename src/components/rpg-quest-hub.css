@@ -353,6 +353,12 @@ html:not(.dark) .rpg-hub {
   color: color-mix(in srgb, var(--rpg-ink) 88%, var(--rpg-page-bg));
 }
 
+.rpg-node__summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
 .rpg-node__summary::-webkit-details-marker {
   display: none;
 }
@@ -378,6 +384,12 @@ html:not(.dark) .rpg-hub {
   flex-direction: column;
   gap: 0.12rem;
   min-width: 0;
+}
+
+.rpg-node__desc {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--rpg-ink) 54%, var(--rpg-page-bg));
 }
 
 .rpg-node__location-hint {

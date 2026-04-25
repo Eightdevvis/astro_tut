@@ -10,9 +10,11 @@ import TesterBugBar from '../components/TesterBugBar.jsx';
 import UserFeedHomeGrid from '../components/UserFeedHomeGrid.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import { getUsernameFromCookies } from '../lib/session.js';
+import { hasPermission } from '../lib/permissions.js';
 import '../styles/global.css';
 
 const sessionUser = await getUsernameFromCookies(Astro.cookies);
+const canUseMinigames = Boolean(sessionUser) && (await hasPermission(sessionUser, 'minigames_access'));
 
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
 
@@ -51,22 +53,24 @@ const lastPost = sorted[0] ?? null;
     <section class="home-tail" aria-label="Blog-Vorschau (Entwurf)">
       <Veranda />
       <Grid>
-        <a
-          href="/minigames"
-          class="grid-item grid-item--minigames"
-          style="text-decoration: none; color: inherit; display: block;"
-          aria-label="Minigames"
-        >
-          <span class="minigames-icon-wrap" aria-hidden="true">
-            <svg class="minigames-icon" width="56" height="56" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="6" y="14" width="36" height="22" rx="4" stroke="currentColor" stroke-width="1.8" />
-              <path d="M14 22h4v4h-4z M22 22h4v4h-4z" fill="currentColor" />
-              <path d="M32 24a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" fill="currentColor" />
-              <path d="M10 20c8-6 20-6 28 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45" />
-            </svg>
-          </span>
-          <span class="minigames-label">minigames</span>
-        </a>
+        {canUseMinigames && (
+          <a
+            href="/minigames"
+            class="grid-item grid-item--minigames"
+            style="text-decoration: none; color: inherit; display: block;"
+            aria-label="Minigames"
+          >
+            <span class="minigames-icon-wrap" aria-hidden="true">
+              <svg class="minigames-icon" width="56" height="56" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="6" y="14" width="36" height="22" rx="4" stroke="currentColor" stroke-width="1.8" />
+                <path d="M14 22h4v4h-4z M22 22h4v4h-4z" fill="currentColor" />
+                <path d="M32 24a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" fill="currentColor" />
+                <path d="M10 20c8-6 20-6 28 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45" />
+              </svg>
+            </span>
+            <span class="minigames-label">minigames</span>
+          </a>
+        )}
         {lastPost?.url && lastPost?.frontmatter?.title && (
           <a
             href={lastPost.url}

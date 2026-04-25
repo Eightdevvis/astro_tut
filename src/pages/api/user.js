@@ -43,6 +43,7 @@ export async function GET({ cookies }) {
           permissions,
           isTester,
           canUseRpg: isSuperuser || permissions.includes('rpg_access'),
+          canUseMinigames: isSuperuser || permissions.includes('minigames_access'),
           testerUiEnabled,
         },
       }),
