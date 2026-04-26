@@ -15,6 +15,7 @@ import '../styles/global.css';
 
 const sessionUser = await getUsernameFromCookies(Astro.cookies);
 const canUseMinigames = Boolean(sessionUser) && (await hasPermission(sessionUser, 'minigames_access'));
+const canUseFeeds = Boolean(sessionUser) && (await hasPermission(sessionUser, 'feed_access'));
 
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
 
@@ -81,7 +82,7 @@ const lastPost = sorted[0] ?? null;
             <div class="lastPost-eye">eye</div>
           </a>
         )}
-        {sessionUser ? <UserFeedHomeGrid client:load /> : null}
+        {canUseFeeds ? <UserFeedHomeGrid client:load /> : null}
       </Grid>
     </section>
     <GraffitiLayer client:load />

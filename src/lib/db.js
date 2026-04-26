@@ -12,10 +12,45 @@
 import { createClient } from '@libsql/client';
 import { seedFeedPolicyDefaults } from './feed-policy.js';
 
+function isValidDbUrl(url) {
+  if (typeof url !== 'string' || !url.trim()) return false;
+  if (url.includes('deine-turso-url-hier')) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readBooleanFlag(value) {
+  const v = String(value ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}
+
+function resolveDbUrl() {
+  const env = import.meta.env ?? process.env ?? {};
+  const tursoUrl = env.TURSO_URL;
+  if (isValidDbUrl(tursoUrl)) return tursoUrl;
+
+  const isDev = readBooleanFlag(env.DEV) || String(env.NODE_ENV || '').toLowerCase() !== 'production';
+  const allowLocalFallback = readBooleanFlag(env.ALLOW_LOCAL_FILE_DB_FALLBACK);
+  if (allowLocalFallback || isDev) {
+    const reason = allowLocalFallback ? 'ALLOW_LOCAL_FILE_DB_FALLBACK=1' : 'dev-mode';
+    console.warn(`[db] TURSO_URL fehlt/ungueltig -> verwende lokale file:users.db (${reason}).`);
+    return 'file:users.db';
+  }
+
+  throw new Error(
+    '[db] TURSO_URL fehlt oder ist ungueltig. Setze TURSO_URL/TURSO_AUTH_TOKEN (z. B. via Vercel env pull) oder erlaube lokal explizit ALLOW_LOCAL_FILE_DB_FALLBACK=1.'
+  );
+}
+
 function createDbClient() {
+  const env = import.meta.env ?? process.env ?? {};
   return createClient({
-    url: import.meta.env.TURSO_URL ?? 'file:users.db',
-    authToken: import.meta.env.TURSO_AUTH_TOKEN,
+    url: resolveDbUrl(),
+    authToken: env.TURSO_AUTH_TOKEN,
   });
 }
 

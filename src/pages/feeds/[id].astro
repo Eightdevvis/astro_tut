@@ -5,11 +5,15 @@ import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import FeedDetailView from '../../components/FeedDetailView.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
+import { hasPermission } from '../../lib/permissions.js';
 import { getFeedDetailBundle } from '../../lib/feed-db.js';
 import '../../styles/global.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
 if (!username) {
+  return Astro.redirect('/');
+}
+if (!(await hasPermission(username, 'feed_access'))) {
   return Astro.redirect('/');
 }
 

@@ -35,6 +35,7 @@ export const KNOWN_PERMISSIONS = [
   'tester_access',
   'rpg_access',
   'minigames_access',
+  'feed_access',
 ];
 
 export async function hasPermission(username, permission) {

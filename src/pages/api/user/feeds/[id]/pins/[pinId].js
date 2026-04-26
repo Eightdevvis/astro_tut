@@ -1,4 +1,5 @@
 import { getUsernameFromCookies } from '../../../../../../lib/session.js';
+import { hasPermission } from '../../../../../../lib/permissions.js';
 import { deleteUserFeedPin } from '../../../../../../lib/feed-db.js';
 
 function parseId(raw) {
@@ -11,6 +12,12 @@ export async function DELETE({ params, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }

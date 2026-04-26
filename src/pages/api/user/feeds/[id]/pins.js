@@ -1,4 +1,5 @@
 import { getUsernameFromCookies } from '../../../../../lib/session.js';
+import { hasPermission } from '../../../../../lib/permissions.js';
 import { addUserFeedPin, getFeedDetailBundle } from '../../../../../lib/feed-db.js';
 import { parseHttpsUrl, classifyRssUrl } from '../../../../../lib/feed-policy.js';
 import { ensureDbSchema, getDb } from '../../../../../lib/db.js';
@@ -13,6 +14,12 @@ export async function GET({ params, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -41,6 +48,12 @@ export async function POST({ params, request, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }

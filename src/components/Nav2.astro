@@ -1,7 +1,7 @@
 ---
 import LoginWidget from './LoginWidget.jsx';
 import ThemeToggle from './ThemeToggle.astro';
-import { getUsernameFromCookies } from '../lib/session.js';
+import { getSessionUserFromCookies } from '../lib/session.js';
 import { hasPermission } from '../lib/permissions.js';
 
 interface Props {
@@ -11,7 +11,8 @@ interface Props {
 
 const { variant = 'subpage' } = Astro.props;
 const isHome = variant === 'home';
-const username = Astro.isPrerendered ? null : await getUsernameFromCookies(Astro.cookies);
+const sessionUser = Astro.isPrerendered ? null : await getSessionUserFromCookies(Astro.cookies);
+const username = sessionUser?.username || null;
 const showRpgNav = Boolean(username) && (await hasPermission(username, 'rpg_access'));
 const showBlogpostNav = Boolean(username) && (await hasPermission(username, 'blogpost_poster'));
 const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'minigames_access'));
@@ -162,7 +163,7 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'mi
         )
       }
       <div class="nav2-login-wrap">
-        <LoginWidget client:load />
+        <LoginWidget client:load initialUser={sessionUser} />
       </div>
     </div>
   </div>

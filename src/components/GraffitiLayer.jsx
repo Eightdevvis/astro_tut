@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 const HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
 const DEFAULT_HOTKEY = ['Enter', '1'];
 const FADE_DAYS = 90;
+/** Muss mit ERASE_RADIUS_PX in api/graffiti.js uebereinstimmen */
+const ERASE_RADIUS = 26;
 
 function normalizeKeyName(key) {
   if (!key) return '';
@@ -20,7 +22,8 @@ function readHotkey() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length < 2) return DEFAULT_HOTKEY;
     const clean = parsed.map((k) => normalizeKeyName(String(k))).filter(Boolean);
-    return clean.length >= 2 ? clean.slice(0, 2) : DEFAULT_HOTKEY;
+    if (clean.length < 2) return DEFAULT_HOTKEY;
+    return clean.slice(0, 2);
   } catch {
     return DEFAULT_HOTKEY;
   }
@@ -40,13 +43,6 @@ function strokeAlpha(ageDays) {
   return Math.max(0.06, 1 - progress);
 }
 
-function toViewportPoint(point, scrollX, scrollY) {
-  return {
-    x: Number(point?.x || 0) - scrollX,
-    y: Number(point?.y || 0) - scrollY,
-  };
-}
-
 function isFunctionalAtPoint(clientX, clientY) {
   const el = document.elementFromPoint(clientX, clientY);
   if (!el) return false;
@@ -58,33 +54,50 @@ function isFunctionalAtPoint(clientX, clientY) {
 }
 
 export default function GraffitiLayer() {
-  const [userReady, setUserReady] = useState(false);
   const [featureVisible, setFeatureVisible] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState('tag');
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
   const [strokes, setStrokes] = useState([]);
+  const strokesRef = useRef(strokes);
   const canvasRef = useRef(/** @type {HTMLCanvasElement | null} */ (null));
+  const baseCanvasRef = useRef(/** @type {HTMLCanvasElement | null} */ (null));
+  const baseDirtyRef = useRef(true);
+  const rafRef = useRef(0);
+  const modeRef = useRef(mode);
+  const pendingEraseVisualRef = useRef(/** @type {{ points: { x: number; y: number }[] } | null} */ (null));
+  const pendingCommitVisualRef = useRef(/** @type {{ id: number; mode: string; points: { x: number; y: number }[] }[]} */ ([]));
+  const pendingCommitIdRef = useRef(0);
   const pressedRef = useRef(new Set());
+  const chordRef = useRef({ ab: false });
+  const uiRef = useRef({ visible: false, mode: 'tag' });
   const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
-
-  const hintLabel = useMemo(() => `${hotkey[0]} + ${hotkey[1]}`, [hotkey]);
+  const graffitiListAbortRef = useRef(/** @type {AbortController | null} */ (null));
+  const graffitiSyncGenRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/user', { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled) return;
-        setUserReady(Boolean(data?.user));
-      })
-      .catch(() => {
-        if (!cancelled) setUserReady(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    strokesRef.current = strokes;
+  }, [strokes]);
+
+  useEffect(() => {
+    uiRef.current = { visible: featureVisible, mode };
+  }, [featureVisible, mode]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'erase') {
+      pendingEraseVisualRef.current = null;
+      schedulePaint();
+    }
+  }, [mode]);
+
+  const hintLabel = useMemo(
+    () => `${hotkey[0]} + ${hotkey[1]} · Palette weiterschalten`,
+    [hotkey]
+  );
 
   useEffect(() => {
     const sync = () => setHotkey(readHotkey());
@@ -99,25 +112,62 @@ export default function GraffitiLayer() {
       .then((res) => (res.ok ? res.json() : { strokes: [] }))
       .then((data) => setStrokes(Array.isArray(data?.strokes) ? data.strokes : []))
       .catch(() => setStrokes([]));
-  }, [userReady]);
+  }, []);
 
   useEffect(() => {
-    if (!userReady) return;
+    const k0 = hotkey[0];
+    const k1 = hotkey[1];
+
+    const syncChord = () => {
+      chordRef.current = {
+        ab: pressedRef.current.has(k0) && pressedRef.current.has(k1),
+      };
+    };
+
     const onDown = (e) => {
+      if (e.repeat) return;
       const key = normalizeKeyName(e.key);
       if (!key) return;
       pressedRef.current.add(key);
-      if (hotkey.every((k) => pressedRef.current.has(k))) {
+
+      const ab = pressedRef.current.has(k0) && pressedRef.current.has(k1);
+      const prev = chordRef.current;
+
+      if (ab && !prev.ab) {
         e.preventDefault();
-        setFeatureVisible((v) => {
-          const next = !v;
-          setEnabled(next);
-          return next;
-        });
+        chordRef.current = { ab: true };
+        const { visible, mode: m } = uiRef.current;
+        if (!visible) {
+          setFeatureVisible(true);
+          setEnabled(true);
+          setMode('tag');
+        } else if (m === 'tag') {
+          setMode('spray');
+          setEnabled(true);
+        } else if (m === 'spray') {
+          setMode('erase');
+          setEnabled(true);
+        } else {
+          setFeatureVisible(false);
+          setEnabled(false);
+          setMode('tag');
+        }
+        return;
       }
+
+      chordRef.current = { ab };
     };
-    const onUp = (e) => pressedRef.current.delete(normalizeKeyName(e.key));
-    const onBlur = () => pressedRef.current.clear();
+
+    const onUp = (e) => {
+      pressedRef.current.delete(normalizeKeyName(e.key));
+      syncChord();
+    };
+
+    const onBlur = () => {
+      pressedRef.current.clear();
+      chordRef.current = { ab: false };
+    };
+
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     window.addEventListener('blur', onBlur);
@@ -126,7 +176,176 @@ export default function GraffitiLayer() {
       window.removeEventListener('keyup', onUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [hotkey, userReady]);
+  }, [hotkey]);
+
+  function drawStrokesOntoContext(ctx, list) {
+    for (const stroke of list) {
+      const points = Array.isArray(stroke.points) ? stroke.points : [];
+      if (points.length < 1) continue;
+      const alpha = strokeAlpha(Number(stroke.ageDays || 0));
+      if (stroke.mode === 'spray') {
+        for (const p of points) {
+          drawSprayCloud(ctx, Number(stroke.id || 0), Number(p?.x || 0), Number(p?.y || 0), alpha);
+        }
+        continue;
+      }
+      const first = points[0];
+      ctx.strokeStyle = '#111';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = alpha * 0.93;
+      ctx.beginPath();
+      ctx.moveTo(Number(first?.x || 0), Number(first?.y || 0));
+      for (let i = 1; i < points.length; i += 1) {
+        const point = points[i];
+        ctx.lineTo(Number(point?.x || 0), Number(point?.y || 0));
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function applyEraseVisual(ctx, points) {
+    if (!points || points.length < 1) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = '#000';
+    for (const p of points) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, ERASE_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    const lp = points[points.length - 1];
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = 'rgba(200, 70, 160, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(lp.x, lp.y, ERASE_RADIUS, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function paintComposite() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const ratio = window.devicePixelRatio || 1;
+    const docEl = document.documentElement;
+    const docWidth = Math.max(window.innerWidth, docEl.scrollWidth, document.body?.scrollWidth || 0);
+    const docHeight = Math.max(window.innerHeight, docEl.scrollHeight, document.body?.scrollHeight || 0);
+    const dw = Math.floor(docWidth * ratio);
+    const dh = Math.floor(docHeight * ratio);
+
+    if (!baseCanvasRef.current) {
+      baseCanvasRef.current = document.createElement('canvas');
+    }
+    const base = baseCanvasRef.current;
+
+    if (canvas.width !== dw || canvas.height !== dh) {
+      canvas.width = dw;
+      canvas.height = dh;
+      canvas.style.width = `${docWidth}px`;
+      canvas.style.height = `${docHeight}px`;
+      base.width = dw;
+      base.height = dh;
+      baseDirtyRef.current = true;
+    }
+
+    const bctx = base.getContext('2d');
+    if (!bctx) return;
+
+    if (baseDirtyRef.current) {
+      bctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      bctx.clearRect(0, 0, docWidth, docHeight);
+      drawStrokesOntoContext(bctx, strokesRef.current);
+      baseDirtyRef.current = false;
+    }
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, docWidth, docHeight);
+    ctx.drawImage(base, 0, 0, docWidth, docHeight);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    const dr = drawRef.current;
+    const m = modeRef.current;
+
+    if (dr.active && m === 'tag' && dr.points.length >= 2) {
+      ctx.strokeStyle = '#111';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.93;
+      ctx.beginPath();
+      ctx.moveTo(dr.points[0].x, dr.points[0].y);
+      for (let i = 1; i < dr.points.length; i += 1) {
+        ctx.lineTo(dr.points[i].x, dr.points[i].y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    if (dr.active && m === 'spray') {
+      for (let i = 0; i < dr.points.length; i += 1) {
+        const p = dr.points[i];
+        drawSprayCloud(ctx, i, p.x, p.y, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    const pcs = pendingCommitVisualRef.current;
+    for (let c = 0; c < pcs.length; c += 1) {
+      const pc = pcs[c];
+      if (pc.mode === 'tag' && pc.points.length >= 2) {
+        ctx.strokeStyle = '#111';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.93;
+        ctx.beginPath();
+        ctx.moveTo(pc.points[0].x, pc.points[0].y);
+        for (let i = 1; i < pc.points.length; i += 1) {
+          ctx.lineTo(pc.points[i].x, pc.points[i].y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (pc.mode === 'spray') {
+        for (let i = 0; i < pc.points.length; i += 1) {
+          const p = pc.points[i];
+          drawSprayCloud(ctx, i + 10000 + c * 1000, p.x, p.y, 1);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    if (dr.active && m === 'erase' && dr.points.length) {
+      applyEraseVisual(ctx, dr.points);
+    } else if (m === 'erase' && pendingEraseVisualRef.current?.points?.length) {
+      applyEraseVisual(ctx, pendingEraseVisualRef.current.points);
+    }
+  }
+
+  function schedulePaint() {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      paintComposite();
+    });
+  }
+
+  function flushPaintComposite() {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    paintComposite();
+  }
 
   function drawSprayCloud(ctx, strokeId, x, y, alpha) {
     const random = seededRng((strokeId * 1315423911 + x * 31 + y * 17) | 0);
@@ -144,130 +363,75 @@ export default function GraffitiLayer() {
     }
   }
 
-  function renderAll() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  useEffect(() => {
+    baseDirtyRef.current = true;
+    schedulePaint();
+  }, [strokes]);
 
-    function resizeAndRender() {
-      const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(window.innerWidth * ratio);
-      canvas.height = Math.floor(window.innerHeight * ratio);
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-      const viewX = window.scrollX || 0;
-      const viewY = window.scrollY || 0;
-      for (const stroke of strokes) {
-        const points = Array.isArray(stroke.points) ? stroke.points : [];
-        if (points.length < 1) continue;
-        const alpha = strokeAlpha(Number(stroke.ageDays || 0));
-        if (stroke.mode === 'spray') {
-          for (const p of points) {
-            const vp = toViewportPoint(p, viewX, viewY);
-            drawSprayCloud(ctx, Number(stroke.id || 0), vp.x, vp.y, alpha);
-          }
-          continue;
-        }
-        const first = toViewportPoint(points[0], viewX, viewY);
-        ctx.strokeStyle = '#111';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = alpha * 0.93;
-        ctx.beginPath();
-        ctx.moveTo(first.x, first.y);
-        for (let i = 1; i < points.length; i += 1) {
-          const vp = toViewportPoint(points[i], viewX, viewY);
-          ctx.lineTo(vp.x, vp.y);
-        }
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
+  useEffect(() => {
+    function onResize() {
+      baseDirtyRef.current = true;
+      schedulePaint();
     }
-
-    resizeAndRender();
-    window.addEventListener('resize', resizeAndRender);
-    window.addEventListener('scroll', resizeAndRender, { passive: true });
+    onResize();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    window.addEventListener('load', onResize);
     return () => {
-      window.removeEventListener('resize', resizeAndRender);
-      window.removeEventListener('scroll', resizeAndRender);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      window.removeEventListener('load', onResize);
     };
-  }
-
-  useEffect(() => renderAll(), [strokes, userReady]);
-
-  function paintTag(x, y, alpha = 0.93) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const prev = drawRef.current;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#111';
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(prev.x, prev.y);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    drawRef.current.x = x;
-    drawRef.current.y = y;
-  }
-
-  function paintSpray(x, y) {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    drawSprayCloud(ctx, Date.now() % 100000, x, y, 1);
-    ctx.globalAlpha = 1;
-  }
+  }, []);
 
   function pointerToCanvas(e) {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return { x: e.pageX, y: e.pageY };
   }
-
-  if (!userReady) return null;
 
   return (
     <>
       <canvas
         ref={canvasRef}
-        className={`fgraffiti-canvas ${enabled ? 'is-active' : ''}`}
+        className={`fgraffiti-canvas ${enabled ? 'is-active' : ''} ${enabled && mode === 'erase' ? 'is-erase' : ''}`}
         onPointerDown={(e) => {
           if (!enabled) return;
+          if (mode !== 'erase') {
+            pendingEraseVisualRef.current = null;
+          }
           const pos = pointerToCanvas(e);
-          const pageX = (window.scrollX || 0) + pos.x;
-          const pageY = (window.scrollY || 0) + pos.y;
           drawRef.current = {
             active: true,
             x: pos.x,
             y: pos.y,
-            points: [{ x: Math.round(pageX), y: Math.round(pageY) }],
+            points: [{ x: Math.round(pos.x), y: Math.round(pos.y) }],
             functionalHit: isFunctionalAtPoint(e.clientX, e.clientY),
           };
-          if (mode === 'spray') paintSpray(pos.x, pos.y);
-          else paintTag(pos.x, pos.y);
+          if (mode === 'erase') {
+            schedulePaint();
+            return;
+          }
+          schedulePaint();
         }}
         onPointerMove={(e) => {
           if (!enabled || !drawRef.current.active) return;
           const pos = pointerToCanvas(e);
-          if (mode === 'spray') paintSpray(pos.x, pos.y);
-          else paintTag(pos.x, pos.y);
-          const pageX = (window.scrollX || 0) + pos.x;
-          const pageY = (window.scrollY || 0) + pos.y;
+          if (mode === 'erase') {
+            if (drawRef.current.points.length < 420) {
+              drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
+            }
+            if (!drawRef.current.functionalHit) {
+              drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);
+            }
+            schedulePaint();
+            return;
+          }
           if (drawRef.current.points.length < 420) {
-            drawRef.current.points.push({ x: Math.round(pageX), y: Math.round(pageY) });
+            drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
           }
           if (!drawRef.current.functionalHit) {
             drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);
           }
+          schedulePaint();
         }}
         onPointerUp={async () => {
           if (!drawRef.current.active) return;
@@ -277,8 +441,24 @@ export default function GraffitiLayer() {
             points: drawRef.current.points,
             isFunctional: drawRef.current.functionalHit,
           };
+          const wasErase = mode === 'erase';
+          const commitVisualId = !wasErase ? ++pendingCommitIdRef.current : 0;
+          const eraseSnap = wasErase ? drawRef.current.points.slice() : null;
           drawRef.current.active = false;
+          if (wasErase && eraseSnap?.length) {
+            pendingEraseVisualRef.current = { points: eraseSnap };
+            pendingCommitVisualRef.current = [];
+          } else if (!wasErase) {
+            pendingCommitVisualRef.current = [
+              ...pendingCommitVisualRef.current,
+              { id: commitVisualId, mode, points: drawRef.current.points.slice() },
+            ];
+            pendingEraseVisualRef.current = null;
+          }
+          schedulePaint();
+          let syncGen = 0;
           try {
+            syncGen = ++graffitiSyncGenRef.current;
             const res = await fetch('/api/graffiti', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -286,49 +466,101 @@ export default function GraffitiLayer() {
               body: JSON.stringify(payload),
             });
             if (res.ok) {
-              const list = await fetch(`/api/graffiti?page=${encodeURIComponent(location.pathname)}`, {
-                credentials: 'same-origin',
-              });
-              const data = await list.json().catch(() => ({ strokes: [] }));
-              setStrokes(Array.isArray(data?.strokes) ? data.strokes : []);
+              graffitiListAbortRef.current?.abort();
+              const listCtl = new AbortController();
+              graffitiListAbortRef.current = listCtl;
+              let data;
+              try {
+                const list = await fetch(`/api/graffiti?page=${encodeURIComponent(location.pathname)}`, {
+                  credentials: 'same-origin',
+                  signal: listCtl.signal,
+                });
+                data = await list.json().catch(() => ({ strokes: [] }));
+              } catch (e) {
+                if (e?.name === 'AbortError') return;
+                throw e;
+              }
+              const next = Array.isArray(data?.strokes) ? data.strokes : [];
+              if (syncGen !== graffitiSyncGenRef.current) return;
+              strokesRef.current = next;
+              baseDirtyRef.current = true;
+              pendingCommitVisualRef.current = [];
+              if (wasErase) pendingEraseVisualRef.current = null;
+              setStrokes(next);
+              flushPaintComposite();
+            } else if (wasErase) {
+              if (syncGen === graffitiSyncGenRef.current) {
+                pendingEraseVisualRef.current = null;
+                flushPaintComposite();
+              }
+            } else {
+              if (syncGen === graffitiSyncGenRef.current) {
+                pendingCommitVisualRef.current = pendingCommitVisualRef.current.filter((item) => item.id !== commitVisualId);
+                flushPaintComposite();
+              }
             }
-          } catch {
-            // keep local paint; next reload will fetch server state
+          } catch (e) {
+            if (e?.name === 'AbortError') return;
+            if (wasErase) {
+              if (syncGen === graffitiSyncGenRef.current) {
+                pendingEraseVisualRef.current = null;
+                flushPaintComposite();
+              }
+            } else {
+              if (syncGen === graffitiSyncGenRef.current) {
+                pendingCommitVisualRef.current = pendingCommitVisualRef.current.filter((item) => item.id !== commitVisualId);
+                flushPaintComposite();
+              }
+            }
           }
         }}
         onPointerLeave={() => {
           if (!drawRef.current.active) return;
           drawRef.current.active = false;
+          pendingEraseVisualRef.current = null;
+          pendingCommitVisualRef.current = [];
+          schedulePaint();
         }}
       />
       {featureVisible ? (
         <button
           type="button"
           className={`fgraffiti-pen ${enabled ? 'is-active' : ''}`}
-          title={`fgraffiti (${hintLabel})`}
-          aria-label={`fgraffiti aktivieren (${hintLabel})`}
-          onClick={() => {
+          title={`fgraffiti: ${hotkey[0]}+${hotkey[1]} schaltet Tag → Spray → Schwamm → aus. Stift: Klick / Doppelklick / Umschalt+Klick.`}
+          aria-label={`fgraffiti (${hintLabel})`}
+          onClick={(e) => {
+            if (e.shiftKey) {
+              setMode('erase');
+              setEnabled((v) => !v);
+              return;
+            }
+            if (e.detail !== 1) return;
             setMode('tag');
             setEnabled((v) => !v);
           }}
-          onDblClick={() => {
+          onDblClick={(e) => {
+            e.preventDefault();
             setMode('spray');
-            setEnabled((v) => !v);
+            setEnabled(true);
           }}
         >
-          {mode === 'spray' ? '🧯' : '✎'}
+          {mode === 'erase' ? '🧽' : mode === 'spray' ? '🧯' : '✎'}
         </button>
       ) : null}
       <style>{`
         .fgraffiti-canvas {
-          position: fixed;
-          inset: 0;
+          position: absolute;
+          top: 0;
+          left: 0;
           z-index: 398;
           pointer-events: none;
         }
         .fgraffiti-canvas.is-active {
           pointer-events: auto;
           cursor: crosshair;
+        }
+        .fgraffiti-canvas.is-active.is-erase {
+          cursor: cell;
         }
         .fgraffiti-pen {
           position: fixed;

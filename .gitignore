@@ -36,3 +36,5 @@ pnpm-debug.log*
 memory/security-sensitive.md
 # Testability notes (local risk logs, flaky cases, repro notes)
 memory/testability-sensitive.md
+.vercel
+.env*.local

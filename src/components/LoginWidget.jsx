@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'preact/hooks';
 
 
-function LoginWidget() {
-  const [user, setUser] = useState(null);
+function LoginWidget({ initialUser = null }) {
+  const [user, setUser] = useState(initialUser);
+  const [authResolved, setAuthResolved] = useState(Boolean(initialUser));
   const [open, setOpen] = useState(false);
   const [registerMode, setRegisterMode] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', birthday: '', password2: '' });
@@ -14,7 +15,12 @@ function LoginWidget() {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        setAuthResolved(true);
+      } else {
+        setAuthResolved(true);
       }
+    }).catch(() => {
+      setAuthResolved(true);
     });
   }, []);
 
@@ -121,6 +127,13 @@ function LoginWidget() {
     }
 
     // Ausgeloggt: Login / Register Formular
+    if (!authResolved) {
+      return (
+        <div style={popupStyle}>
+          <div style={{ fontSize: 13, color: 'var(--site-soft-muted)', textAlign: 'center' }}>SESSION WIRD GELADEN…</div>
+        </div>
+      );
+    }
     return (
       <div style={popupStyle}>
         <form onSubmit={registerMode ? handleRegister : handleLogin}>

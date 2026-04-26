@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import UserSettingsFeeds from './UserSettingsFeeds.jsx';
 
 const FGRAFFITI_HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
@@ -78,7 +78,8 @@ function loadGraffitiHotkey() {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length < 2) return FGRAFFITI_DEFAULT_HOTKEY;
     const clean = parsed.map((k) => normalizeGraffitiKey(String(k))).filter(Boolean);
-    return clean.length >= 2 ? clean.slice(0, 2) : FGRAFFITI_DEFAULT_HOTKEY;
+    if (clean.length < 2) return FGRAFFITI_DEFAULT_HOTKEY;
+    return clean.slice(0, 2);
   } catch {
     return FGRAFFITI_DEFAULT_HOTKEY;
   }
@@ -108,7 +109,8 @@ export default function UserSettings() {
   const [user, setUser] = useState(null);
   const [ai, setAi] = useState(null);
   const [err, setErr] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [userLoading, setUserLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(true);
   const [testerUiEnabled, setTesterUiEnabled] = useState(true);
   const [testerBusy, setTesterBusy] = useState(false);
   const [testerMsg, setTesterMsg] = useState('');
@@ -118,36 +120,47 @@ export default function UserSettings() {
   const [rpgBackupsLoading, setRpgBackupsLoading] = useState(false);
   const [rpgBackupsBusyId, setRpgBackupsBusyId] = useState(0);
   const [rpgBackupMsg, setRpgBackupMsg] = useState('');
+  const settingsLoadGen = useRef(0);
 
   useEffect(() => {
+    const gen = ++settingsLoadGen.current;
     let cancelled = false;
+    setErr('');
+
     (async () => {
-      setErr('');
-      setLoading(true);
       try {
-        const [uRes, aiRes] = await Promise.all([
-          fetch('/api/user', { credentials: 'same-origin' }),
-          fetch('/api/user/ai-usage', { credentials: 'same-origin' }),
-        ]);
+        const res = await fetch('/api/user/ai-usage', { credentials: 'same-origin' });
+        const data = res.ok ? await res.json().catch(() => ({})) : null;
+        if (!cancelled && gen === settingsLoadGen.current) {
+          if (res.ok) setAi(data);
+          else setAi({ features: [], totals: {}, recent: [] });
+        }
+      } catch {
+        if (!cancelled && gen === settingsLoadGen.current) setAi({ features: [], totals: {}, recent: [] });
+      } finally {
+        if (!cancelled && gen === settingsLoadGen.current) setAiLoading(false);
+      }
+    })();
+
+    (async () => {
+      try {
+        const uRes = await fetch('/api/user', { credentials: 'same-origin' });
+        const uData = uRes.ok ? await uRes.json().catch(() => ({})) : null;
         if (!uRes.ok) {
-          if (!cancelled) setErr('Sitzung ungültig — bitte neu anmelden.');
+          if (!cancelled && gen === settingsLoadGen.current) setErr('Sitzung ungültig — bitte neu anmelden.');
           return;
         }
-        const uData = await uRes.json();
-        if (!cancelled) {
+        if (!cancelled && gen === settingsLoadGen.current) {
           setUser(uData.user);
           setTesterUiEnabled(Boolean(uData?.user?.testerUiEnabled));
         }
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          if (!cancelled) setAi(aiData);
-        } else if (!cancelled) setAi({ features: [], totals: {}, recent: [] });
       } catch {
-        if (!cancelled) setErr('Daten konnten nicht geladen werden.');
+        if (!cancelled && gen === settingsLoadGen.current) setErr('Daten konnten nicht geladen werden.');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && gen === settingsLoadGen.current) setUserLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -193,21 +206,23 @@ export default function UserSettings() {
         Einstellungen
       </h1>
 
-      <div style={tabRow}>
-        <TabButton id="account" label="Konto" active={tab === 'account'} onPick={setTab} />
-        <TabButton id="feeds" label="Feed" active={tab === 'feeds'} onPick={setTab} />
-        <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
-        <TabButton id="fgraffiti" label="fgraffiti" active={tab === 'fgraffiti'} onPick={setTab} />
-        {user?.canUseRpg ? <TabButton id="rpg" label="RPG" active={tab === 'rpg'} onPick={setTab} /> : null}
-        {user?.isTester ? (
-          <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
-        ) : null}
-      </div>
+      {!userLoading && user ? (
+        <div style={tabRow}>
+          <TabButton id="account" label="Konto" active={tab === 'account'} onPick={setTab} />
+          {user.canUseFeeds ? <TabButton id="feeds" label="Feed" active={tab === 'feeds'} onPick={setTab} /> : null}
+          <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
+          <TabButton id="fgraffiti" label="fgraffiti" active={tab === 'fgraffiti'} onPick={setTab} />
+          {user.canUseRpg ? <TabButton id="rpg" label="RPG" active={tab === 'rpg'} onPick={setTab} /> : null}
+          {user.isTester ? (
+            <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
+          ) : null}
+        </div>
+      ) : null}
 
       {err ? <div style={errStyle}>{err}</div> : null}
-      {loading ? <p style={muted}>Laden…</p> : null}
+      {userLoading ? <p style={muted}>Laden…</p> : null}
 
-      {!loading && tab === 'account' && user && (
+      {!userLoading && tab === 'account' && user && (
         <section style={section}>
           <h2 style={h2}>Konto</h2>
           <p style={{ marginBottom: 8 }}>
@@ -225,9 +240,11 @@ export default function UserSettings() {
         </section>
       )}
 
-      {!loading && tab === 'feeds' && user && <UserSettingsFeeds />}
+      {!userLoading && tab === 'feeds' && user?.canUseFeeds && <UserSettingsFeeds />}
 
-      {!loading && tab === 'ai' && ai && (
+      {!userLoading && tab === 'ai' && aiLoading ? <p style={muted}>KI-Nutzung wird geladen…</p> : null}
+
+      {!userLoading && tab === 'ai' && !aiLoading && ai && (
         <>
           <section style={section}>
             <h2 style={h2}>Gesamt</h2>
@@ -342,7 +359,7 @@ export default function UserSettings() {
         </>
       )}
 
-      {!loading && tab === 'fgraffiti' && (
+      {!userLoading && tab === 'fgraffiti' && (
         <section style={section}>
           <h2 style={h2}>fgraffiti</h2>
           <p style={muted}>
@@ -376,6 +393,9 @@ export default function UserSettings() {
               />
             </label>
           </div>
+          <p style={{ ...muted, marginTop: 8, maxWidth: 520 }}>
+            Taste 1+2 zusammen: erstes Mal öffnet den Stift (Tag). Jeder weitere Kord: Spray → Schwamm → wieder zu. Derselbe Hotkey durchcyclt die Palette.
+          </p>
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <button
               type="button"
@@ -390,7 +410,7 @@ export default function UserSettings() {
                 localStorage.setItem(FGRAFFITI_HOTKEY_STORAGE_KEY, JSON.stringify(next));
                 window.dispatchEvent(new Event('fgraffiti-hotkey-change'));
                 setGraffitiHotkey(next);
-                setGraffitiMsg(`Gespeichert: ${next[0]} + ${next[1]}`);
+                setGraffitiMsg(`Gespeichert: ${next[0]} + ${next[1]} (Palette: Tag → Spray → Schwamm → aus)`);
               }}
               style={{
                 padding: '8px 12px',
@@ -425,7 +445,7 @@ export default function UserSettings() {
         </section>
       )}
 
-      {!loading && tab === 'tester' && user?.isTester && (
+      {!userLoading && tab === 'tester' && user?.isTester && (
         <section style={section}>
           <h2 style={h2}>Testeroberfläche</h2>
           <p style={muted}>
@@ -486,7 +506,7 @@ export default function UserSettings() {
         </section>
       )}
 
-      {!loading && tab === 'rpg' && user?.canUseRpg && (
+      {!userLoading && tab === 'rpg' && user?.canUseRpg && (
         <section style={section}>
           <h2 style={h2}>RPG Backups</h2>
           <p style={muted}>

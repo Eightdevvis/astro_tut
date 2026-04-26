@@ -1,4 +1,5 @@
 import { getUsernameFromCookies } from '../../../../lib/session.js';
+import { hasPermission } from '../../../../lib/permissions.js';
 import { ensureDbSchema, getDb } from '../../../../lib/db.js';
 import {
   listUserFeeds,
@@ -17,6 +18,12 @@ export async function GET({ cookies, url }) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   const preview = url.searchParams.get('preview') === '1' || url.searchParams.get('preview') === 'true';
   const feeds = await listUserFeeds(username, { preview });
   return new Response(JSON.stringify({ feeds }), {
@@ -30,6 +37,12 @@ export async function POST({ request, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }

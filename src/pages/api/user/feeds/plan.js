@@ -1,4 +1,5 @@
 import { getUsernameFromCookies } from '../../../../lib/session.js';
+import { hasPermission } from '../../../../lib/permissions.js';
 import { runFeedPlanAi } from '../../../../lib/feed-plan-ai.js';
 
 const MAX_PROMPT = 6000;
@@ -8,6 +9,12 @@ export async function POST({ request, cookies }) {
   if (!username) {
     return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (!(await hasPermission(username, 'feed_access'))) {
+    return new Response(JSON.stringify({ error: 'Keine Berechtigung für Feed.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }
