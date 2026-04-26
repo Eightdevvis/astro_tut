@@ -377,7 +377,7 @@ function nodeNodeClass(isDone, isLeaf, isLock) {
   return 'rpg-tree-node-node rpg-tree-node-node--container';
 }
 
-export default function RpgQuestTree() {
+export default function RpgQuestTree({ isSuperuser = false }) {
   const [graph, setGraph] = useState(EMPTY_RPG_GRAPH);
   const [added, setAdded] = useState(() => new Set());
   const [nodeDone, setNodeDone] = useState(() =>
@@ -411,6 +411,11 @@ export default function RpgQuestTree() {
   /** Mobil: Vollbild-Overlay mit Gefäßen (Dock-Button), nicht auf dem Baum */
   const [mobileManaOpen, setMobileManaOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [superNotesOpen, setSuperNotesOpen] = useState(false);
+  const [superNotesValue, setSuperNotesValue] = useState('');
+  const [superNotesLoading, setSuperNotesLoading] = useState(false);
+  const [superNotesSaving, setSuperNotesSaving] = useState(false);
+  const [superNotesError, setSuperNotesError] = useState('');
   const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
   const [editorNodeId, setEditorNodeId] = useState(/** @type {string | null} */ (null));
   const [editorFocusNodeId, setEditorFocusNodeId] = useState(/** @type {string | null} */ (null));
@@ -498,6 +503,16 @@ export default function RpgQuestTree() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileManaOpen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!superNotesOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [superNotesOpen]);
 
   const panelReserve = compact ? PANEL_RESERVE_MOBILE : PANEL_RESERVE_DESKTOP;
   const blockViewportGestures = compact && !!selectedId;
@@ -662,6 +677,54 @@ export default function RpgQuestTree() {
     setTreePickParentKey(null);
     setTreePickNodeIds(new Set());
   }, []);
+
+  const openSuperNotes = useCallback(async () => {
+    if (!isSuperuser) return;
+    setSuperNotesOpen(true);
+    setSuperNotesError('');
+    setSuperNotesLoading(true);
+    try {
+      const res = await fetch('/api/rpg/super-notes', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        setSuperNotesError('Notizen konnten nicht geladen werden.');
+        return;
+      }
+      const data = await res.json();
+      setSuperNotesValue(typeof data?.note === 'string' ? data.note : '');
+    } catch {
+      setSuperNotesError('Notizen konnten nicht geladen werden.');
+    } finally {
+      setSuperNotesLoading(false);
+    }
+  }, [isSuperuser]);
+
+  const saveSuperNotes = useCallback(async () => {
+    if (!isSuperuser) return;
+    setSuperNotesSaving(true);
+    setSuperNotesError('');
+    try {
+      const res = await fetch('/api/rpg/super-notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ note: superNotesValue }),
+      });
+      if (!res.ok) {
+        setSuperNotesError('Notizen konnten nicht gespeichert werden.');
+        return;
+      }
+      const data = await res.json();
+      setSuperNotesValue(typeof data?.note === 'string' ? data.note : superNotesValue);
+      setSuperNotesOpen(false);
+    } catch {
+      setSuperNotesError('Notizen konnten nicht gespeichert werden.');
+    } finally {
+      setSuperNotesSaving(false);
+    }
+  }, [isSuperuser, superNotesValue]);
 
   const handleLocationChange = useCallback((next) => {
     setDirtySinceBootstrap(true);
@@ -1171,7 +1234,20 @@ export default function RpgQuestTree() {
 
   const topBar = (
     <header class="rpg-tree__top">
-      <p class="rpg-tree__top-title">Node-Baum</p>
+      <div class="rpg-tree__top-title-row">
+        <p class="rpg-tree__top-title">Node-Baum</p>
+        {isSuperuser ? (
+          <button
+            type="button"
+            class="rpg-tree__top-note-btn"
+            onClick={() => void openSuperNotes()}
+            aria-label="Private Superuser-Notizen öffnen"
+            title="Private Notizen"
+          >
+            Notiz
+          </button>
+        ) : null}
+      </div>
       <div class="rpg-tree__top-actions">
         <button type="button" class="rpg-tree__btn" onClick={() => openCreateNode('manual')} title="Neue Node direkt im Formular">
           manuell+
@@ -1205,6 +1281,58 @@ export default function RpgQuestTree() {
     />
   );
 
+  const superNotesModal =
+    isSuperuser && superNotesOpen ? (
+      <div
+        class="rpg-tree__super-notes-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Private Superuser-Notizen"
+        onClick={() => !superNotesSaving && setSuperNotesOpen(false)}
+      >
+        <div class="rpg-tree__super-notes" onClick={(e) => e.stopPropagation()}>
+          <div class="rpg-tree__super-notes-head">
+            <h2>Private Notizen</h2>
+            <button
+              type="button"
+              class="rpg-tree__super-notes-close"
+              onClick={() => setSuperNotesOpen(false)}
+              disabled={superNotesSaving}
+              aria-label="Notizeditor schließen"
+            >
+              ×
+            </button>
+          </div>
+          <textarea
+            class="rpg-tree__super-notes-textarea"
+            value={superNotesValue}
+            onInput={(e) => setSuperNotesValue(e.currentTarget.value)}
+            placeholder="Nur für dich als Superuser..."
+            disabled={superNotesLoading || superNotesSaving}
+          />
+          {superNotesError ? <p class="rpg-tree__super-notes-error">{superNotesError}</p> : null}
+          <div class="rpg-tree__super-notes-actions">
+            <button
+              type="button"
+              class="rpg-tree__btn rpg-tree__btn--muted"
+              onClick={() => setSuperNotesOpen(false)}
+              disabled={superNotesSaving}
+            >
+              Schließen
+            </button>
+            <button
+              type="button"
+              class="rpg-tree__btn rpg-tree__btn--primary"
+              onClick={() => void saveSuperNotes()}
+              disabled={superNotesLoading || superNotesSaving}
+            >
+              {superNotesSaving ? 'Speichert...' : 'Speichern'}
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   if (!bootstrapped) {
     return (
       <div class="rpg-tree rpg-tree--bootstrap">
@@ -1217,6 +1345,7 @@ export default function RpgQuestTree() {
     return (
       <div class="rpg-tree">
         {topBar}
+        {superNotesModal}
         {manaHeartDeko}
         {mobileManaDock}
         {mobileManaOverlay}
@@ -1234,6 +1363,7 @@ export default function RpgQuestTree() {
   return (
     <div class={rootTreeClass}>
       {topBar}
+      {superNotesModal}
       {manaHeartDeko}
       {mobileManaDock}
       {mobileManaOverlay}

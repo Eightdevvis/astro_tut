@@ -9,6 +9,7 @@ import '../../styles/themes.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
 const canUseRpg = Boolean(username) && (await hasPermission(username, 'rpg_access'));
+const isSuperuser = Boolean(username) && (await hasPermission(username, 'super_access'));
 if (!canUseRpg) {
   return Astro.redirect('/');
 }
@@ -31,7 +32,7 @@ if (!canUseRpg) {
     />
   </head>
   <body class="rpg-root-body">
-    <RpgQuestTree client:load />
+    <RpgQuestTree client:load isSuperuser={isSuperuser} />
     <TesterBugBar client:load />
     <ThemeClient />
   </body>
