@@ -30,7 +30,9 @@ pnpm-debug.log*
 .history/
 
 # Cursor IDE
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/*.mdc
 
 # Security notes (may list internal paths/risks; keep local only)
 memory/security-sensitive.md

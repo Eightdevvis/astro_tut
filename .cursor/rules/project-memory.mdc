@@ -1,0 +1,10 @@
+---
+description: Projekt-Memory lesen — Einstieg unter memory/, Details nur in Unterdateien
+alwaysApply: true
+---
+
+# Projekt-Memory
+
+Zu Beginn relevanter Aufgaben **`memory/memory.md`** lesen (Einstieg + Verweise). **Details** nur bei Bedarf in den verlinkten Dateien unter **`memory/`** (z. B. `memory/math-minigames.mdc`).
+
+Neue Themen: neue Datei unter `memory/` anlegen und in `memory/memory.md` verlinken.

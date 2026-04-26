@@ -1,0 +1,9 @@
+---
+description: Math-Minigames — Details in memory/math-minigames.mdc
+globs: src/pages/minigames/**/*,src/components/FlowPuzzle.jsx,src/components/FraktaleSandbox.jsx
+alwaysApply: false
+---
+
+# Math-Minigames
+
+Leitlinien, Pfade und Rand-Hinweis: **`memory/math-minigames.mdc`**. Kurz: eine Simulationsquelle, Mathe korrekt und didaktisch vor Spielspaß, Vereinfachungen kennzeichnen.
