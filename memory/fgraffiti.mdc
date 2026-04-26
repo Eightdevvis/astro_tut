@@ -12,3 +12,9 @@
 - Positionsmodell: Punkte werden in Dokument-Koordinaten (inkl. Scroll-Offset) gespeichert; Rendering rechnet auf Viewport um, damit Graffiti beim Scrollen am echten Seiteninhalt klebt.
 - Superuser-Moderation: `GET/POST /api/admin/graffiti` plus Section `Graffiti` in `src/components/SuperSettings.jsx` mit Mini-Vorschau, Pfad und manuellem Loeschen einzelner Striche.
 - User-Einstellungen: neuer Tab `fgraffiti` in `src/components/UserSettings.jsx` mit zwei Key-Feldern, Save und Reset.
+- Dritter Modus `erase` (Schwamm) in `src/components/GraffitiLayer.jsx`; Server-Erase liegt in `src/pages/api/graffiti.js` und schneidet Tag/Spray-Geometrie partiell statt alles zu loeschen.
+- Erase-Preview (`pendingEraseVisualRef`) wird nur im Erase-Modus gezeichnet und beim Wechsel zu Tag/Spray sofort verworfen, damit keine spaeten `destination-out` Ueberlagerungen neue Striche ausblenden.
+- Schnelle Mehrfach-Striche bleiben sichtbar: lokale Pending-Commits sind als Queue (`pendingCommitVisualRef[]`) statt Einzelobjekt modelliert.
+- Sync-Race-Schutz: pro `pointerUp` wird eine Generation (`graffitiSyncGenRef`) vergeben; nur der neueste Abschluss darf GET-Ergebnis anwenden.
+- GET-Abfragen pro Strichlauf werden via `AbortController` gekappt, sobald ein neuerer Lauf startet; veraltete Antworten werden nicht mehr in den sichtbaren State gemischt.
+- Nach erfolgreichem Server-Sync wird `flushPaintComposite()` genutzt (direktes Repaint), um Zwischenframes ohne Strich zwischen Pending- und Base-Layer zu vermeiden.
