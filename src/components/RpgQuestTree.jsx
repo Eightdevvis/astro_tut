@@ -1605,9 +1605,12 @@ export default function RpgQuestTree({ isSuperuser = false }) {
               <button
                 type="button"
                 class="rpg-tree-panel__edit-toggle"
-                onClick={() =>
-                  openEditNode(selectedNode?.nodeId || selectedQuest.id, 'form', selectedNode?.nodeId || null)
-                }
+                onClick={() => {
+                  const editorEntityId = selectedNode?.nodeId
+                    ? `${selectedQuest.id}::${selectedNode.nodeId}`
+                    : selectedQuest.id;
+                  openEditNode(editorEntityId, 'form', selectedNode?.nodeId || null);
+                }}
                 disabled={!canEditSelected}
                 aria-label="Node manuell bearbeiten"
                 title="Node manuell bearbeiten"
@@ -1630,7 +1633,9 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                   ×
                 </button>
               </div>
-              <p class="rpg-tree-panel__desc">{selectedNodeView?.description || selectedQuest.description}</p>
+              <p class="rpg-tree-panel__desc">
+                {selectedNodeView ? (selectedNodeView.description || '') : selectedQuest.description}
+              </p>
               <ul class="rpg-tree-panel__meta-inline" aria-label="Quest-Details">
                 <li><span>Quest-ID</span><strong>{selectedQuest.id}</strong></li>
                 <li><span>Wurzel-Nodes</span><strong>{Array.isArray(selectedQuest.children) ? selectedQuest.children.length : 0}</strong></li>

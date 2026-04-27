@@ -57,6 +57,24 @@ function makeUniqueQuestId(baseId, existingIds) {
 function resolveEditTarget(graph, entityId) {
   const id = String(entityId || '').trim();
   if (!id) return null;
+  const compositeMatch = /^(.+?)::(.+)$/.exec(id);
+  if (compositeMatch) {
+    const containerQuestId = compositeMatch[1];
+    const nodeId = compositeMatch[2];
+    const q = (graph.quests || []).find((x) => x.id === containerQuestId);
+    if (q) {
+      /** @type {Array<any>} */
+      const stack = Array.isArray(q.children) ? [...q.children] : [];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (!cur || typeof cur !== 'object') continue;
+        if (cur.id === nodeId) {
+          return { containerQuestId: q.id, targetNode: cur, isTopLevel: false };
+        }
+        if (Array.isArray(cur.children) && cur.children.length > 0) stack.push(...cur.children);
+      }
+    }
+  }
   for (const q of graph.quests || []) {
     if (q.id === id) {
       return { containerQuestId: q.id, targetNode: q, isTopLevel: true };
@@ -88,6 +106,76 @@ function mapNodeRecursive(nodes, targetId, mapFn) {
       return { ...node, children: mapNodeRecursive(node.children, targetId, mapFn) };
     }
     return node;
+  });
+}
+
+/**
+ * Entfernt eine Node rekursiv aus dem Tree.
+ * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {string} targetId
+ * @returns {{ nodes: import('../lib/rpg-quest-nodes.js').RpgQuestNode[]; removed: boolean; removedIds: string[] }}
+ */
+function removeNodeRecursive(nodes, targetId) {
+  let removed = false;
+  let matchCount = 0;
+  /** @type {string[]} */
+  const removedIds = [];
+  const next = [];
+
+  /**
+   * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode} node
+   */
+  const collectIds = (node) => {
+    const id = typeof node?.id === 'string' ? node.id.trim() : '';
+    if (id) removedIds.push(id);
+    for (const ch of node?.children || []) collectIds(ch);
+  };
+
+  for (const node of nodes || []) {
+    if (!node || typeof node !== 'object') {
+      next.push(node);
+      continue;
+    }
+    if (node.id === targetId) {
+      removed = true;
+      matchCount += 1;
+      collectIds(node);
+      continue;
+    }
+    if (Array.isArray(node.children) && node.children.length > 0) {
+      const out = removeNodeRecursive(node.children, targetId);
+      if (out.removed) removed = true;
+      if (out.matchCount > 0) matchCount += out.matchCount;
+      if (out.removedIds.length > 0) removedIds.push(...out.removedIds);
+      next.push(out.removed ? { ...node, children: out.nodes } : node);
+      continue;
+    }
+    next.push(node);
+  }
+  return { nodes: next, removed, matchCount, removedIds };
+}
+
+/**
+ * Entfernt Referenzen auf gelöschte Node-IDs aus dependsOn.
+ * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {Set<string>} removedIdSet
+ * @returns {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]}
+ */
+function stripDependsOnReferences(nodes, removedIdSet) {
+  return (nodes || []).map((node) => {
+    if (!node || typeof node !== 'object') return node;
+    const nextChildren = Array.isArray(node.children)
+      ? stripDependsOnReferences(node.children, removedIdSet)
+      : [];
+    const deps = Array.isArray(node.dependsOn) ? node.dependsOn : [];
+    const nextDeps = deps.filter((dep) => !removedIdSet.has(String(dep || '').trim()));
+    const base = nextChildren !== node.children ? { ...node, children: nextChildren } : { ...node };
+    if (nextDeps.length > 0) return { ...base, dependsOn: nextDeps };
+    if ('dependsOn' in base) {
+      const { dependsOn: _drop, ...rest } = base;
+      return rest;
+    }
+    return base;
   });
 }
 
@@ -191,6 +279,7 @@ export default function RpgQuestGraphEditor({
   const [rewardRows, setRewardRows] = useState([]);
   const [orderInLayer, setOrderInLayer] = useState(0);
   const [editContainerQuestId, setEditContainerQuestId] = useState('');
+  const [editTargetNodeId, setEditTargetNodeId] = useState('');
   /** Nur wenn kein createEntry gesetzt (Fallback) */
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
   /** @type {'prompt' | 'result'} */
@@ -309,6 +398,7 @@ export default function RpgQuestGraphEditor({
       setEditContainerQuestId(containerQuest.id);
       const target = resolved.targetNode;
       setId(target.id || '');
+      setEditTargetNodeId(target.id || '');
       setTitle((target.title || target.label || '').trim());
       setDescription(target.description || '');
       const drafts = questNodesToDrafts(target.children || []);
@@ -361,6 +451,7 @@ export default function RpgQuestGraphEditor({
       }
       editQmBaselineRef.current = null;
       setEditContainerQuestId('');
+      setEditTargetNodeId('');
       setCreateMode(ce === 'questmaker' ? 'ai' : 'manual');
       setQmPhase(ce === 'questmaker' ? 'prompt' : 'result');
       setAiPrompt('');
@@ -538,7 +629,7 @@ export default function RpgQuestGraphEditor({
   const previewQuest = useMemo(() => {
     const nid =
       mode === 'edit' && questId
-        ? questId
+        ? editTargetNodeId || questId
         : normalizedCreateId || 'preview';
     const children = draftNodesToQuestNodes(nodeDrafts, nid);
     return {
@@ -548,7 +639,7 @@ export default function RpgQuestGraphEditor({
       children,
       questRewards: draftRewardRowsToStoredQuestRewards(rewardRows),
     };
-  }, [mode, questId, normalizedCreateId, title, description, nodeDrafts, rewardRows]);
+  }, [mode, questId, editTargetNodeId, normalizedCreateId, title, description, nodeDrafts, rewardRows]);
 
   const handleToggleTreePick = (parentDraftKey) => {
     if (!onToggleTreePick) return;
@@ -645,11 +736,12 @@ export default function RpgQuestGraphEditor({
         return;
       }
       const targetId = String(questId).trim();
-      const updatedChildren = mapNodeRecursive(container.children || [], targetId, (node) => ({
+      const effectiveTargetId = String(editTargetNodeId || targetId).trim();
+      const updatedChildren = mapNodeRecursive(container.children || [], effectiveTargetId, (node) => ({
         ...node,
-        label: title.trim() || targetId,
+        label: title.trim() || effectiveTargetId,
         description: description.trim(),
-        children: draftNodesToQuestNodes(nodeDrafts, targetId),
+        children: draftNodesToQuestNodes(nodeDrafts, effectiveTargetId),
       }));
       const updatedContainer = {
         ...container,
@@ -702,6 +794,34 @@ export default function RpgQuestGraphEditor({
   const handleDelete = () => {
     if (mode !== 'edit' || !questId) return;
     if (!window.confirm('Quest wirklich löschen? Alle Kanten zu dieser Quest entfallen.')) return;
+    if (editContainerQuestId && editContainerQuestId !== questId) {
+      const container = graph.quests.find((q) => q.id === editContainerQuestId);
+      if (!container) {
+        window.alert('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        return;
+      }
+      const out = removeNodeRecursive(container.children || [], String(editTargetNodeId || questId).trim());
+      if (!out.removed) {
+        window.alert('Die ausgewählte Child-Node wurde nicht gefunden.');
+        return;
+      }
+      const removedIdSet = new Set(out.removedIds.map((id) => String(id || '').trim()).filter(Boolean));
+      const cleanedChildren =
+        removedIdSet.size > 0 ? stripDependsOnReferences(out.nodes, removedIdSet) : out.nodes;
+      onApply(
+        upsertQuestInGraph(
+          graph,
+          {
+            ...container,
+            children: cleanedChildren,
+          },
+          []
+        )
+      );
+      setDraftsOpen(false);
+      onClose();
+      return;
+    }
     onApply(removeQuestFromGraph(graph, questId));
     setDraftsOpen(false);
     onClose();
@@ -751,6 +871,8 @@ export default function RpgQuestGraphEditor({
     try {
       /** @type {{ question: string; answer: string }[]} */
       const pairs = pairsForRequest ?? clarifyHistoryPairs;
+      const effectiveLockedId =
+        mode === 'edit' ? String(editTargetNodeId || questId || '').trim() || undefined : undefined;
       const res = await fetch('/api/rpg/quests-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -758,7 +880,7 @@ export default function RpgQuestGraphEditor({
         body: JSON.stringify({
           prompt: aiSeedRef.current,
           existingQuestIds: graph.quests.map((q) => q.id),
-          lockedQuestId: mode === 'edit' && questId ? questId : undefined,
+          lockedQuestId: effectiveLockedId,
           clarification: pairs.length > 0 ? { pairs } : undefined,
           responseMode: mode === 'create' && onlyQuestmaker ? 'package' : undefined,
         }),

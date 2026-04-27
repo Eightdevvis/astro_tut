@@ -15,7 +15,7 @@ export function deriveRpgTreeSelectionView(byId, selectedId, selectedNode) {
     ? {
         id: `${selectedQuest.id}::${selectedGraphNode.id}`,
         title: selectedGraphNode.label || selectedGraphNode.id,
-        description: '',
+        description: selectedGraphNode.description || '',
         children: selectedGraphNode.children || [],
         questRewards: [],
       }

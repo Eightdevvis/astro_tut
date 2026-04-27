@@ -95,6 +95,25 @@ function formatCost(c) {
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 6 }).format(c);
 }
 
+function formatBerlinTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const looksSqlUtc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw);
+  const normalized = hasExplicitZone ? raw : looksSqlUtc ? `${raw.replace(' ', 'T')}Z` : raw;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(parsed);
+}
+
 /** @param {{ id: string; label: string }} p */
 function TabButton({ id, label, active, onPick }) {
   return (
@@ -181,7 +200,10 @@ export default function UserSettings() {
         const res = await fetch('/api/rpg/quests-backups', { credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Backups konnten nicht geladen werden.');
-        if (!cancelled) setRpgBackups(Array.isArray(data.backups) ? data.backups : []);
+        if (!cancelled) {
+          const backups = Array.isArray(data.backups) ? data.backups : [];
+          setRpgBackups(backups);
+        }
       } catch (e) {
         if (!cancelled) setErr(e?.message || 'Backups konnten nicht geladen werden.');
       } finally {
@@ -522,7 +544,7 @@ export default function UserSettings() {
               <table style={tableStyle}>
                 <thead>
                   <tr>
-                    <th style={thtd}>Zeit (UTC)</th>
+                    <th style={thtd}>Zeit (Deutschland)</th>
                     <th style={thtd}>Typ</th>
                     <th style={thtd}>Größe</th>
                     <th style={thtd}>Aktion</th>
@@ -531,7 +553,7 @@ export default function UserSettings() {
                 <tbody>
                   {rpgBackups.map((b) => (
                     <tr key={b.id}>
-                      <td style={thtd}>{b.created_at}</td>
+                      <td style={thtd}>{formatBerlinTime(b.created_at)}</td>
                       <td style={thtd}>{b.kind}</td>
                       <td style={thtd}>{formatNum(b.payload_bytes)} B</td>
                       <td style={thtd}>

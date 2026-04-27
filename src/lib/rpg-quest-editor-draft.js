@@ -5,6 +5,7 @@
 import { isRpgItemCategoryId } from './rpg-item-categories.js';
 import { normalizeQuestNodesTree, normalizeRewardEntry } from './rpg-quest-nodes.js';
 import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js';
+import { normalizeQuestId } from './rpg-quest-form-helpers.js';
 
 /**
  * @typedef {{
@@ -150,14 +151,33 @@ export function reorderDraftNodes(arr, fromIdx, toIdx) {
 }
 
 /**
+ * @param {string} label
+ * @param {Set<string>} usedIds
+ * @returns {string}
+ */
+function makeUniqueNodeIdFromLabel(label, usedIds) {
+  const raw = String(label || '').trim();
+  const base = normalizeQuestId(raw) || 'node';
+  if (!usedIds.has(base)) {
+    usedIds.add(base);
+    return base;
+  }
+  let n = 2;
+  while (usedIds.has(`${base}-${n}`)) n += 1;
+  const id = `${base}-${n}`;
+  usedIds.add(id);
+  return id;
+}
+
+/**
  * @param {QuestNodeDraft} d
  * @param {string} id
  * @param {string[]} chainDependsOn
- * @param {{ n: number }} idCounter
+ * @param {Set<string>} usedIds
  * @param {string | null} parentId
  * @returns {import('./rpg-quest-nodes.js').RpgQuestNode}
  */
-function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
+function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
   const description = (d.description || '').trim();
   const optional = !!d.optional;
@@ -185,7 +205,7 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
   const meaningfulKids = d.children.filter(isDraftNodeMeaningful);
 
   if (meaningfulKids.length > 0) {
-    const children = processDraftSiblings(meaningfulKids, idCounter, id);
+    const children = processDraftSiblings(meaningfulKids, usedIds, id);
     /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
     const out = { id, parentId, label, optional, children, ...(description ? { description } : {}) };
   if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
@@ -208,19 +228,20 @@ function buildRawFromDraft(d, id, chainDependsOn, idCounter, parentId) {
 
 /**
  * @param {QuestNodeDraft[]} meaningfulSiblings
- * @param {{ n: number }} idCounter
+ * @param {Set<string>} usedIds
  * @param {string | null} parentId
  * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
-function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
+function processDraftSiblings(meaningfulSiblings, usedIds, parentId) {
   /** @type {import('./rpg-quest-nodes.js').RpgQuestNode[]} */
   const out = [];
 
   for (const d of meaningfulSiblings) {
-    const id = d.stableId?.trim() || `s-${idCounter.n++}`;
+    const label = (d.title || '').trim() || 'Schritt';
+    const id = makeUniqueNodeIdFromLabel(label, usedIds);
     /** @type {string[]} */
     const deps = d.legacyDependsOn?.length ? [...d.legacyDependsOn] : [];
-    out.push(buildRawFromDraft(d, id, deps, idCounter, parentId));
+    out.push(buildRawFromDraft(d, id, deps, usedIds, parentId));
   }
   return out;
 }
@@ -231,9 +252,9 @@ function processDraftSiblings(meaningfulSiblings, idCounter, parentId) {
  * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
  */
 export function draftNodesToQuestNodes(drafts, rootParentId = null) {
-  const idCounter = { n: 0 };
+  const usedIds = new Set();
   const meaningful = drafts.filter(isDraftNodeMeaningful);
-  const raw = processDraftSiblings(meaningful, idCounter, rootParentId);
+  const raw = processDraftSiblings(meaningful, usedIds, rootParentId);
   return normalizeQuestNodesTree(raw, rootParentId);
 }
 
