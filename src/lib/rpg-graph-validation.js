@@ -1,7 +1,7 @@
 import { graphNodes } from './rpg-quests-data.js';
 
 /**
- * @param {import('./rpg-quests-data.js').RpgGraphNode[]} quests
+ * @param {import('./rpg-quests-data.js').RpgNode[]} quests
  * @returns {Set<string>}
  */
 function collectGraphEntityIds(quests) {
@@ -9,7 +9,7 @@ function collectGraphEntityIds(quests) {
   for (const quest of quests) {
     if (!quest || typeof quest.id !== 'string') continue;
     ids.add(quest.id);
-    /** @type {Array<import('./rpg-quest-nodes.js').RpgQuestNode>} */
+    /** @type {Array<import('./rpg-quests-data.js').RpgNode>} */
     const stack = Array.isArray(quest.children) ? [...quest.children] : [];
     while (stack.length) {
       const node = stack.pop();
@@ -23,7 +23,7 @@ function collectGraphEntityIds(quests) {
 }
 
 /**
- * @param {import('./rpg-quests-data.js').RpgGraphNode[]} quests
+ * @param {import('./rpg-quests-data.js').RpgNode[]} quests
  * @returns {{ ok: true } | { ok: false; reason: string }}
  */
 export function validateQuestNodeDependencies(quests) {
@@ -33,7 +33,7 @@ export function validateQuestNodeDependencies(quests) {
     const badDepends = [];
     /** @type {string[]} */
     const duplicateIds = [];
-    /** @type {Array<import('./rpg-quest-nodes.js').RpgQuestNode>} */
+    /** @type {Array<import('./rpg-quests-data.js').RpgNode>} */
     const stack = Array.isArray(quest.children) ? [...quest.children] : [];
     while (stack.length) {
       const node = stack.pop();
@@ -73,15 +73,15 @@ export function validateQuestNodeDependencies(quests) {
 }
 
 /**
- * @param {import('./rpg-quests-data.js').RpgGraphNode[]} quests
+ * @param {import('./rpg-quests-data.js').RpgNode[]} quests
  * @param {Array<{ from?: unknown; to?: unknown }>} edges
  * @returns {{ ok: true } | { ok: false; reason: string }}
  */
 export function validateGraphEdges(quests, edges) {
   const idSet = collectGraphEntityIds(quests);
   for (const edge of edges) {
-    const from = typeof edge?.fromNodeId === 'string' ? edge.fromNodeId.trim() : '';
-    const to = typeof edge?.toNodeId === 'string' ? edge.toNodeId.trim() : '';
+    const from = typeof edge?.from === 'string' ? edge.from.trim() : '';
+    const to = typeof edge?.to === 'string' ? edge.to.trim() : '';
     const relation = typeof edge?.relation === 'string' ? edge.relation.trim() : '';
     if (!from || !to) return { ok: false, reason: 'Jede Kante braucht from/to als String' };
     if (!idSet.has(from) || !idSet.has(to)) {

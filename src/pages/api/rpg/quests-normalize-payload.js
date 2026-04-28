@@ -18,7 +18,7 @@ function forbidden() {
 
 /**
  * POST /api/rpg/quests-normalize-payload — alle Zeilen in `rpg_user_state` auf kanonisches Graph-v2-Format schreiben
- * (`migrateRpgGraphToV2`: Nodes, questRewards inkl. optional unlockAtPercent, ohne Legacy rewards).
+ * (`migrateRpgGraphToV2`: Nodes mit `title`, `rewards[]` als kanonisches Format).
  * Nur super_access. Idempotent wenn schon normalisiert.
  */
 export async function POST({ cookies }) {

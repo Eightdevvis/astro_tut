@@ -1,0 +1,51 @@
+# RPG Memory — Refactoring-Log
+
+## Zweck
+
+Dokumentiert durchgefuehrte Refactorings am RPG-System mit Vorher/Nachher-Werten.
+Dient als Referenz fuer LOC-Trends, extrahierte Module und die Reihenfolge der Aufraeum-Schritte.
+
+## 2026-04-27 — Monolith-Aufteilung + Duplikationselimierung
+
+### Ausloeser
+
+- `RpgQuestTree.jsx` war mit 1508 LOC der groesste Monolith
+- `RpgQuestGraphEditor.jsx` war mit 1348 LOC der zweitgroesste
+- ~350 Zeilen duplizierter Bootstrap-Code zwischen Hub und Tree
+- 0 Tests fuer den kritischsten Buchungspfad (Vitals-Reconciliation)
+
+### Durchgefuehrte Extraktionen
+
+#### Tree-Extraktionen (1508 → 960 LOC, -36%)
+
+| Modul | LOC | Inhalt |
+|-------|-----|--------|
+| `src/lib/useRpgBootstrap.js` | ~277 | Shared Bootstrap/Persist/Vitals-Reconciliation; eliminiert ~350 LOC Duplikation zwischen Hub + Tree |
+| `src/lib/rpg-tree-svg.js` | ~310 | Pure SVG-Geometrie: edgeEndpoints, nodeShapePath, buildEdgePorts, spreadQuestRootsByClusterRadius, etc. |
+| `src/lib/useTreePanZoom.js` | ~165 | Pan/Zoom-Hook: Wheel, Touch-Pinch, Pointer-Drag mit Threshold |
+| `src/components/RpgTreeSuperNotes.jsx` | ~155 | Superuser-Notizen Hook + Modal-Komponente |
+
+#### Hub-Reduktion (430 → 253 LOC, -41%)
+
+- Durch `useRpgBootstrap`-Hook: alle State-Deklarationen, Bootstrap/Persist/Vitals-Effects eliminiert
+
+#### Editor-Extraktionen (1348 → 952 LOC, -29%)
+
+| Modul | LOC | Inhalt |
+|-------|-----|--------|
+| `src/lib/rpg-graph-editor-ops.js` | ~230 | Pure Operationen: resolveEditTarget, mapNodeRecursive, removeNodeRecursive, stripDependsOnReferences, expandDraftsToFocusedNode, graphNodeIdToDraft, makeUniqueQuestId, formatAiError |
+| `src/lib/useEditorAiFlow.js` | ~220 | KI-Session-Hook: AI-State, Clarify-Paare, Package-Draft, Generate/Clarify/Regenerate-Callbacks |
+
+### Ergebnis-Uebersicht
+
+| Komponente | Vorher | Nachher | Delta |
+|-----------|--------|---------|-------|
+| RpgQuestTree.jsx | 1508 | 960 | -36% |
+| RpgQuestGraphEditor.jsx | 1348 | 952 | -29% |
+| RpgQuestHub.jsx | 430 | 253 | -41% |
+
+### Teststand
+
+- 21 neue Vitals-Tests (`tests/rpg-vitals.test.js`)
+- Gesamtstand: 29 pass, 2 fail (pre-existierend)
+- Browser-Verifikation: Tree manuell getestet (Pan, Zoom, Node-Klick, Super-Notizen)

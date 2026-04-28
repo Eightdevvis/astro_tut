@@ -4,33 +4,38 @@
 
 - Beschreibt sichtbares Verhalten in Hub/Baum/Editor inkl. Location-Interaktionen.
 
-## Quest-Baum (UI)
+## Quest-Baum (UI) — "Zauberer" Design (04/2026)
 
-- Verwalten-Modus: `Verwalten` aktiviert Editiermodus, `Fertig` beendet ihn.
-- Neuanlage und Bearbeitung trennen `manuell+` und `questmaker+` als eigene Einstiege.
-- Manuelle Entwuerfe im Browser-`localStorage`: persistente Entwurfsliste (`rpg-quest-manual-drafts-v1`) bei Abbruch/Schliessen plus laufender In-Progress-Snapshot (`rpg-quest-manual-draft-in-progress-v1`) mit Auto-Restore beim erneuten Oeffnen von `manuell+` (auch fuer abruptes Tab/Fenster-Schliessen via `pagehide`/`visibilitychange`/`beforeunload`).
+- **Visuelles Design: "Zauberer"** — drei Richtungen (Themes):
+  - `astrolab` (default): Dunkles Gold, Messing, Sternenhimmel
+  - `codex`: Pergament & Tinte, warmer heller Stil
+  - `orrery`: Blueprint/Celestial, tiefes Indigo + Cyan
+  - Theme wird ueber `.dir-astrolab/.dir-codex/.dir-orrery` auf `.rpg-tree` gesetzt
+- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads (add/edit/note/focus/hub). Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
+- **Vessels** (RpgVessel.jsx): Canvas-2D-Glasgefaesse fuer Mana (blau) und Heart (rot) links unten. Glitzer-Partikel, Fresnel-Rimlight, Glass-Highlights. Desktop-only; Mobil weiterhin LiquidVessels im Overlay.
+- **Quest-Panel** (RpgQuestPanel.jsx): Rechtes Detail-Panel im Codex-Stil. Sigil-Header mit Eyebrow-Status, Fortschrittsbalken (Meter), Reward-Pills, Node-Baum via RpgQuestNodesView, Meta-Details.
+- **Topbar**: Serif-Titel "Codex der Quests · Node-Baum" + Location-Breadcrumb rechts. Glasmorphism-Hintergrund.
+- **Location-Strip**: Pill am unteren Viewport-Rand (Desktop). Zeigt Stadt · Ort.
+- **Sternenfeld**: SVG-Hintergrund im Viewport (60 Sterne + Linien). Ausgeblendet im Codex-Theme.
+- Neuanlage und Bearbeitung ueber Astrolab-Tools `add` (→ openCreateNode) und `edit` (→ openEditNode).
+- Einstellungen ueber Astrolab-Tool `settings` (→ Alchemie-Labor Modal mit Theme-Switch + Backups).
+- Manuelle Entwuerfe im Browser-`localStorage` (wie vorher).
 - Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeLayeredLayout`.
-- Vitals-Deko links unten (Mana + Herz) ueber `LiquidVessels` (`variant="rpg-tree"`), Fuellstand aus persistentem `vitals`-Konto.
-- Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`) und blockiert Viewport-Gesten, bis das Detail geschlossen wird.
-- Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button; Vitals oeffnen ein Vollbild-Overlay (auch per Escape schliessbar).
-- Superuser-only Notizen im Tree-Header: kleiner `Notiz`-Button neben `Node-Baum`; oeffnet einen einfachen Texteditor-Dialog, persistiert serverseitig ueber `GET/PUT /api/rpg/super-notes` (Storage-Key `site_settings.rpg_tree_super_notes`), API strikt auf `super_access` beschraenkt.
+- Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`).
+- Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button.
+- Superuser-only Notizen ueber Astrolab-Tool `note`.
 - Nodes:
-  - Einheitliche Node-Form (keine Main/Side-Differenz mehr)
-  - State-Styling fuer gesperrt, frei-nicht-hinzugefuegt, aktiv, fertig
-  - Roter Punkt bei offenen Pflicht-Schritten mit Frist < 7 Tage oder ueberfaellig
-- Child-Nodes im Baum werden als eigene Mini-Nodes inkl. Parent->Child-Kanten gezeigt.
-- Lock-Nodes erscheinen als Schloss (`🔒`); Bearbeiten oeffnet die konkrete selektierte Node als Edit-Entity.
+  - Goldene Knotenformen (Polygon je nach Kinderzahl)
+  - State-Styling: locked (gestrichelt), unadded (leuchtend), active (Gold-Glow), done (gedaempft)
+  - Aktive Nodes haben einen Leuchtkranz (Halo)
+  - Innerer dekorativer Ring bei Root-Nodes
+  - Roter Urgent-Dot bei Frist < 7 Tage
+- Child-Nodes im Baum als eigene Mini-Nodes mit goldenen Messing-Kanten.
 - Kanten:
-  - Quelle fertig -> weiss
-  - Quelle aktiv mit Fortschritt -> anteiliges Leuchten
-  - sonst dunkel
-- Detail-Panel unten fix bei Node-Auswahl: zeigt Meta-Infos (Titel/Beschreibung/Rewards, Add/Weg, Edit), direkte Quest-Details als feste Felder (Quest-ID, Root-/Leaf-Count, Rewards, City-Lock, aktive Node, optional Questmaker-Prompt) und keine eingebettete Node-Checkbox-Liste mehr; abhakbare Schritte bleiben im Graph sichtbar.
-- Location-Status ist interaktiv als auf-/zuklappbarer Strip (Kompass-Button + Selects), nicht nur reine Textanzeige.
-- Location-Modal:
-  - Modus Suchen: zentrale Suchleiste (`GET /api/rpg/locations?q=...`)
-  - Modus Neu anlegen: Ort/Stadt/Land mit Autocomplete und `upsertHierarchy`.
-  - Hinweis Rollenlogik: "Neu anlegen" ist ueber API-POST an `super_access` gebunden; bei fehlender Berechtigung kann UI-Create fehlschlagen.
-- Bootstrap: Vor initialem Payload-Load zeigt die UI einen separaten Loading-Screen (`RpgBootstrapLoading`).
+  - Fertig → gedaempftes Gold
+  - Aktiv mit Fortschritt → leuchtendes Gold-Dasharray mit Glow
+  - sonst → subtiles Braun
+- Bootstrap: Loading-Screen (`RpgBootstrapLoading`) wie vorher.
 
 ## Hub (UI)
 
@@ -44,17 +49,33 @@
 
 ## Einstellungen (UI)
 
-- Tab `RPG` (nur bei `canUseRpg`) zeigt Backup-Liste mit Restore pro Eintrag.
-- Backup-Liste wird lazy nur beim Oeffnen des RPG-Tabs geladen (kein Zusatz-Load fuer normale Settings-Starts).
+- **Kein RPG-Tab mehr in den allgemeinen Einstellungen** — RPG-Settings wurden auf die Tree-Seite verschoben.
+- **Alchemie-Labor Modal** (`RpgTreeSettings.jsx`): Oeffnet sich ueber den Astrolab-Button "settings" (Retorten-Glyphe ⚗).
+  - Theme-Switcher: drei visuelle Richtungen (astrolab/codex/orrery) mit Vorschau-Buttons.
+  - Backup-Liste mit Restore (lazy-loaded beim Oeffnen des Modals).
+  - Zauberer-Stil: gleicher Design-Sprache wie Quest-Panel (Gold, Messing, dekorativer Rand).
+  - Escape schliesst das Modal; Klick auf Overlay ebenfalls.
 
 ## Code-Pfade
 
 | Teil | Pfade |
 |------|-------|
-| Hub | `src/components/RpgQuestHub.jsx`, `src/components/rpg-quest-hub.css` |
-| Baum + Editor-Modal | `src/components/RpgQuestTree.jsx`, `src/components/RpgQuestGraphEditor.jsx`, `src/components/rpg-quest-tree.css` |
+| Hub (~253 LOC) | `src/components/RpgQuestHub.jsx`, `src/components/rpg-quest-hub.css` |
+| Baum (~960 LOC) + Editor-Modal (~952 LOC) | `src/components/RpgQuestTree.jsx`, `src/components/RpgQuestGraphEditor.jsx`, `src/components/rpg-quest-tree.css`, `src/components/rpg-graph-editor.css` |
+| Astrolab (~240 LOC) | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere als Navigation (6 Tools: add/edit/note/focus/settings/hub); vom Tree genutzt |
+| Vessel (~230 LOC) | `src/components/RpgVessel.jsx` — Canvas-2D-Glasgefaesse (Mana/Heart); vom Tree genutzt |
+| Quest-Panel (~180 LOC) | `src/components/RpgQuestPanel.jsx` — Rechtes Detail-Panel im Codex-Stil; vom Tree genutzt |
+| Settings-Modal (~220 LOC) | `src/components/RpgTreeSettings.jsx` — Alchemie-Labor: Theme-Switch + Backups; vom Tree genutzt |
+| Editor-Ops (~230 LOC) | `src/lib/rpg-graph-editor-ops.js` — Pure Helfer: Graph-Traversal, Node-Manipulation, ID-Generierung, KI-Fehler-Mapping; vom Editor genutzt |
+| Editor-AI-Flow (~220 LOC) | `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook: Prompt, Clarify, Package, Generate; vom Editor genutzt |
+| Shared Bootstrap-Hook (~277 LOC) | `src/lib/useRpgBootstrap.js` — Bootstrap, Persist, Vitals-Reconciliation, Event-Listener; von Hub + Tree genutzt |
+| Pan/Zoom-Hook (~165 LOC) | `src/lib/useTreePanZoom.js` — Wheel-Zoom, Touch-Pinch, Pointer-Drag; vom Tree genutzt |
+| SVG-Geometrie (~310 LOC) | `src/lib/rpg-tree-svg.js` — Pure Helper fuer Node-Shapes, Edge-Ports, Cluster-Spread, Layout; vom Tree genutzt |
+| Superuser-Notizen (~155 LOC) | `src/components/RpgTreeSuperNotes.jsx` — Hook + Modal-Komponente; vom Tree genutzt |
 | Nodes-Ansicht | `src/components/RpgQuestNodesView.jsx` |
 | Location | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
+| Rewards (~290 LOC) | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule |
+| Graph-Layout (~225 LOC) | `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution |
 | Vitals | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
 | Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
 

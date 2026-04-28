@@ -18,8 +18,37 @@
 - **Test-Entry ergänzt:** `npm run test:quality` als schneller Qualitätslauf.
 - **Build-Qualität verbessert:** Vite-Chunking für große Vendor-Pakete konfiguriert (`three`, `katex`, `html2canvas`); noisy Warnung für knapp über 500 kB liegenden `three`-Chunk pragmatisch über `chunkSizeWarningLimit` auf 550 entschärft.
 
+### 2026-04-27
+
+- **Scope:** Monolith-Aufteilung RpgQuestTree + Duplikationselimierung + Vitals-Tests.
+- **Bootstrap-Duplikation eliminiert:** Neuer `useRpgBootstrap.js`-Hook (~277 LOC) kapselt Bootstrap, Persist, Vitals-Reconciliation und Event-Listener; Hub (430→253 LOC) und Tree nutzen denselben Hook.
+- **RpgQuestTree aggressiv aufgeteilt (1508→960 LOC, -36%):**
+  - SVG-Helper in `rpg-tree-svg.js` (~310 LOC) — pure Geometrie/Layout-Funktionen, unabhaengig testbar.
+  - Pan/Zoom in `useTreePanZoom.js` (~165 LOC) — Wheel, Touch-Pinch, Pointer-Drag mit Threshold.
+  - Super-Notes in `RpgTreeSuperNotes.jsx` (~155 LOC) — Hook + Modal-Komponente.
+- **Vitals-Testabdeckung:** 21 neue Tests in `tests/rpg-vitals.test.js` fuer den kritischsten Buchungspfad (`reconcileRpgVitals`): Idempotenz, Clamping, Node-/Quest-Rewards, Text-Rewards, Legacy-Migration.
+- **Teststand:** 29 pass, 2 fail (pre-existierend, nicht durch Refactoring verursacht).
+- **RpgQuestGraphEditor aggressiv aufgeteilt (1348→952 LOC, -29%):**
+  - Pure Operationen in `rpg-graph-editor-ops.js` (~230 LOC) — Graph-Traversal, Node-Manipulation, ID-Generierung, KI-Fehler-Mapping.
+  - KI/Questmaker-Flow in `useEditorAiFlow.js` (~220 LOC) — Session-State, Clarify, Package-Draft, Generate/Regenerate.
+- **Teststand nach Editor-Split:** weiterhin 29 pass, 2 fail (identisch).
+
+### 2026-04-27 (Node-System Consistency Cleanup)
+
+- **Scope:** Vollstaendige Vereinheitlichung des Node-Systems — "Everything is a Node".
+- **Unified Node Model:** Einheitlicher `RpgNode`-Typ mit `title` (statt `label`), `rewards: RpgRewardEntry[]` (statt `questRewards`/`reward`), definiert in `rpg-quests-data.js`.
+- **Unified Edge Format:** `RpgEdge = { from, to, relation }` (statt `fromNodeId`/`toNodeId`).
+- **Unified Graph Format:** `RpgGraph = { nodes, edges }` (kein `quests`-Alias mehr in der Ausgabe; Normalizer akzeptiert Legacy beim Einlesen).
+- **Reward-Modul extrahiert:** `rpg-quest-rewards.js` (~290 LOC) mit umbenannten Exports: `normalizeRewardRows`, `rewardRowToStored`, `resolveRewardRowsWithUnlocks` etc.
+- **Layout-Modul extrahiert:** `rpg-graph-layout.js` (~225 LOC) — `computeLayeredLayout` und Collision-Resolution aus `rpg-quest-graph.js`.
+- **Alle Consumer aktualisiert:** Components (Tree, Editor, Hub, NodesView), Hooks (useEditorAiFlow, useRpgBootstrap), Libs (tree-svg, editor-ops, persistence, server-sync, form-helpers, quest-editor-draft, questmaker-sync, vitals, graph-validation), API-Endpoints (quests, quests-generate, quests-import, quests-backups, quests-normalize-payload).
+- **Vitals-Reconciliation erweitert:** `reconcileRpgVitals` iteriert jetzt `rewards[]`-Array statt einzelnes `reward`-Objekt; Legacy-Fallback auf `s.reward` erhalten.
+- **Backward-Kompatibilitaet:** Alle Normalizer akzeptieren Legacy-Felder (`label`, `reward`, `questRewards`, `fromNodeId`/`toNodeId`, `graph.quests`) beim Einlesen — kein Breaking Change fuer bestehende DB/localStorage-Daten.
+- **Tests aktualisiert:** Fixtures auf kanonisches Format umgestellt; Migration-Test prueft `{ nodes, edges }` statt `quests`-Alias.
+- **Teststand:** 29 pass, 2 fail (identisch pre-existierend, nicht durch Cleanup verursacht).
+
 ## Aktueller Gesamtstand
 
-- **Systemstatus:** Stabil und deutlich besser abgesichert gegen interne Daten-/Scope-Inkonsistenzen.
-- **Testbarkeit:** Solide für Core-Invarianten; API-HTTP- und UI-Interaktionstests sind nächste Ausbauphase.
-- **Wartbarkeit:** Verbesserter Trend durch Logik-Extraktion; `RpgQuestTree` bleibt groß, ist aber nun schrittweise modularisierbar.
+- **Systemstatus:** Stabil; alle Refactorings verifiziert durch Tests und manuellen Browser-Check.
+- **Testbarkeit:** Deutlich verbessert durch Vitals-Tests; API-HTTP- und UI-Interaktionstests sind naechste Ausbauphase.
+- **Wartbarkeit:** Stark verbessert — Tree ~960 LOC, Editor ~952 LOC, Hub ~253 LOC. Kein duplizierter Bootstrap-Code mehr. Beide grossen Monolithen sind unter 1000 LOC.

@@ -9,7 +9,9 @@
 
 - Node-Testlauf über `node --test` (Script: `npm run test`, fokussiert: `npm run test:rpg`).
 - Konsistenztests liegen in `tests/rpg-consistency.test.js`.
+- Vitals-Tests liegen in `tests/rpg-vitals.test.js` (21 Tests).
 - Qualitätslauf für zentrale RPG-Invarianten: `npm run test:quality` (`tests/rpg-consistency.test.js`, `tests/rpg-tree-panel-state.test.js`).
+- **Aktueller Stand:** 29 pass, 2 fail (pre-existierend in `rpg-tree-selection.js` / `rpg-tree-panel-state.js` durch uncommittete Aenderungen).
 
 ## Abgedeckte Invarianten
 
@@ -17,7 +19,8 @@
 - Node-Referenzen: `dependsOn` darf nur auf existierende Node-IDs innerhalb derselben Quest zeigen.
 - Node-ID-Eindeutigkeit: keine doppelten Node-IDs in einer Quest.
 - Subtree-Guarding: Detail-Subtrees dürfen Freischaltchecks nicht gegen pseudo-IDs (`quest::node`) ausführen.
-- Migration-Kanon: `migrateRpgGraphToV2` liefert kanonisch `nodes` + Legacy-Alias `quests`.
+- Migration-Kanon: `migrateRpgGraphToV2` liefert kanonisch `{ nodes, edges }` (kein `quests`-Alias).
+- Vitals-Reconciliation: Idempotenz, Clamping (0..50), Node-Rewards als `rewards[]` Array (done/not-done), Quest-Rewards (complete/incomplete), Text-Rewards werden ignoriert, korrekte Heart/Mana-Routing, Legacy-`appliedRewardIds`-Migration.
 
 ## Nächste Test-Ausbaustufen
 

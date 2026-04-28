@@ -22,6 +22,7 @@ Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachb
 | UI (Hub/Baum/Editor/Location) | Sichtbares Verhalten und Interaktionslogik | `memory/rpg/ui.mdc` |
 | Theme | RPG-Themes auf Basis globaler Tokens | `memory/rpg/theme.mdc` |
 | Roadmap | Kandidaten fuer kommende Features | `memory/rpg/roadmap.mdc` |
+| Refactoring-Log | Durchgefuehrte Aufraeum-Schritte mit LOC-Trends | `memory/rpg/refactoring-log.mdc` |
 
 ## Strukturregeln fuer RPG-Memory
 
@@ -42,3 +43,4 @@ Sie ist absichtlich **nicht zeitbasiert** aufgebaut, sondern nach stabilen Fachb
 - `memory/rpg/ui.mdc`
 - `memory/rpg/theme.mdc`
 - `memory/rpg/roadmap.mdc`
+- `memory/rpg/refactoring-log.mdc`

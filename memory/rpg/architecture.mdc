@@ -15,10 +15,10 @@
 ## Nicht verhandelbare Invarianten
 
 - Modellregel: **Node-only** — jede Einheit ist ein Node; Parent/Child sind ebenfalls Nodes; keine fachliche Trennung Quest-vs-Node.
-- Graph-Form (Migration): kanonisch `nodesById` + relation-aware Kanten (`fromNodeId`, `toNodeId`, `relation`), Legacy-Aliase (`nodes`/`quests`, `from`/`to`) bleiben waehrend der Uebergangsphase lesbar.
+- Graph-Form: kanonisch `{ nodes: RpgNode[], edges: RpgEdge[] }` mit `RpgEdge = { from, to, relation }`. Legacy-Aliase (`quests`, `fromNodeId`/`toNodeId`) werden von Normalizern beim Einlesen akzeptiert, aber nie geschrieben.
 - Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
 - Quest-Differenzierung erfolgt nicht mehr ueber `main`/`side`, sondern nur ueber Struktur (`children`) + Kanten.
-- Naming-Regel: `node*` ist kanonisch (`nodeDone`, `graph.nodes`); verbleibende `node*`/`quest*`-Begriffe gelten als Legacy-Alias bis zur Bereinigung.
+- Naming-Regel: `node*` ist kanonisch (`nodeDone`, `graph.nodes`). Feld `title` (nicht `label`), `rewards: RpgRewardEntry[]` (nicht `questRewards`/`reward`). Alle Quellen schreiben kanonisch; Normalizer akzeptieren Legacy-Felder nur beim Lesen.
 - `addedIds` repraesentiert Hub-Auswahl; Zustand "added aber gelockt" wird bereinigt.
 - `schemaVersion` steuert Strukturkompatibilitaet und Migrationen.
 - Nodes/Rewards folgen eigener Spezifikation (rekursiv, optional, dependsOn, timeDueAt).
@@ -42,3 +42,14 @@
 - `src/components/RpgQuestHub.jsx`
 - `src/components/RpgQuestTree.jsx`
 - `src/components/RpgQuestGraphEditor.jsx`
+
+### Shared Hooks und extrahierte Module
+
+- `src/lib/useRpgBootstrap.js` — Bootstrap/Persist/Vitals-Reconciliation (Hub + Tree)
+- `src/lib/useTreePanZoom.js` — Pan/Zoom-Viewport-Hook (Tree)
+- `src/lib/rpg-tree-svg.js` — Pure SVG-Geometrie/Layout-Helper (Tree)
+- `src/components/RpgTreeSuperNotes.jsx` — Superuser-Notizen Hook + Modal (Tree)
+- `src/lib/rpg-graph-editor-ops.js` — Pure Editor-Operationen (Graph-Traversal, Node-Manipulation)
+- `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook (Editor)
+- `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (~290 LOC)
+- `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution (~225 LOC)

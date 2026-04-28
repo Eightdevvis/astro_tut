@@ -18,8 +18,8 @@ function makeQuest(id, children) {
 test('validateRpgGraphReferences accepts valid edges and dependsOn', () => {
   const graph = makeRpgGraph(
     [
-      makeQuest('q1', [{ id: 'a', parentId: 'q1', label: 'A', children: [] }]),
-      makeQuest('q2', [{ id: 'b', parentId: 'q2', label: 'B', children: [{ id: 'b2', parentId: 'b', label: 'B2', dependsOn: ['b'], children: [] }] }]),
+      makeQuest('q1', [{ id: 'a', parentId: 'q1', title: 'A', children: [] }]),
+      makeQuest('q2', [{ id: 'b', parentId: 'q2', title: 'B', children: [{ id: 'b2', parentId: 'b', title: 'B2', dependsOn: ['b'], children: [] }] }]),
     ],
     [{ from: 'q1', to: 'q2' }]
   );
@@ -38,8 +38,8 @@ test('validateRpgGraphReferences rejects unknown dependsOn references', () => {
   const graph = makeRpgGraph(
     [
       makeQuest('q1', [
-        { id: 'a', parentId: 'q1', label: 'A', children: [] },
-        { id: 'b', parentId: 'q1', label: 'B', dependsOn: ['ghost'], children: [] },
+        { id: 'a', parentId: 'q1', title: 'A', children: [] },
+        { id: 'b', parentId: 'q1', title: 'B', dependsOn: ['ghost'], children: [] },
       ]),
     ],
     []
@@ -53,8 +53,8 @@ test('validateRpgGraphReferences rejects duplicate node ids inside one quest', (
   const graph = makeRpgGraph(
     [
       makeQuest('q1', [
-        { id: 'dup', parentId: 'q1', label: 'First', children: [] },
-        { id: 'dup', parentId: 'q1', label: 'Second', children: [] },
+        { id: 'dup', parentId: 'q1', title: 'First', children: [] },
+        { id: 'dup', parentId: 'q1', title: 'Second', children: [] },
       ]),
     ],
     []
@@ -71,16 +71,17 @@ test('resolveNodeGuardQuest prefers explicit root quest over pseudo subtree node
   assert.equal(got, rootQuest);
 });
 
-test('migrateRpgGraphToV2 always returns canonical nodes+quests graph shape', () => {
+test('migrateRpgGraphToV2 always returns canonical {nodes, edges} graph shape', () => {
+  // Legacy-Input mit 'quests' statt 'nodes' — wird korrekt migriert
   const graph = {
-    quests: [makeQuest('q1', [{ id: 'n1', parentId: 'q1', label: 'N1', children: [] }])],
+    quests: [makeQuest('q1', [{ id: 'n1', parentId: 'q1', title: 'N1', children: [] }])],
     edges: [],
   };
   const migrated = migrateRpgGraphToV2(graph);
   assert.ok(Array.isArray(migrated.nodes));
-  assert.ok(Array.isArray(migrated.quests));
-  assert.equal(migrated.nodes, migrated.quests);
   assert.equal(migrated.nodes.length, 1);
+  // Kanonisches Format hat nur 'nodes', kein 'quests' Alias
+  assert.ok(Array.isArray(migrated.edges));
 });
 
 test('deriveRpgTreeSelectionView builds pseudo-node view for subtree selection', () => {
@@ -88,13 +89,14 @@ test('deriveRpgTreeSelectionView builds pseudo-node view for subtree selection',
     {
       id: 'a',
       parentId: 'q1',
-      label: 'A',
-      children: [{ id: 'b', parentId: 'a', label: 'B', children: [] }],
+      title: 'A',
+      children: [{ id: 'b', parentId: 'a', title: 'B', children: [] }],
     },
   ]);
   const byId = new Map([[quest.id, quest]]);
   const sel = deriveRpgTreeSelectionView(byId, 'q1', { questId: 'q1', nodeId: 'a' });
-  assert.equal(sel.selectedRootNode?.id, 'q1');
-  assert.equal(sel.selectedIsRootNode, false);
+  // selectedQuest ist die Quest, selectedGraphNode der Sub-Node
+  assert.equal(sel.selectedQuest?.id, 'q1');
+  assert.ok(sel.selectedGraphNode !== null, 'selectedGraphNode should exist for sub-node');
   assert.equal(sel.selectedNodeView?.id, 'q1::a');
 });

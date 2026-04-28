@@ -1,7 +1,8 @@
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
-import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
+import { isValidGraphShape, validateNodeDone } from '../../../lib/rpg-quest-graph.js';
+import { validateRpgGraphReferences } from '../../../lib/rpg-graph-validation.js';
 import { saveRpgState } from '../../../lib/rpg-state-db.js';
 import {
   RPG_PAYLOAD_SCHEMA_VERSION,
@@ -9,7 +10,7 @@ import {
 } from '../../../lib/rpg-payload-schema.js';
 import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
 import { normalizeRpgLocationCatalog, normalizeRpgLocationState } from '../../../lib/rpg-location.js';
-import { graphNodes } from '../../../lib/rpg-quests-data.js';
+import { graphNodes, graphEdges } from '../../../lib/rpg-quests-data.js';
 
 function forbidden() {
   return new Response(JSON.stringify({ error: 'Forbidden' }), {
@@ -27,7 +28,7 @@ function forbidden() {
  * {
  *   "username"?: "optional-target-user",
  *   "payload": {
- *     "graph": { "quests": [...], "edges": [...] },
+ *     "graph": { "nodes": [...], "edges": [...] },
  *     "addedIds": [...],
  *     "nodeDone": { ... },
  *     ...weitere optionale Felder
@@ -63,26 +64,35 @@ export async function POST({ request, cookies }) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  // Graph-Referenzen pruefen: Edges muessen auf existierende Nodes zeigen,
+  // dependsOn-IDs muessen innerhalb des jeweiligen Quests existieren.
+  const refCheck = validateRpgGraphReferences(incoming.graph, graphEdges(incoming.graph));
+  if (!refCheck.ok) {
+    return new Response(JSON.stringify({ error: refCheck.reason }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   if (!Array.isArray(incoming.addedIds)) {
     return new Response(JSON.stringify({ error: 'payload.addedIds fehlt oder ist ungültig' }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const nodeDoneRaw = incoming.nodeDone;
-  if (!nodeDoneRaw || typeof nodeDoneRaw !== 'object' || Array.isArray(nodeDoneRaw)) {
-    return new Response(JSON.stringify({ error: 'payload.nodeDone fehlt oder ist ungültig' }), {
+  const nodeDoneCheck = validateNodeDone(incoming.nodeDone);
+  if (!nodeDoneCheck.ok) {
+    return new Response(JSON.stringify({ error: nodeDoneCheck.reason }), {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  const nodeDoneRaw = nodeDoneCheck.value;
 
   const payload = {
     ...incoming,
     graph: {
-      ...incoming.graph,
-      quests: incoming.graph.quests,
-      edges: incoming.graph.edges,
+      nodes: graphNodes(incoming.graph),
+      edges: graphEdges(incoming.graph),
     },
     addedIds: incoming.addedIds.filter((x) => typeof x === 'string'),
     nodeDone: nodeDoneRaw,

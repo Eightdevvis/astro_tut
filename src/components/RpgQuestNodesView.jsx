@@ -68,7 +68,7 @@ function NodeLockIcon() {
 
 /**
  * @param {{
- *   node: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
+ *   node: import('../lib/rpg-quests-data.js').RpgNode;
  *   nodeDone: Record<string, Record<string, boolean>>;
  *   onToggleNode?: (scopeNodeId: string, nodeId: string) => void;
  *   interactive?: boolean;
@@ -80,7 +80,7 @@ function NodeLockIcon() {
  *   currentLocation?: { city?: string; place?: string } | null;
  *   showLocationGuidance?: boolean;
  *   doneScopeNodeId?: string;
- *   guardQuest?: import('../lib/rpg-quest-graph.js').RpgGraphQuest | null;
+ *   guardQuest?: import('../lib/rpg-quests-data.js').RpgNode | null;
  * }} props
  */
 export default function RpgQuestNodesView({
@@ -141,6 +141,7 @@ export default function RpgQuestNodesView({
                 questCity={questCity}
                 showLocationGuidance={showLocationGuidance}
                 doneScopeNodeId={activeDoneScopeNodeId}
+                graph={graph}
               />
             ))
           )}
@@ -186,8 +187,8 @@ export default function RpgQuestNodesView({
 
 /**
  * @param {{
- *   node: import('../lib/rpg-quest-graph.js').RpgGraphQuest;
- *   guardQuest: import('../lib/rpg-quest-graph.js').RpgGraphQuest | null;
+ *   node: import('../lib/rpg-quests-data.js').RpgNode;
+ *   guardQuest: import('../lib/rpg-quests-data.js').RpgNode | null;
  *   childNode: Record<string, unknown> & { id: string; label: string; children?: unknown[]; optional?: boolean };
  *   depth: number;
  *   doneFor: Record<string, boolean>;
@@ -200,6 +201,7 @@ export default function RpgQuestNodesView({
  *   questCity: string;
  *   showLocationGuidance: boolean;
  *   doneScopeNodeId: string;
+ *   graph?: import('../lib/rpg-quest-graph.js').RpgGraph | null;
  * }} props
  */
 function NodeBranch({
@@ -217,10 +219,14 @@ function NodeBranch({
   questCity,
   showLocationGuidance,
   doneScopeNodeId,
+  graph = null,
 }) {
   const hasSubs = Array.isArray(childNode.children) && childNode.children.length > 0;
 
   if (hasSubs) {
+    // Fortschritt fuer Gruppen-Nodes berechnen (nur wenn graph vorhanden)
+    const groupPct = graph ? nodeProgress(childNode, nodeDone, graph) : undefined;
+
     return (
       <li
         key={childNode.id}
@@ -230,7 +236,7 @@ function NodeBranch({
         <details class="rpg-node__details" open={depth < 1}>
           <summary class="rpg-node__summary">
             <span class="rpg-node__summary-text">
-              {childNode.label}
+              {childNode.title}
               {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
             </span>
             {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}
@@ -238,6 +244,9 @@ function NodeBranch({
               <span class="rpg-node-badge" title="Optional">
                 optional
               </span>
+            ) : null}
+            {typeof groupPct === 'number' ? (
+              <span class="rpg-node__progress">{groupPct}%</span>
             ) : null}
           </summary>
           <ul class="rpg-nodes rpg-nodes--nested">
@@ -258,6 +267,7 @@ function NodeBranch({
                 questCity={questCity}
                 showLocationGuidance={showLocationGuidance}
                 doneScopeNodeId={doneScopeNodeId}
+                graph={graph}
               />
             ))}
           </ul>
@@ -315,7 +325,7 @@ function NodeBranch({
           {showGoToHint ? (
             <span class="rpg-node__location-hint">Go to {nodePlace}.</span>
           ) : null}
-          <span class="rpg-node__text">{childNode.label}</span>
+          <span class="rpg-node__text">{childNode.title}</span>
           {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
         </span>
         {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}

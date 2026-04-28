@@ -6,11 +6,11 @@ import {
   searchQuestmakerCatalogCandidates,
 } from '../../../lib/rpg-questmaker-catalog-db.js';
 import { normalizeQuestId, labelsToNodes } from '../../../lib/rpg-quest-form-helpers.js';
+import { normalizeQuestNodesTree } from '../../../lib/rpg-quest-nodes.js';
 import {
-  normalizeQuestNodesTree,
-  normalizeQuestRewardRows,
-  questRewardRowToStored,
-} from '../../../lib/rpg-quest-nodes.js';
+  normalizeRewardRows,
+  rewardRowToStored,
+} from '../../../lib/rpg-quest-rewards.js';
 import {
   collectItemIdsFromNodesAndQuestRewards,
   normalizeQuestmakerCatalogPayloadItem,
@@ -67,18 +67,17 @@ Wenn "responseType":"quest":
 - "id": kurzer Slug (Kleinbuchstaben, Bindestriche, max. 48 Zeichen)
 - "title": prägnant; darf metaphorisch, leicht rätselhaft oder ironisch klingen (wie ein Randtitel), muss sich aber auf die **echte** Situation aus dem Nutzer-Prompt beziehen — keine fiktive Handlung, keine Fantasy-Welt
 - "description": 1–3 Sätze über **echtes** Leben; Stil wie der Rand einer gut geschriebenen Geschichte: expressiv, warm oder leicht mystisch, wo es passt — nicht trocken oder rein verwaltungsmäßig
-- "rewards": optional 0–8 kurze Texte ODER weglassen wenn du "questRewards" nutzt
-- "questRewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } oder { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } (amount darf negativ sein); optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
+- "rewards": optional Array von { "type": "text", "text": "…" } oder { "type": "item", "itemId": "…", "displayName": "…" } oder { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } (amount darf negativ sein); optional pro Eintrag "unlockAtPercent": Ganzzahl 0–100 (Freischaltung ab Quest-Fortschritt %); weglassen = automatische Verteilung wie im Editor
 - "children": Array aus Schritt-Objekten (siehe unten)
 - "itemLookupRequests": optionales Array (max ${MAX_LOOKUP_REQUESTS}) für jede unklare Item-Wahl: { "itemId": "slug", "name": "gesuchter Name", "keywords": ["..."], "reason": "kurz" }.
   Nutze hier echte Suchbegriffe. Die finale Katalog-Auflösung macht der Server in einem separaten Schritt.
 
 Schritt-Objekt (rekursiv, "children" optional):
 - "id": kurzer technischer Schlüssel (ascii, eindeutig innerhalb der Quest)
-- "label": **konkrete, in der Realität vollständig nachvollziehbare Handlung** (klar genug zum Umsetzen: was, wo, mit wem — keine Halluzination). Formulierung darf bildhaft oder leicht mystisch sein, darf aber nicht verschleiern, was zu tun ist
+- "title": **konkrete, in der Realität vollständig nachvollziehbare Handlung** (klar genug zum Umsetzen: was, wo, mit wem — keine Halluzination). Formulierung darf bildhaft oder leicht mystisch sein, darf aber nicht verschleiern, was zu tun ist
 - "optional": boolean
 - "dependsOn": Array von ids anderer Schritte (gleiche Quest), die zuerst erledigt sein müssen; leer [] wenn keine Abhängigkeit
-- "reward": optional string ODER { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } ODER { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } — bei neuer itemId Eintrag in "questmakerItems" (siehe oben). Für Punkte: heart = körperliche Herzpunkte (z. B. Bewegung: plus, Belastung: minus); mana = geistige Manapunkte (Lernen/Konzentration oft minus, Erholung plus — je nach Schritt sinnvoll setzen).
+- "rewards": optional Array von { "type": "text", "text": "…" } ODER { "type": "item", "itemId": "…", "displayName": "…" } ODER { "type": "points", "pointKind": "heart"|"mana", "amount": Ganzzahl } — bei neuer itemId Eintrag in "questmakerItems" (siehe oben). Für Punkte: heart = körperliche Herzpunkte (z. B. Bewegung: plus, Belastung: minus); mana = geistige Manapunkte (Lernen/Konzentration oft minus, Erholung plus — je nach Schritt sinnvoll setzen).
 - "timeDueAt": optional ISO-Datum "YYYY-MM-DD" nur wenn eine echte Frist sinnvoll ist (z. B. Bewerbungsende)
 - "children": optional Array weiterer Schritt-Objekte für Gruppen (Unterschritte)
 
@@ -97,7 +96,7 @@ Optional kannst du bei komplexen Vorhaben statt einer Einzelquest ein Paket lief
 - "packageType":"subsection"
 - "title": Titel des Unterabschnitt-Pakets
 - "description": kurze Paketbeschreibung
-- "quests": Array von 1 bis ${MAX_PACKAGE_QUESTS} Quest-Objekten (gleiches Quest-Shape wie bei responseType "quest")
+- "nodes": Array von 1 bis ${MAX_PACKAGE_QUESTS} Quest-Objekten (gleiches Quest-Shape wie bei responseType "quest")
 - "edges": optionale Array von { "from":"questId", "to":"questId" } zwischen Quests im Paket
 - "unlockHints": optionales Array kurzer Hinweise für grobe Container-Unlocks (nur Hinweise, keine persistenten Regeln)
 - "itemLookupRequests": optional wie oben, quer über alle Quests.
@@ -152,7 +151,7 @@ function jsonError(code, message, hint, status = 400) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {import('../../../lib/rpg-quests-data.js').RpgNode[]} nodes
  */
 function countLeafNodes(nodes) {
   let n = 0;
@@ -167,7 +166,7 @@ function countLeafNodes(nodes) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {import('../../../lib/rpg-quests-data.js').RpgNode[]} nodes
  */
 function hasNestedSubnodes(nodes) {
   const walk = (arr, depth) => {
@@ -182,7 +181,7 @@ function hasNestedSubnodes(nodes) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {import('../../../lib/rpg-quests-data.js').RpgNode[]} nodes
  */
 function collectLeafLabels(nodes) {
   /** @type {string[]} */
@@ -191,7 +190,7 @@ function collectLeafLabels(nodes) {
     for (const s of arr || []) {
       const subs = Array.isArray(s.children) ? s.children : [];
       if (subs.length > 0) walk(subs);
-      else out.push(String(s.label || '').trim());
+      else out.push(String(s.title || '').trim());
     }
   };
   walk(nodes);
@@ -199,7 +198,7 @@ function collectLeafLabels(nodes) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {import('../../../lib/rpg-quests-data.js').RpgNode[]} nodes
  * @param {string} prompt
  */
 function assessQuestNodeQuality(nodes, prompt) {
@@ -275,21 +274,24 @@ function normalizeLookupRequest(raw) {
 }
 
 /**
- * @param {import('../../../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
- * @param {ReturnType<typeof normalizeQuestRewardRows>} questRewardRows
+ * @param {import('../../../lib/rpg-quests-data.js').RpgNode[]} nodes
+ * @param {ReturnType<typeof normalizeRewardRows>} rewardRows
  * @param {Map<string, string>} idMap
  */
-function remapItemIdsInQuest(nodes, questRewardRows, idMap) {
+function remapItemIdsInQuest(nodes, rewardRows, idMap) {
   const walk = (arr) => {
     for (const s of arr || []) {
-      if (s?.reward && typeof s.reward === 'object' && s.reward.type === 'item' && idMap.has(s.reward.itemId)) {
-        s.reward.itemId = /** @type {string} */ (idMap.get(s.reward.itemId));
+      // Remap item IDs in node-level rewards array
+      for (const r of s?.rewards || []) {
+        if (r && typeof r === 'object' && r.type === 'item' && idMap.has(r.itemId)) {
+          r.itemId = /** @type {string} */ (idMap.get(r.itemId));
+        }
       }
       if (Array.isArray(s?.children) && s.children.length > 0) walk(s.children);
     }
   };
   walk(nodes);
-  for (const row of questRewardRows) {
+  for (const row of rewardRows) {
     const entry = row?.entry;
     if (entry?.type === 'item' && idMap.has(entry.itemId)) {
       entry.itemId = /** @type {string} */ (idMap.get(entry.itemId));
@@ -658,7 +660,7 @@ export async function POST({ request, cookies }) {
   }
 
   if (parsed?.responseType === 'package' && usePackageMode) {
-    const rawQuests = Array.isArray(parsed.quests) ? parsed.quests : [];
+    const rawQuests = Array.isArray(parsed.nodes || parsed.quests) ? (parsed.nodes || parsed.quests) : [];
     if (rawQuests.length === 0) {
       return jsonError(
         'invalid_package_payload',
@@ -711,12 +713,12 @@ export async function POST({ request, cookies }) {
         ? q.rewards.map((r) => String(r).trim()).filter(Boolean)
         : [];
       const qRewardRows =
-        Array.isArray(q.questRewards) && q.questRewards.length > 0
-          ? normalizeQuestRewardRows(q.questRewards)
+        Array.isArray(q.rewards) && q.rewards.length > 0
+          ? normalizeRewardRows(q.rewards)
           : qRewardStrings.map((text) => ({ entry: { type: 'text', text } }));
-      const qQuestRewards = qRewardRows.map(questRewardRowToStored);
-      const qQuestRewardEntries = qRewardRows.map((r) => r.entry);
-      const qCatalogNeed = collectItemIdsFromNodesAndQuestRewards(qNodes, qQuestRewardEntries);
+      const qStoredRewards = qRewardRows.map(rewardRowToStored);
+      const qRewardEntries = qRewardRows.map((r) => r.entry);
+      const qCatalogNeed = collectItemIdsFromNodesAndQuestRewards(qNodes, qRewardEntries);
       for (const id of qCatalogNeed) allNeedItemIds.add(id);
       const rawId = normalizeQuestId(typeof q.id === 'string' ? q.id : '');
       const uniqueId =
@@ -726,10 +728,9 @@ export async function POST({ request, cookies }) {
         parentId: null,
         title: qTitle || uniqueId,
         description: qDesc,
-        nodeLabels: qNodes.map((s) => s.label),
+        nodeLabels: qNodes.map((s) => s.title),
         children: normalizeQuestNodesTree(qNodes, uniqueId),
-        rewards: qRewardStrings,
-        questRewards: qQuestRewards,
+        rewards: qStoredRewards,
       };
       byId.set(uniqueId, outQuest);
       outQuests.push(outQuest);
@@ -761,9 +762,9 @@ export async function POST({ request, cookies }) {
       if (!resolved.ok) return resolved.error;
       await logRpgAiUsage(username, model, resolved.completion);
       for (const q of outQuests) {
-        const qRows = normalizeQuestRewardRows(q.questRewards || []);
+        const qRows = normalizeRewardRows(q.rewards || []);
         remapItemIdsInQuest(q.children || [], qRows, resolved.remap);
-        q.questRewards = qRows.map(questRewardRowToStored);
+        q.rewards = qRows.map(rewardRowToStored);
       }
       questmakerItemsOut = resolved.newItems;
     }
@@ -773,7 +774,7 @@ export async function POST({ request, cookies }) {
         packageType: 'subsection',
         title: typeof parsed.title === 'string' ? parsed.title.trim() : '',
         description: typeof parsed.description === 'string' ? parsed.description.trim() : '',
-        quests: outQuests,
+        nodes: outQuests,
         edges: outEdges,
         unlockHints: Array.isArray(parsed.unlockHints)
           ? parsed.unlockHints.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
@@ -853,14 +854,14 @@ export async function POST({ request, cookies }) {
   const rewardStrings = Array.isArray(parsed.rewards)
     ? parsed.rewards.map((r) => String(r).trim()).filter(Boolean)
     : [];
-  let questRewardRows;
-  if (Array.isArray(parsed.questRewards) && parsed.questRewards.length > 0) {
-    questRewardRows = normalizeQuestRewardRows(parsed.questRewards);
+  let rewardRows;
+  if (Array.isArray(parsed.rewards) && parsed.rewards.length > 0) {
+    rewardRows = normalizeRewardRows(parsed.rewards);
   } else {
-    questRewardRows = rewardStrings.map((text) => ({ entry: { type: 'text', text } }));
+    rewardRows = rewardStrings.map((text) => ({ entry: { type: 'text', text } }));
   }
-  const questRewards = questRewardRows.map(questRewardRowToStored);
-  const questRewardEntries = questRewardRows.map((r) => r.entry);
+  const storedRewards = rewardRows.map(rewardRowToStored);
+  const rewardEntries = rewardRows.map((r) => r.entry);
 
   let nid;
   if (lockedQuestId.length > 0) {
@@ -874,7 +875,7 @@ export async function POST({ request, cookies }) {
 
   const catalogIds = new Set(catalogRows.map((r) => r.id));
   nodes = normalizeQuestNodesTree(nodes, nid);
-  const neededItemIds = collectItemIdsFromNodesAndQuestRewards(nodes, questRewardEntries);
+  const neededItemIds = collectItemIdsFromNodesAndQuestRewards(nodes, rewardEntries);
   const needsNewDefinition = [...neededItemIds].filter((id) => !catalogIds.has(id));
   /** @type {{ id: string; category: string; title: string; description: string }[]} */
   let questmakerItemsOut = [];
@@ -894,9 +895,9 @@ export async function POST({ request, cookies }) {
     });
     if (!resolved.ok) return resolved.error;
     await logRpgAiUsage(username, model, resolved.completion);
-    remapItemIdsInQuest(nodes, questRewardRows, resolved.remap);
-    questRewards.length = 0;
-    for (const row of questRewardRows.map(questRewardRowToStored)) questRewards.push(row);
+    remapItemIdsInQuest(nodes, rewardRows, resolved.remap);
+    storedRewards.length = 0;
+    for (const row of rewardRows.map(rewardRowToStored)) storedRewards.push(row);
     questmakerItemsOut = resolved.newItems;
   }
 
@@ -907,10 +908,9 @@ export async function POST({ request, cookies }) {
       parentId: null,
       title: title || nid,
       description,
-      nodeLabels: nodes.map((s) => s.label),
+      nodeLabels: nodes.map((s) => s.title),
       children: nodes,
-      rewards: rewardStrings,
-      questRewards,
+      rewards: storedRewards,
       questmakerItems: questmakerItemsOut,
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } }

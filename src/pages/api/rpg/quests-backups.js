@@ -62,7 +62,7 @@ export async function POST({ request, cookies }) {
   }
   const restored = {
     ...payload,
-    graph: { ...payload.graph, quests: payload.graph.quests, edges: payload.graph.edges },
+    graph: { nodes: (payload.graph.nodes || payload.graph.quests || []), edges: (payload.graph.edges || []) },
     addedIds: Array.isArray(payload.addedIds) ? payload.addedIds.filter((x) => typeof x === 'string') : [],
     nodeDone:
       payload.nodeDone && typeof payload.nodeDone === 'object' && !Array.isArray(payload.nodeDone)

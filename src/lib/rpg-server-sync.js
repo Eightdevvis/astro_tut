@@ -184,9 +184,9 @@ export async function migrateLocalRpgToServerIfNeeded(data) {
   const added = [...loadAddedIds()];
   const nodeDone = loadNodeDone();
   const hasLocal =
-    (g?.quests?.length ?? 0) > 0 || added.length > 0 || Object.keys(nodeDone).length > 0;
+    (g?.nodes?.length ?? 0) > 0 || added.length > 0 || Object.keys(nodeDone).length > 0;
   if (!hasLocal) return data;
-  const graph = (g?.quests?.length ?? 0) > 0 ? { quests: g.quests, edges: g.edges || [] } : data.graph;
+  const graph = (g?.nodes?.length ?? 0) > 0 ? { nodes: g.nodes, edges: g.edges || [] } : data.graph;
   if (!isValidGraphShape(graph)) return data;
   const result = await persistRpgState({
     graph,

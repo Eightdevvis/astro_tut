@@ -7,8 +7,7 @@ import {
 
 test('deriveRpgTreePanelState disables add button when selection is locked', () => {
   const got = deriveRpgTreePanelState({
-    selectedRootNode: { id: 'q1' },
-    selectedIsRootNode: true,
+    selectedNodeContext: { id: 'q1' },
     selectedUnlocked: false,
     selectedCompleted: false,
     selectedAdded: false,
@@ -20,8 +19,7 @@ test('deriveRpgTreePanelState disables add button when selection is locked', () 
 
 test('deriveRpgTreePanelState uses Weg label for added node', () => {
   const got = deriveRpgTreePanelState({
-    selectedRootNode: { id: 'q1' },
-    selectedIsRootNode: true,
+    selectedNodeContext: { id: 'q1' },
     selectedUnlocked: true,
     selectedCompleted: false,
     selectedAdded: true,

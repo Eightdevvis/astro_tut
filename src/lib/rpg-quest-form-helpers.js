@@ -1,17 +1,25 @@
 import {
   normalizeQuestNodesTree,
   flatLegacyNodesToNormalized,
-  distributeQuestRewardPercents,
-  normalizeQuestRewards,
 } from './rpg-quest-nodes.js';
+import {
+  stringsToTextRewards,
+  normalizeRewardEntries,
+} from './rpg-quest-rewards.js';
 
-/** @param {string} text */
+/** @typedef {import('./rpg-quests-data.js').RpgNode} RpgNode */
+/** @typedef {import('./rpg-quests-data.js').RpgRewardEntry} RpgRewardEntry */
+
+/**
+ * Text-Zeilen zu einfachen Node-Objekten (fuer den Editor).
+ * @param {string} text
+ */
 export function linesToNodes(text) {
   return text
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-    .map((label, i) => ({ id: `s-${i}`, label }));
+    .map((title, i) => ({ id: `s-${i}`, title }));
 }
 
 /** @param {string} text */
@@ -30,22 +38,24 @@ export function normalizeQuestId(raw) {
 }
 
 /**
- * @param {string[]} labels
- * @returns {{ id: string; label: string }[]}
+ * Labels/Titel zu Node-Objekten (fuer KI-Generierung).
+ * @param {string[]} titles
+ * @returns {{ id: string; title: string }[]}
  */
-export function labelsToNodes(labels) {
-  /** @type {{ id: string; label: string }[]} */
+export function labelsToNodes(titles) {
+  /** @type {{ id: string; title: string }[]} */
   const out = [];
-  for (const raw of labels) {
-    const label = String(raw).trim();
-    if (!label) continue;
-    out.push({ id: `s-${out.length}`, label });
+  for (const raw of titles) {
+    const title = String(raw).trim();
+    if (!title) continue;
+    out.push({ id: `s-${out.length}`, title });
   }
   return out;
 }
 
 /**
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
+ * Prueft ob Nodes einfach genug sind fuer den Textfeld-Editor (keine Verschachtelung, keine Features).
+ * @param {RpgNode[] | undefined} nodes
  */
 export function isSimpleFlatNodesForEditor(nodes) {
   if (!Array.isArray(nodes) || nodes.length === 0) return true;
@@ -53,31 +63,38 @@ export function isSimpleFlatNodesForEditor(nodes) {
     (s) =>
       !s?.children?.length &&
       !s?.optional &&
-      !s?.reward &&
+      !(s?.rewards?.length) &&
       !s?.timeDueAt &&
       (!s?.dependsOn || s.dependsOn.length === 0)
   );
 }
 
 /**
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * Serialisiert Nodes fuer den Editor (Textfeld oder JSON).
+ * @param {RpgNode[]} nodes
  */
 export function serializeNodesToEditorText(nodes) {
   if (!Array.isArray(nodes) || nodes.length === 0) return '';
   if (isSimpleFlatNodesForEditor(nodes)) {
-    return nodes.map((s) => s.label).join('\n');
+    return nodes.map((s) => s.title).join('\n');
   }
   return JSON.stringify(nodes, null, 2);
 }
 
 /**
+ * Parst Nodes aus dem Editor-Textfeld.
  * @param {string} text
- * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
+ * @returns {RpgNode[]}
  */
 export function parseNodesFromEditorText(text) {
   const t = text.trim();
   if (t.startsWith('[')) {
-    const parsed = JSON.parse(t);
+    let parsed;
+    try {
+      parsed = JSON.parse(t);
+    } catch {
+      throw new Error('Schritte: Ungültiges JSON — Syntax prüfen.');
+    }
     if (!Array.isArray(parsed)) {
       throw new Error('Schritte: JSON muss ein Array sein.');
     }
@@ -89,28 +106,37 @@ export function parseNodesFromEditorText(text) {
 }
 
 /**
- * @param {import('./rpg-quests-data.js').RpgGraphQuest} quest
+ * Serialisiert Rewards eines Nodes fuer den Editor.
+ * @param {RpgNode | Record<string, any>} node
  */
-export function serializeQuestRewardsToEditorText(quest) {
-  if (Array.isArray(quest.questRewards) && quest.questRewards.length > 0) {
-    return JSON.stringify(quest.questRewards, null, 2);
+export function serializeQuestRewardsToEditorText(node) {
+  const n = /** @type {any} */ (node);
+  // Neues Format bevorzugt
+  if (Array.isArray(n.rewards) && n.rewards.length > 0) {
+    return JSON.stringify(n.rewards, null, 2);
   }
-  const legacy = quest.rewards;
-  if (Array.isArray(legacy) && legacy.length > 0) {
-    return legacy.join('\n');
+  // Legacy: questRewards[]
+  if (Array.isArray(n.questRewards) && n.questRewards.length > 0) {
+    return JSON.stringify(n.questRewards, null, 2);
   }
   return '';
 }
 
 /**
+ * Parst Rewards aus dem Editor-Textfeld.
  * @param {string} text
- * @returns {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[]}
+ * @returns {RpgRewardEntry[]}
  */
 export function parseQuestRewardsFromEditorText(text) {
   const t = text.trim();
   if (!t.startsWith('[')) {
-    return distributeQuestRewardPercents(parseRewards(t));
+    return stringsToTextRewards(parseRewards(t));
   }
-  const parsed = JSON.parse(t);
-  return normalizeQuestRewards(parsed);
+  let parsed;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    throw new Error('Belohnungen: Ungültiges JSON — Syntax prüfen.');
+  }
+  return normalizeRewardEntries(parsed);
 }

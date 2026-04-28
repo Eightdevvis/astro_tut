@@ -4,7 +4,7 @@ import { ensureDbSchema } from '../../../lib/db.js';
 import { EMPTY_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
 import { graphNodes, makeRpgGraph, graphEdges } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
-import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
+import { isValidGraphShape, validateNodeDone } from '../../../lib/rpg-quest-graph.js';
 import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
@@ -152,10 +152,11 @@ export async function PUT({ request, cookies }) {
   if (!Array.isArray(body.addedIds)) {
     return new Response(JSON.stringify({ error: 'addedIds fehlt' }), { status: 400 });
   }
-  const nodeDoneRaw = body.nodeDone;
-  if (!nodeDoneRaw || typeof nodeDoneRaw !== 'object') {
-    return new Response(JSON.stringify({ error: 'nodeDone fehlt' }), { status: 400 });
+  const nodeDoneCheck = validateNodeDone(body.nodeDone);
+  if (!nodeDoneCheck.ok) {
+    return new Response(JSON.stringify({ error: nodeDoneCheck.reason }), { status: 400 });
   }
+  const nodeDoneRaw = nodeDoneCheck.value;
   const vitals = normalizeRpgVitalsState(body.vitals);
   const location = normalizeRpgLocationState(body.location);
   let locationCatalog = normalizeRpgLocationCatalog(body.locationCatalog);
@@ -176,16 +177,11 @@ export async function PUT({ request, cookies }) {
   }
   const base =
     existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
-  const prevGraph =
-    base.graph && typeof base.graph === 'object' && !Array.isArray(base.graph) ? base.graph : {};
   const normalizedGraph = makeRpgGraph(nodes, edges);
   const payload = {
     ...base,
     graph: {
-      ...prevGraph,
-      ...normalizedGraph,
       nodes: normalizedGraph.nodes,
-      quests: normalizedGraph.nodes,
       edges: normalizedGraph.edges,
     },
     addedIds,

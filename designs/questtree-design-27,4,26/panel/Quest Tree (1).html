@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Quest-Baum · Zauberer</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+DW+Pica:ital@0;1&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="vessels.jsx"></script>
+<script type="text/babel" src="astrolab.jsx"></script>
+<script type="text/babel" src="quest-layouts.jsx"></script>
+<script type="text/babel" src="quest-graph.jsx"></script>
+<script type="text/babel" src="quest-panel.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "direction": "astrolab",
+  "structure": "constellations",
+  "showHulls": true,
+  "showConstellations": false,
+  "edgeStyle": "curve",
+  "showVitals": true,
+  "showConstellation": true
+}/*EDITMODE-END*/;
+
+function findQuest(id) { return window.__QUEST_DATA.QUESTS.find(q => q.id === id); }
+function findNodeAcrossQuests(nodeId) {
+  for (const q of window.__QUEST_DATA.QUESTS) {
+    if (q.id === nodeId) return { quest: q, node: q };
+    const found = findInTree(q.children || [], nodeId);
+    if (found) return { quest: q, node: found };
+  }
+  return null;
+}
+function findInTree(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children) {
+      const f = findInTree(n.children, id);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+
+function App() {
+  const [tweaks, setTweak] = window.useTweaks(TWEAK_DEFAULTS);
+  const { QUESTS, VITALS, LOCATION } = window.__QUEST_DATA;
+
+  const [selectedId, setSelectedId] = useState('digital-home-zentrale');
+  const [expanded, setExpanded] = useState({});
+  const [activeTool, setActiveTool] = useState('focus');
+
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const dragRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const canvasRef = useRef(null);
+
+  const selectedInfo = useMemo(() => {
+    if (!selectedId) return null;
+    return findNodeAcrossQuests(selectedId);
+  }, [selectedId]);
+  const selectedQuest = selectedInfo?.quest || null;
+
+  // Center the view roughly
+  useEffect(() => {
+    const w = window.innerWidth, h = window.innerHeight;
+    setPan({ x: 60, y: 80 });
+    setScale(Math.min(0.85, (w - 460) / 2000));
+  }, []);
+
+  function onPointerDown(e) {
+    if (e.target.closest('.qg-node')) return;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
+    setDragging(true);
+  }
+  function onPointerMove(e) {
+    if (!dragRef.current) return;
+    setPan({
+      x: dragRef.current.px + (e.clientX - dragRef.current.sx),
+      y: dragRef.current.py + (e.clientY - dragRef.current.sy),
+    });
+  }
+  function onPointerUp() {
+    dragRef.current = null;
+    setDragging(false);
+  }
+  function onWheel(e) {
+    e.preventDefault();
+    const delta = -e.deltaY * 0.0015;
+    setScale((s) => Math.max(0.4, Math.min(1.8, s * (1 + delta))));
+  }
+
+  function toggleExpand(id) {
+    setExpanded((e) => ({ ...e, [id]: e[id] === false ? true : false }));
+  }
+
+  function onTool(id) {
+    setActiveTool(id);
+    if (id === 'focus' && selectedQuest) {
+      const w = window.innerWidth, h = window.innerHeight;
+      setPan({ x: w * 0.05, y: h * 0.04 });
+      setScale(0.85);
+    }
+  }
+
+  return (
+    <div className={`app dir-${tweaks.direction}`}>
+
+      {/* Astrolab — magical menu top-left */}
+      <Astrolab
+        activeTool={activeTool}
+        onTool={onTool}
+      />
+
+      {/* Top bar */}
+      <div className="topbar">
+        <h1 className="topbar__title">
+          Codex der Quests
+          <em>· Node-Baum</em>
+        </h1>
+        <div className="topbar__breadcrumb">
+          <span>{LOCATION.city}</span>
+          <span className="topbar__breadcrumb-sep">◆</span>
+          <b>{LOCATION.district}</b>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div
+        ref={canvasRef}
+        className={`canvas ${dragging ? 'canvas--dragging' : ''}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+        onWheel={onWheel}
+      >
+        {tweaks.showConstellation && (
+          <div className="canvas-bg">
+            <svg viewBox="0 0 1000 800" preserveAspectRatio="none">
+              {Array.from({ length: 60 }).map((_, i) => {
+                const x = ((i * 137.5) % 1000);
+                const y = ((i * 91.3) % 800);
+                const r = 0.6 + ((i * 7) % 10) / 14;
+                return <circle key={i} cx={x} cy={y} r={r} className="canvas-bg__star" />;
+              })}
+              <path className="canvas-bg__line" d="M 100 200 L 220 280 L 340 220 L 480 320" />
+              <path className="canvas-bg__line" d="M 600 600 L 720 540 L 840 600" />
+            </svg>
+          </div>
+        )}
+        <div className="canvas__inner" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${scale})` }}>
+          <QuestGraph
+            quests={QUESTS}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            expanded={expanded}
+            onToggleExpand={toggleExpand}
+            edgeStyle={tweaks.edgeStyle}
+            structure={tweaks.structure}
+            showHulls={tweaks.showHulls}
+            showConstellations={tweaks.showConstellations}
+          />
+        </div>
+
+        {/* Location strip */}
+        <div className="location-strip">
+          <span className="location-strip__compass">⌖</span>
+          <span>{LOCATION.city}</span>
+          <span className="location-strip__sep">·</span>
+          <b>{LOCATION.district}</b>
+          <span className="location-strip__sep">·</span>
+          <span>{LOCATION.place}</span>
+        </div>
+      </div>
+
+      {/* Vessels bottom-left */}
+      {tweaks.showVitals && (
+        <div className="vessels">
+          <Vessel kind="mana" value={VITALS.mana.value} max={VITALS.mana.max} />
+          <Vessel kind="heart" value={VITALS.heart.value} max={VITALS.heart.max} />
+        </div>
+      )}
+
+      {/* Right panel */}
+      {selectedQuest && (
+        <QuestPanel
+          quest={selectedQuest}
+          onClose={() => setSelectedId(null)}
+          onSelectNode={setSelectedId}
+          selectedNodeId={selectedId}
+        />
+      )}
+
+      {/* Tweaks panel */}
+      <window.TweaksPanel title="Tweaks">
+        <window.TweakSection title="Struktur">
+          <window.TweakSelect
+            value={tweaks.structure}
+            onChange={(v) => setTweak('structure', v)}
+            options={[
+              { value: 'spheres',        label: 'Sphären — weiche Hüllen' },
+              { value: 'orbit',          label: 'Orbit — du als Sonne' },
+              { value: 'roots',          label: 'Wurzelboden — Wald' },
+              { value: 'constellations', label: 'Konstellationen — frei' },
+              { value: 'phases',         label: 'Phasen — Lebensbänder' },
+            ]}
+          />
+          <window.TweakToggle
+            label="Sphären-Hüllen"
+            value={tweaks.showHulls}
+            onChange={(v) => setTweak('showHulls', v)}
+          />
+          <window.TweakToggle
+            label="Konstellations-Linien"
+            value={tweaks.showConstellations}
+            onChange={(v) => setTweak('showConstellations', v)}
+          />
+        </window.TweakSection>
+        <window.TweakSection title="Direction">
+          <window.TweakRadio
+            value={tweaks.direction}
+            onChange={(v) => setTweak('direction', v)}
+            options={[
+              { value: 'astrolab', label: 'Astrolab' },
+              { value: 'codex', label: 'Codex' },
+              { value: 'orrery', label: 'Orrery' },
+            ]}
+          />
+        </window.TweakSection>
+        <window.TweakSection title="Kanten">
+          <window.TweakRadio
+            value={tweaks.edgeStyle}
+            onChange={(v) => setTweak('edgeStyle', v)}
+            options={[
+              { value: 'curve', label: 'Kurve' },
+              { value: 'straight', label: 'Gerade' },
+            ]}
+          />
+        </window.TweakSection>
+        <window.TweakToggle
+          label="Vessels anzeigen"
+          value={tweaks.showVitals}
+          onChange={(v) => setTweak('showVitals', v)}
+        />
+        <window.TweakToggle
+          label="Sternenfeld"
+          value={tweaks.showConstellation}
+          onChange={(v) => setTweak('showConstellation', v)}
+        />
+      </window.TweaksPanel>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('app'));
+root.render(<App />);
+</script>
+</body>
+</html>

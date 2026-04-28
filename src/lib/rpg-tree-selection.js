@@ -1,7 +1,7 @@
 import { findNodeById } from './rpg-quest-nodes.js';
 
 /**
- * @param {Map<string, import('./rpg-quests-data.js').RpgGraphNode>} byId
+ * @param {Map<string, import('./rpg-quests-data.js').RpgNode>} byId
  * @param {string | null} selectedId
  * @param {{ questId: string; nodeId: string | null } | null} selectedNode
  */
@@ -14,10 +14,10 @@ export function deriveRpgTreeSelectionView(byId, selectedId, selectedNode) {
   const selectedNodeView = selectedGraphNode
     ? {
         id: `${selectedQuest.id}::${selectedGraphNode.id}`,
-        title: selectedGraphNode.label || selectedGraphNode.id,
+        title: selectedGraphNode.title || selectedGraphNode.id,
         description: selectedGraphNode.description || '',
         children: selectedGraphNode.children || [],
-        questRewards: [],
+        rewards: [],
       }
     : selectedQuest
       ? {
@@ -25,7 +25,7 @@ export function deriveRpgTreeSelectionView(byId, selectedId, selectedNode) {
           title: selectedQuest.title,
           description: selectedQuest.description || '',
           children: selectedQuest.children || [],
-          questRewards: selectedQuest.questRewards || [],
+          rewards: selectedQuest.rewards || [],
         }
       : null;
   return { selectedQuest, selectedGraphNode, selectedNodeView };

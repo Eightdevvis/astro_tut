@@ -1,0 +1,30 @@
+---
+description: Anti-Monolith — Komponenten und Module unter ~1000 LOC halten
+globs: src/components/**/*,src/lib/**/*
+alwaysApply: false
+---
+
+# Anti-Monolith-Architektur
+
+Keine Datei soll dauerhaft ueber ~800-1000 LOC wachsen. Wird eine Datei zu gross, sofort aufteilen:
+
+## Extraktions-Reihenfolge
+
+1. **Pure Helpers** — Stateless Funktionen (Berechnungen, Mappings, Validierungen) in eigene `.js`-Datei unter `src/lib/`. Vorteile: testbar, kein Framework-Import noetig.
+2. **Custom Hooks** — Unabhaengige State-Concerns (eigene Refs + Effects + Callbacks) als `use*.js` Hook extrahieren. Hook nimmt noetige Setter/Refs als Parameter entgegen, gibt State + Callbacks zurueck.
+3. **UI-Teilkomponenten** — Abgeschlossene UI-Bloecke (Modals, Panels, Listen) als eigene `.jsx`-Datei.
+
+## Regeln
+
+- Hooks muessen die Rules of Hooks einhalten: berechnete Werte VOR dem Hook-Aufruf ermitteln, nicht innerhalb bedingter Bloecke.
+- Extrahierte Module importieren keine Parent-Komponente — Abhaengigkeiten fliessen nur nach unten.
+- Ref-Aliasing bei Hook-Rueckgabe erlaubt: `{ suppressClickRef: suppressNodeClickRef }`.
+- Jede Extraktion muss in `memory/rpg/refactoring-log.mdc` dokumentiert werden (Vorher/Nachher-LOC).
+
+## Bewiesenes Muster (04/2026)
+
+| Komponente | Vorher | Nachher | Extrahierte Module |
+|-----------|--------|---------|-------------------|
+| RpgQuestTree | 1508 | 960 | rpg-tree-svg.js, useTreePanZoom.js, RpgTreeSuperNotes.jsx, useRpgBootstrap.js |
+| RpgQuestGraphEditor | 1348 | 952 | rpg-graph-editor-ops.js, useEditorAiFlow.js |
+| RpgQuestHub | 430 | 253 | useRpgBootstrap.js (shared) |

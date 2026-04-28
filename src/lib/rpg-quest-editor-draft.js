@@ -3,7 +3,8 @@
  */
 
 import { isRpgItemCategoryId } from './rpg-item-categories.js';
-import { normalizeQuestNodesTree, normalizeRewardEntry } from './rpg-quest-nodes.js';
+import { normalizeQuestNodesTree } from './rpg-quest-nodes.js';
+import { normalizeRewardEntry } from './rpg-quest-rewards.js';
 import { normalizeQuestmakerCatalogPayloadItem } from './rpg-questmaker-sync.js';
 import { normalizeQuestId } from './rpg-quest-form-helpers.js';
 
@@ -70,7 +71,7 @@ export function createEmptyNodeDraft(saved = false) {
 }
 
 /**
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode} node
+ * @param {import('./rpg-quests-data.js').RpgNode} node
  * @returns {QuestNodeDraft}
  */
 export function questNodeToDraft(node) {
@@ -78,7 +79,8 @@ export function questNodeToDraft(node) {
   const legacyDeps =
     Array.isArray(node.dependsOn) && node.dependsOn.length > 0 ? [...node.dependsOn] : undefined;
   const due = typeof node.timeDueAt === 'string' && node.timeDueAt.trim() ? node.timeDueAt.trim().slice(0, 10) : '';
-  const rent = normalizeRewardEntry(node.reward);
+  // Neues Format: rewards[] (Array), Legacy: reward (Einzeleintrag)
+  const rent = normalizeRewardEntry(Array.isArray(node.rewards) && node.rewards.length > 0 ? node.rewards[0] : node.reward);
   const rewardOn = !!rent;
   const rewardKind =
     rent && rent.type === 'item' ? 'item' : rent && rent.type === 'points' ? 'points' : 'text';
@@ -90,7 +92,7 @@ export function questNodeToDraft(node) {
   return {
     key: node.id || newDraftKey(),
     stableId: typeof node.id === 'string' ? node.id : undefined,
-    title: typeof node.label === 'string' ? node.label : '',
+    title: typeof node.title === 'string' ? node.title : '',
     description: typeof node.description === 'string' ? node.description : '',
     optional: !!node.optional,
     rewardOn,
@@ -114,7 +116,7 @@ export function questNodeToDraft(node) {
 }
 
 /**
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
+ * @param {import('./rpg-quests-data.js').RpgNode[] | undefined} nodes
  * @returns {QuestNodeDraft[]}
  */
 export function questNodesToDrafts(nodes) {
@@ -175,7 +177,7 @@ function makeUniqueNodeIdFromLabel(label, usedIds) {
  * @param {string[]} chainDependsOn
  * @param {Set<string>} usedIds
  * @param {string | null} parentId
- * @returns {import('./rpg-quest-nodes.js').RpgQuestNode}
+ * @returns {import('./rpg-quests-data.js').RpgNode}
  */
 function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
@@ -206,7 +208,7 @@ function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
 
   if (meaningfulKids.length > 0) {
     const children = processDraftSiblings(meaningfulKids, usedIds, id);
-    /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
+    /** @type {import('./rpg-quests-data.js').RpgNode} */
     const out = { id, parentId, label, optional, children, ...(description ? { description } : {}) };
   if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
     if (reward) out.reward = reward;
@@ -216,7 +218,7 @@ function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
     return out;
   }
 
-  /** @type {import('./rpg-quest-nodes.js').RpgQuestNode} */
+  /** @type {import('./rpg-quests-data.js').RpgNode} */
   const leaf = { id, parentId, label, optional, children: [], ...(description ? { description } : {}) };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
   if (reward) leaf.reward = reward;
@@ -230,10 +232,10 @@ function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
  * @param {QuestNodeDraft[]} meaningfulSiblings
  * @param {Set<string>} usedIds
  * @param {string | null} parentId
- * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
+ * @returns {import('./rpg-quests-data.js').RpgNode[]}
  */
 function processDraftSiblings(meaningfulSiblings, usedIds, parentId) {
-  /** @type {import('./rpg-quest-nodes.js').RpgQuestNode[]} */
+  /** @type {import('./rpg-quests-data.js').RpgNode[]} */
   const out = [];
 
   for (const d of meaningfulSiblings) {
@@ -249,7 +251,7 @@ function processDraftSiblings(meaningfulSiblings, usedIds, parentId) {
 /**
  * @param {QuestNodeDraft[]} drafts
  * @param {string | null} [rootParentId]
- * @returns {import('./rpg-quest-nodes.js').RpgQuestNode[]}
+ * @returns {import('./rpg-quests-data.js').RpgNode[]}
  */
 export function draftNodesToQuestNodes(drafts, rootParentId = null) {
   const usedIds = new Set();
@@ -277,7 +279,7 @@ export function aiLabelsToDraftNodes(labels) {
 }
 
 /**
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode[]} nodes
+ * @param {import('./rpg-quests-data.js').RpgNode[]} nodes
  * @returns {QuestNodeDraft[]}
  */
 export function aiQuestNodesToDraftNodes(nodes) {
@@ -464,7 +466,7 @@ export function questRewardsToDraftRows(entries) {
  * @returns {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[]}
  */
 export function draftRewardRowsToQuestRewards(rows) {
-  return draftRewardRowsToStoredQuestRewards(rows).map((o) => {
+  return draftRewardRowsToStoredRewards(rows).map((o) => {
     const e = /** @type {Record<string, unknown>} */ (o);
     if (e.type === 'item') {
       const itemId = String(e.itemId ?? '');
@@ -486,7 +488,7 @@ export function draftRewardRowsToQuestRewards(rows) {
  * @param {QuestRewardDraftRow[]} rows
  * @returns {Record<string, unknown>[]}
  */
-export function draftRewardRowsToStoredQuestRewards(rows) {
+export function draftRewardRowsToStoredRewards(rows) {
   /** @type {Record<string, unknown>[]} */
   const out = [];
   for (const r of rows) {

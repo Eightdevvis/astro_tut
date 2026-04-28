@@ -56,24 +56,25 @@ export function saveNodeDone(nodeDone) {
 }
 
 /**
- * @returns {{ quests: unknown[]; edges: unknown[] } | null}
+ * @returns {{ nodes: unknown[]; edges: unknown[] } | null}
  */
 export function loadCustomGraph() {
   if (typeof localStorage === 'undefined') return null;
   const raw = parseJson(localStorage.getItem(GRAPH_CUSTOM_KEY), null);
   if (!raw || typeof raw !== 'object') return null;
-  const quests = raw.quests;
+  // Akzeptiert neues 'nodes' und Legacy 'quests' Format
+  const nodes = raw.nodes ?? raw.quests;
   const edges = raw.edges;
-  if (!Array.isArray(quests) || quests.length === 0) return null;
+  if (!Array.isArray(nodes) || nodes.length === 0) return null;
   if (!Array.isArray(edges)) return null;
-  return { quests, edges };
+  return { nodes, edges };
 }
 
-/** @param {{ quests: unknown[]; edges: unknown[] }} graph */
+/** @param {{ nodes: unknown[]; edges: unknown[] }} graph */
 export function saveCustomGraph(graph) {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(GRAPH_CUSTOM_KEY, JSON.stringify({ quests: graph.quests, edges: graph.edges }));
+    localStorage.setItem(GRAPH_CUSTOM_KEY, JSON.stringify({ nodes: graph.nodes, edges: graph.edges }));
   } catch {
     /* quota */
   }

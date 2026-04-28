@@ -4,19 +4,17 @@ import {
   removeQuestFromGraph,
   graphHasCycle,
 } from '../lib/rpg-quest-graph.js';
-import { getQuestRewardRows, normalizeQuestRewardRows } from '../lib/rpg-quest-nodes.js';
+import { getNodeRewardRows } from '../lib/rpg-quest-nodes.js';
 import {
   questNodesToDrafts,
   draftNodesToQuestNodes,
-  aiLabelsToDraftNodes,
-  aiQuestNodesToDraftNodes,
   questRewardRowsToDraftRows,
-  draftRewardRowsToStoredQuestRewards,
+  draftRewardRowsToStoredRewards,
   isDraftNodeMeaningful,
   ensureNodeDraftFields,
   ensureRewardRowFields,
   collectQuestmakerItemsFromDrafts,
-  hydrateItemFieldsFromCatalog,
+  hydrateItemFieldsFromCatalog
 } from '../lib/rpg-quest-editor-draft.js';
 import {
   collectAllItemIdsFromGraph,
@@ -30,207 +28,24 @@ import {
   saveManualQuestInProgressDraft,
   clearManualQuestInProgressDraft,
 } from '../lib/rpg-quest-manual-drafts.js';
-import { RpgQuestNodesBuilder, RpgQuestRewardsBuilder } from './RpgQuestNodesBuilder.jsx';
+import {
+  makeUniqueQuestId,
+  resolveEditTarget,
+  mapNodeRecursive,
+  removeNodeRecursive,
+  stripDependsOnReferences,
+  expandDraftsToFocusedNode,
+  graphNodeIdToDraft,
+} from '../lib/rpg-graph-editor-ops.js';
+import { useEditorAiFlow } from '../lib/useEditorAiFlow.js';
+import { RpgQuestNodesBuilder } from './RpgQuestNodesBuilder.jsx';
+import RpgQuestRewardsBuilder from './RpgQuestRewardsBuilder.jsx';
 import RpgQuestNodesView from './RpgQuestNodesView.jsx';
 import { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
+import './rpg-graph-editor.css';
 
 export { normalizeQuestId } from '../lib/rpg-quest-form-helpers.js';
 const RPG_QUESTMAKER_ENABLED = false;
-
-/**
- * @param {string} baseId
- * @param {Set<string>} existingIds
- */
-function makeUniqueQuestId(baseId, existingIds) {
-  const base = String(baseId || '').trim();
-  if (!base) return '';
-  if (!existingIds.has(base)) return base;
-  let n = 2;
-  while (existingIds.has(`${base}-${n}`)) n += 1;
-  return `${base}-${n}`;
-}
-
-/**
- * @param {import('../lib/rpg-quest-graph.js').RpgGraph} graph
- * @param {string} entityId
- */
-function resolveEditTarget(graph, entityId) {
-  const id = String(entityId || '').trim();
-  if (!id) return null;
-  const compositeMatch = /^(.+?)::(.+)$/.exec(id);
-  if (compositeMatch) {
-    const containerQuestId = compositeMatch[1];
-    const nodeId = compositeMatch[2];
-    const q = (graph.quests || []).find((x) => x.id === containerQuestId);
-    if (q) {
-      /** @type {Array<any>} */
-      const stack = Array.isArray(q.children) ? [...q.children] : [];
-      while (stack.length) {
-        const cur = stack.pop();
-        if (!cur || typeof cur !== 'object') continue;
-        if (cur.id === nodeId) {
-          return { containerQuestId: q.id, targetNode: cur, isTopLevel: false };
-        }
-        if (Array.isArray(cur.children) && cur.children.length > 0) stack.push(...cur.children);
-      }
-    }
-  }
-  for (const q of graph.quests || []) {
-    if (q.id === id) {
-      return { containerQuestId: q.id, targetNode: q, isTopLevel: true };
-    }
-    /** @type {Array<any>} */
-    const stack = Array.isArray(q.children) ? [...q.children] : [];
-    while (stack.length) {
-      const cur = stack.pop();
-      if (!cur || typeof cur !== 'object') continue;
-      if (cur.id === id) {
-        return { containerQuestId: q.id, targetNode: cur, isTopLevel: false };
-      }
-      if (Array.isArray(cur.children) && cur.children.length > 0) stack.push(...cur.children);
-    }
-  }
-  return null;
-}
-
-/**
- * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
- * @param {string} targetId
- * @param {(node: any) => any} mapFn
- */
-function mapNodeRecursive(nodes, targetId, mapFn) {
-  return (nodes || []).map((node) => {
-    if (!node || typeof node !== 'object') return node;
-    if (node.id === targetId) return mapFn(node);
-    if (Array.isArray(node.children) && node.children.length > 0) {
-      return { ...node, children: mapNodeRecursive(node.children, targetId, mapFn) };
-    }
-    return node;
-  });
-}
-
-/**
- * Entfernt eine Node rekursiv aus dem Tree.
- * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
- * @param {string} targetId
- * @returns {{ nodes: import('../lib/rpg-quest-nodes.js').RpgQuestNode[]; removed: boolean; removedIds: string[] }}
- */
-function removeNodeRecursive(nodes, targetId) {
-  let removed = false;
-  let matchCount = 0;
-  /** @type {string[]} */
-  const removedIds = [];
-  const next = [];
-
-  /**
-   * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode} node
-   */
-  const collectIds = (node) => {
-    const id = typeof node?.id === 'string' ? node.id.trim() : '';
-    if (id) removedIds.push(id);
-    for (const ch of node?.children || []) collectIds(ch);
-  };
-
-  for (const node of nodes || []) {
-    if (!node || typeof node !== 'object') {
-      next.push(node);
-      continue;
-    }
-    if (node.id === targetId) {
-      removed = true;
-      matchCount += 1;
-      collectIds(node);
-      continue;
-    }
-    if (Array.isArray(node.children) && node.children.length > 0) {
-      const out = removeNodeRecursive(node.children, targetId);
-      if (out.removed) removed = true;
-      if (out.matchCount > 0) matchCount += out.matchCount;
-      if (out.removedIds.length > 0) removedIds.push(...out.removedIds);
-      next.push(out.removed ? { ...node, children: out.nodes } : node);
-      continue;
-    }
-    next.push(node);
-  }
-  return { nodes: next, removed, matchCount, removedIds };
-}
-
-/**
- * Entfernt Referenzen auf gelöschte Node-IDs aus dependsOn.
- * @param {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]} nodes
- * @param {Set<string>} removedIdSet
- * @returns {import('../lib/rpg-quest-nodes.js').RpgQuestNode[]}
- */
-function stripDependsOnReferences(nodes, removedIdSet) {
-  return (nodes || []).map((node) => {
-    if (!node || typeof node !== 'object') return node;
-    const nextChildren = Array.isArray(node.children)
-      ? stripDependsOnReferences(node.children, removedIdSet)
-      : [];
-    const deps = Array.isArray(node.dependsOn) ? node.dependsOn : [];
-    const nextDeps = deps.filter((dep) => !removedIdSet.has(String(dep || '').trim()));
-    const base = nextChildren !== node.children ? { ...node, children: nextChildren } : { ...node };
-    if (nextDeps.length > 0) return { ...base, dependsOn: nextDeps };
-    if ('dependsOn' in base) {
-      const { dependsOn: _drop, ...rest } = base;
-      return rest;
-    }
-    return base;
-  });
-}
-
-/**
- * Öffnet im Draft-Baum den Pfad zur fokussierten Node.
- * @param {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[]} drafts
- * @param {string | null | undefined} focusNodeId
- * @returns {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[]}
- */
-function expandDraftsToFocusedNode(drafts, focusNodeId) {
-  const focus = String(focusNodeId || '').trim();
-  if (!focus) return drafts;
-  /**
-   * @param {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft} draft
-   * @returns {{ draft: import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft; hasFocus: boolean }}
-   */
-  const walk = (draft) => {
-    let hasFocus = draft.stableId === focus || draft.key === focus;
-    const nextChildren = (draft.children || []).map((child) => {
-      const out = walk(child);
-      if (out.hasFocus) hasFocus = true;
-      return out.draft;
-    });
-    if (!hasFocus) return { draft, hasFocus: false };
-    return {
-      draft: {
-        ...draft,
-        saved: false,
-        ...(nextChildren.length > 0 ? { children: nextChildren } : {}),
-      },
-      hasFocus: true,
-    };
-  };
-  return drafts.map((draft) => walk(draft).draft);
-}
-
-/**
- * @param {import('../lib/rpg-quest-graph.js').RpgGraph} graph
- * @param {string} nodeId
- * @returns {import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft | null}
- */
-function graphNodeIdToDraft(graph, nodeId) {
-  const resolved = resolveEditTarget(graph, nodeId);
-  if (!resolved || !resolved.targetNode) return null;
-  const entity = resolved.isTopLevel
-    ? {
-        id: resolved.targetNode.id,
-        label: resolved.targetNode.title || resolved.targetNode.id,
-        description: resolved.targetNode.description || '',
-        children: Array.isArray(resolved.targetNode.children) ? resolved.targetNode.children : [],
-      }
-    : resolved.targetNode;
-  const out = questNodesToDrafts([entity]);
-  return out[0] || null;
-}
 
 /**
  * @param {{
@@ -282,8 +97,6 @@ export default function RpgQuestGraphEditor({
   const [editTargetNodeId, setEditTargetNodeId] = useState('');
   /** Nur wenn kein createEntry gesetzt (Fallback) */
   const [createMode, setCreateMode] = useState(/** @type {'manual' | 'ai'} */ ('manual'));
-  /** @type {'prompt' | 'result'} */
-  const [qmPhase, setQmPhase] = useState('prompt');
   const editQmBaselineRef = useRef(
     /** @type {{
      *   nodeDrafts: import('../lib/rpg-quest-editor-draft.js').QuestNodeDraft[];
@@ -293,88 +106,43 @@ export default function RpgQuestGraphEditor({
      *   orderInLayer: number;
      * } | null} */ (null)
   );
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState(/** @type {string | null} */ (null));
-  const aiSeedRef = useRef('');
-  /** Zuletzt erfolgreich an die KI gesandter Questmaker-Prompt (Session); beim Speichern in die Quest übernommen. */
-  const lastQmPromptRef = useRef('');
-  /** @type {{ question: string; answer: string }[]} */
-  const [clarifyHistoryPairs, setClarifyHistoryPairs] = useState([]);
-  /** @type {string[] | null} */
-  const [clarifyPendingQs, setClarifyPendingQs] = useState(null);
-  const [clarifyAnswerBuf, setClarifyAnswerBuf] = useState(/** @type {string[]} */ ([]));
-  const [aiPackageDraft, setAiPackageDraft] = useState(
-    /** @type {{ title: string; description: string; quests: any[]; edges: { from: string; to: string }[] } | null} */ (null)
-  );
-  const [aiPackageFocusQuestId, setAiPackageFocusQuestId] = useState('');
   const [draftsOpen, setDraftsOpen] = useState(false);
+  /** Inline-Fehler statt window.alert fuer Submit/Delete-Validierung */
+  const [submitError, setSubmitError] = useState(/** @type {string | null} */ (null));
+  /** Two-Step-Delete: erster Klick setzt true, zweiter loescht tatsaechlich */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draftListTick, setDraftListTick] = useState(0);
   const itemCatalogRef = useRef(itemCatalog);
   useEffect(() => {
     itemCatalogRef.current = itemCatalog;
   }, [itemCatalog]);
-  /** KI-generierte Katalog-Zeilen für neue Item-IDs (Merge mit manuellen Entwürfen beim Speichern). */
-  const aiQuestmakerItemsRef = useRef(
-    /** @type {{ id: string; category: string; title: string; description: string }[]} */ ([])
-  );
-
-  const resetAiSession = () => {
-    aiSeedRef.current = '';
-    setClarifyHistoryPairs([]);
-    setClarifyPendingQs(null);
-    setClarifyAnswerBuf([]);
-    setAiError(null);
-    setAiPackageDraft(null);
-    setAiPackageFocusQuestId('');
-  };
-
-  /**
-   * @param {{ errorCode?: unknown; error?: unknown; message?: unknown; hint?: unknown; detail?: unknown; status?: unknown }} data
-   * @param {number} status
-   */
-  const formatAiError = (data, status) => {
-    const code = typeof data?.errorCode === 'string' ? data.errorCode.trim() : '';
-    const msg =
-      typeof data?.message === 'string'
-        ? data.message.trim()
-        : typeof data?.error === 'string'
-          ? data.error.trim()
-          : `Generierung fehlgeschlagen (${status})`;
-    const hint = typeof data?.hint === 'string' ? data.hint.trim() : '';
-    const detail = typeof data?.detail === 'string' ? data.detail.trim() : '';
-    const byCode = {
-      clarify_limit_reached:
-        'Zu viele Rückfragen hintereinander. Bitte ergänze deinen Prompt mit festen Fakten (Zeit, Budget, vorhandene Ressourcen).',
-      quality_placeholder_nodes:
-        'Die KI hat zu generische Schritte erzeugt. Bitte gib konkrete Teilaufgaben und erwartete Ergebnisse an.',
-      quality_too_flat:
-        'Die Struktur ist für das Vorhaben zu flach. Bitte nenne die Hauptblöcke (z. B. Beschaffung, Setup, Implementierung, Test).',
-      quality_leaf_not_concrete:
-        'Mindestens ein Leaf-Node war nicht konkret genug. Bitte formuliere überprüfbare Handlungen.',
-      missing_questmaker_items:
-        'Für neue Item-IDs fehlen vollständige Item-Definitionen. Bitte Prompt konkretisieren oder Item-Namen angeben.',
-      item_lookup_no_candidates:
-        'Die Item-Suche hat keine belastbaren Treffer gefunden. Bitte Item-Name und Stichworte konkreter beschreiben.',
-      item_lookup_ambiguous:
-        'Die Item-Suche war mehrdeutig. Bitte den beabsichtigten Item-Typ klarer benennen.',
-      item_resolution_failed:
-        'Die KI konnte die Item-Treffer nicht sauber auflösen. Bitte erneut generieren oder Prompt präzisieren.',
-      invalid_package_payload:
-        'Das KI-Paket war unvollständig. Bitte den Unterabschnitt enger und konkreter beschreiben.',
-      package_placeholder_nodes:
-        'Das KI-Paket enthält Platzhalter-Nodes. Bitte konkrete Leafs und Branches angeben.',
-    };
-    const mapped = code && byCode[code] ? byCode[code] : msg;
-    const rest = hint || detail;
-    return rest ? `${mapped}\n\nHinweis: ${rest.slice(0, 500)}` : mapped;
-  };
 
   /** Baum setzt createEntry / editEntry; Defaults: neue Quest = manuell, Bearbeiten = Formular */
   const onlyQuestmaker =
     RPG_QUESTMAKER_ENABLED &&
     ((mode === 'create' && resolvedCreateEntry === 'questmaker') ||
       (mode === 'edit' && (resolvedEditEntry ?? 'form') === 'ai'));
+
+  // KI/Questmaker-Flow als Hook (State, Refs, Callbacks)
+  const {
+    qmPhase, setQmPhase,
+    aiPrompt, setAiPrompt,
+    aiLoading, setAiLoading,
+    aiError, setAiError,
+    clarifyHistoryPairs,
+    clarifyPendingQs,
+    clarifyAnswerBuf, setClarifyAnswerBuf,
+    aiPackageDraft, setAiPackageDraft,
+    aiPackageFocusQuestId, setAiPackageFocusQuestId,
+    aiSeedRef, lastQmPromptRef, aiQuestmakerItemsRef,
+    resetAiSession,
+    applyGeneratedQuestPayload,
+    handleAiGenerate, handleClarifySubmit, handleQmRegenerate,
+  } = useEditorAiFlow({
+    mode, graph, questId, editTargetNodeId, onlyQuestmaker,
+    setId, setTitle, setDescription, setNodeDrafts, setRewardRows, setOrderInLayer,
+    editQmBaselineRef,
+  });
   /** Legacy: beide Modi im selben Dialog */
   const showCreateModeSwitch =
     RPG_QUESTMAKER_ENABLED && mode === 'create' && resolvedCreateEntry === undefined;
@@ -386,6 +154,7 @@ export default function RpgQuestGraphEditor({
       aiQuestmakerItemsRef.current = [];
       setAiPackageDraft(null);
       setAiPackageFocusQuestId('');
+      setSubmitError(null);
       return;
     }
     lastQmPromptRef.current = '';
@@ -393,24 +162,24 @@ export default function RpgQuestGraphEditor({
       aiQuestmakerItemsRef.current = [];
       const resolved = resolveEditTarget(graph, questId);
       if (!resolved) return;
-      const containerQuest = graph.quests.find((x) => x.id === resolved.containerQuestId);
+      const containerQuest = graph.nodes.find((x) => x.id === resolved.containerQuestId);
       if (!containerQuest) return;
       setEditContainerQuestId(containerQuest.id);
       const target = resolved.targetNode;
       setId(target.id || '');
       setEditTargetNodeId(target.id || '');
-      setTitle((target.title || target.label || '').trim());
+      setTitle((target.title || '').trim());
       setDescription(target.description || '');
       const drafts = questNodesToDrafts(target.children || []);
       const expandedDrafts = expandDraftsToFocusedNode(drafts, focusNodeId);
-      const rrows = questRewardRowsToDraftRows(getQuestRewardRows(containerQuest));
+      const rrows = questRewardRowsToDraftRows(getNodeRewardRows(containerQuest));
       hydrateItemFieldsFromCatalog(expandedDrafts, rrows, itemCatalogRef.current);
       setNodeDrafts(expandedDrafts);
       setRewardRows(rrows);
       setOrderInLayer(typeof containerQuest.orderInLayer === 'number' ? containerQuest.orderInLayer : 0);
       editQmBaselineRef.current = {
         nodeDrafts: expandedDrafts,
-        title: (target.title || target.label || '').trim(),
+        title: (target.title || '').trim(),
         description: target.description || '',
         rewardRows: rrows.map((r) => ({ ...r })),
         orderInLayer: typeof containerQuest.orderInLayer === 'number' ? containerQuest.orderInLayer : 0,
@@ -622,9 +391,9 @@ export default function RpgQuestGraphEditor({
   const normalizedCreateId = useMemo(() => {
     if (mode !== 'create') return '';
     const baseId = normalizeQuestId(title) || normalizeQuestId(id);
-    const existingIds = new Set(graph.quests.map((q) => q.id));
+    const existingIds = new Set(graph.nodes.map((q) => q.id));
     return makeUniqueQuestId(baseId, existingIds);
-  }, [mode, title, id, graph.quests]);
+  }, [mode, title, id, graph.nodes]);
 
   const previewQuest = useMemo(() => {
     const nid =
@@ -637,7 +406,7 @@ export default function RpgQuestGraphEditor({
       title: title.trim() || nid,
       description: description.trim(),
       children,
-      questRewards: draftRewardRowsToStoredQuestRewards(rewardRows),
+      rewards: draftRewardRowsToStoredRewards(rewardRows),
     };
   }, [mode, questId, editTargetNodeId, normalizedCreateId, title, description, nodeDrafts, rewardRows]);
 
@@ -676,28 +445,29 @@ export default function RpgQuestGraphEditor({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setSubmitError(null);
     const nid = mode === 'create' ? normalizedCreateId : questId;
     if (
       mode === 'create' &&
       onlyQuestmaker &&
       qmPhase === 'result' &&
       aiPackageDraft &&
-      Array.isArray(aiPackageDraft.quests) &&
-      aiPackageDraft.quests.length > 0
+      Array.isArray(aiPackageDraft.nodes) &&
+      aiPackageDraft.nodes.length > 0
     ) {
-      const byId = new Map(graph.quests.map((q) => [q.id, q]));
-      const pkgQuests = aiPackageDraft.quests.filter((q) => q && typeof q.id === 'string' && q.id.trim());
+      const byId = new Map(graph.nodes.map((q) => [q.id, q]));
+      const pkgQuests = aiPackageDraft.nodes.filter((q) => q && typeof q.id === 'string' && q.id.trim());
       for (const q of pkgQuests) {
         if (byId.has(q.id)) {
-          window.alert(`Paket kann nicht gespeichert werden: Quest-ID „${q.id}“ ist bereits vorhanden.`);
+          setSubmitError(`Paket kann nicht gespeichert werden: Quest-ID „${q.id}” ist bereits vorhanden.`);
           return;
         }
       }
-      const nextQuests = [...graph.quests, ...pkgQuests];
+      const nextQuests = [...graph.nodes, ...pkgQuests];
       const existingEdgeKeys = new Set(
         (graph.edges || [])
           .filter((e) => (e.relation || 'dependency') === 'dependency')
-          .map((e) => `${e.fromNodeId || e.from}=>${e.toNodeId || e.to}`)
+          .map((e) => `${e.from}=>${e.to}`)
       );
       const pkgEdges = Array.isArray(aiPackageDraft.edges) ? aiPackageDraft.edges : [];
       const mergedEdges = [...(graph.edges || [])];
@@ -709,11 +479,11 @@ export default function RpgQuestGraphEditor({
         const k = `${from}=>${to}`;
         if (existingEdgeKeys.has(k)) continue;
         existingEdgeKeys.add(k);
-        mergedEdges.push({ fromNodeId: from, toNodeId: to, relation: 'dependency', from, to });
+        mergedEdges.push({ from, to, relation: 'dependency' });
       }
-      const nextGraph = { quests: nextQuests, edges: mergedEdges };
+      const nextGraph = { nodes: nextQuests, edges: mergedEdges };
       if (graphHasCycle(nextGraph)) {
-        window.alert('Paket erzeugt einen Kreis in den Quest-Kanten. Bitte neu generieren.');
+        setSubmitError('Paket erzeugt einen Kreis in den Quest-Kanten. Bitte neu generieren.');
         return;
       }
       onApply(nextGraph);
@@ -722,17 +492,17 @@ export default function RpgQuestGraphEditor({
       return;
     }
     if (!nid) {
-      window.alert('Bitte zuerst einen Titel eingeben (daraus wird die ID automatisch erzeugt).');
+      setSubmitError('Bitte zuerst einen Titel eingeben (daraus wird die ID automatisch erzeugt).');
       return;
     }
     const children = draftNodesToQuestNodes(nodeDrafts, nid);
-    const questRewards = draftRewardRowsToStoredQuestRewards(rewardRows);
+    const rewards = draftRewardRowsToStoredRewards(rewardRows);
     const qmSaved = lastQmPromptRef.current.trim();
     let next;
     if (mode === 'edit' && questId && editContainerQuestId && editContainerQuestId !== questId) {
-      const container = graph.quests.find((q) => q.id === editContainerQuestId);
+      const container = graph.nodes.find((q) => q.id === editContainerQuestId);
       if (!container) {
-        window.alert('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        setSubmitError('Container-Node für diese Bearbeitung wurde nicht gefunden.');
         return;
       }
       const targetId = String(questId).trim();
@@ -746,7 +516,7 @@ export default function RpgQuestGraphEditor({
       const updatedContainer = {
         ...container,
         children: updatedChildren,
-        questRewards,
+        rewards,
         orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
         ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
       };
@@ -758,7 +528,7 @@ export default function RpgQuestGraphEditor({
         title: title.trim() || nid,
         description: description.trim(),
         children,
-        questRewards,
+        rewards,
         orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
         ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
       };
@@ -777,8 +547,8 @@ export default function RpgQuestGraphEditor({
     const needed = collectAllItemIdsFromGraph(next);
     for (const id of needed) {
       if (!catalogIds.has(id) && !mergedMap.has(id)) {
-        window.alert(
-          `Für die Item-ID „${id}“ fehlt eine vollständige Katalog-Definition (Kategorie, Anzeigename/Titel, Kurzbeschreibung). Bitte im Editor ausfüllen oder die KI erneut mit gültigen questmakerItems nutzen.`
+        setSubmitError(
+          `Für die Item-ID „${id}” fehlt eine vollständige Katalog-Definition (Kategorie, Anzeigename/Titel, Kurzbeschreibung). Bitte im Editor ausfüllen oder die KI erneut mit gültigen questmakerItems nutzen.`
         );
         return;
       }
@@ -793,16 +563,22 @@ export default function RpgQuestGraphEditor({
 
   const handleDelete = () => {
     if (mode !== 'edit' || !questId) return;
-    if (!window.confirm('Quest wirklich löschen? Alle Kanten zu dieser Quest entfallen.')) return;
+    // Two-Step: erster Klick zeigt Warnung, zweiter loescht
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setConfirmingDelete(false);
+    setSubmitError(null);
     if (editContainerQuestId && editContainerQuestId !== questId) {
-      const container = graph.quests.find((q) => q.id === editContainerQuestId);
+      const container = graph.nodes.find((q) => q.id === editContainerQuestId);
       if (!container) {
-        window.alert('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        setSubmitError('Container-Node für diese Bearbeitung wurde nicht gefunden.');
         return;
       }
       const out = removeNodeRecursive(container.children || [], String(editTargetNodeId || questId).trim());
       if (!out.removed) {
-        window.alert('Die ausgewählte Child-Node wurde nicht gefunden.');
+        setSubmitError('Die ausgewählte Child-Node wurde nicht gefunden.');
         return;
       }
       const removedIdSet = new Set(out.removedIds.map((id) => String(id || '').trim()).filter(Boolean));
@@ -825,164 +601,6 @@ export default function RpgQuestGraphEditor({
     onApply(removeQuestFromGraph(graph, questId));
     setDraftsOpen(false);
     onClose();
-  };
-
-  /**
-   * @param {Record<string, unknown>} data
-   */
-  const applyGeneratedQuestPayload = (data) => {
-    if (mode === 'create') {
-      setId(typeof data.id === 'string' ? data.id : '');
-    }
-    setTitle(typeof data.title === 'string' ? data.title : '');
-    setDescription(typeof data.description === 'string' ? data.description : '');
-    if (Array.isArray(data.children) && data.children.length > 0) {
-      setNodeDrafts(aiQuestNodesToDraftNodes(/** @type {any} */ (data.children)));
-    } else if (Array.isArray(data.nodes) && data.nodes.length > 0) {
-      setNodeDrafts(aiQuestNodesToDraftNodes(/** @type {any} */ (data.nodes)));
-    } else {
-      const labels = Array.isArray(data.nodeLabels) ? data.nodeLabels : [];
-      setNodeDrafts(labels.length ? aiLabelsToDraftNodes(labels.map((x) => String(x))) : []);
-    }
-    const rewardLines = Array.isArray(data.rewards) ? data.rewards.map((x) => String(x).trim()).filter(Boolean) : [];
-    const qRows =
-      Array.isArray(data.questRewards) && data.questRewards.length > 0
-        ? normalizeQuestRewardRows(data.questRewards)
-        : rewardLines.map((text) => ({ entry: { type: 'text', text } }));
-    setRewardRows(questRewardRowsToDraftRows(qRows));
-    const rawQm = Array.isArray(data.questmakerItems) ? data.questmakerItems : [];
-    aiQuestmakerItemsRef.current = rawQm
-      .map((x) => normalizeQuestmakerCatalogPayloadItem(x))
-      .filter(Boolean);
-  };
-
-  /**
-   * @param {{ question: string; answer: string }[]} [pairsForRequest]
-   */
-  const handleAiGenerate = async (pairsForRequest) => {
-    const typed = aiPrompt.trim();
-    if (!typed.length) {
-      setAiError('Bitte eine Beschreibung eingeben.');
-      return;
-    }
-    if (!aiSeedRef.current) aiSeedRef.current = typed;
-    setAiError(null);
-    setAiLoading(true);
-    try {
-      /** @type {{ question: string; answer: string }[]} */
-      const pairs = pairsForRequest ?? clarifyHistoryPairs;
-      const effectiveLockedId =
-        mode === 'edit' ? String(editTargetNodeId || questId || '').trim() || undefined : undefined;
-      const res = await fetch('/api/rpg/quests-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          prompt: aiSeedRef.current,
-          existingQuestIds: graph.quests.map((q) => q.id),
-          lockedQuestId: effectiveLockedId,
-          clarification: pairs.length > 0 ? { pairs } : undefined,
-          responseMode: mode === 'create' && onlyQuestmaker ? 'package' : undefined,
-        }),
-      });
-      let data = {};
-      try {
-        data = await res.json();
-      } catch {
-        data = {};
-      }
-      if (!res.ok) {
-        setAiError(formatAiError(data, res.status));
-        return;
-      }
-      if (data.responseType === 'clarify' && Array.isArray(data.questions) && data.questions.length > 0) {
-        setClarifyPendingQs(data.questions.map((x) => String(x)));
-        setClarifyAnswerBuf(data.questions.map(() => ''));
-        return;
-      }
-      if (data.responseType === 'package' && Array.isArray(data.quests) && data.quests.length > 0) {
-        const quests = data.quests.filter((q) => q && typeof q === 'object');
-        const edges = Array.isArray(data.edges)
-          ? data.edges
-              .map((e) => ({
-                fromNodeId: String(e?.fromNodeId ?? e?.from ?? '').trim(),
-                toNodeId: String(e?.toNodeId ?? e?.to ?? '').trim(),
-                relation: 'dependency',
-              }))
-              .filter((e) => e.fromNodeId && e.toNodeId && e.fromNodeId !== e.toNodeId)
-          : [];
-        setAiPackageDraft({
-          title: typeof data.title === 'string' ? data.title : '',
-          description: typeof data.description === 'string' ? data.description : '',
-          quests,
-          edges,
-        });
-        const firstQuest = quests[0];
-        if (firstQuest) {
-          setAiPackageFocusQuestId(String(firstQuest.id || ''));
-          applyGeneratedQuestPayload(firstQuest);
-        }
-        const usedPromptSnapshotPkg = aiSeedRef.current.trim();
-        setClarifyHistoryPairs([]);
-        setClarifyPendingQs(null);
-        setClarifyAnswerBuf([]);
-        setAiError(null);
-        if (usedPromptSnapshotPkg) lastQmPromptRef.current = usedPromptSnapshotPkg;
-        setQmPhase('result');
-        return;
-      }
-      const usedPromptSnapshot = aiSeedRef.current.trim();
-      resetAiSession();
-      setAiPackageDraft(null);
-      setAiPackageFocusQuestId('');
-      applyGeneratedQuestPayload(data);
-      if (usedPromptSnapshot) lastQmPromptRef.current = usedPromptSnapshot;
-      if (onlyQuestmaker) setQmPhase('result');
-    } catch {
-      setAiError('Netzwerkfehler');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const handleClarifySubmit = async () => {
-    if (!clarifyPendingQs || clarifyPendingQs.length === 0) return;
-    const merged = [...clarifyHistoryPairs];
-    for (let i = 0; i < clarifyPendingQs.length; i++) {
-      merged.push({
-        question: clarifyPendingQs[i],
-        answer: (clarifyAnswerBuf[i] || '').trim(),
-      });
-    }
-    setClarifyHistoryPairs(merged);
-    setClarifyPendingQs(null);
-    setClarifyAnswerBuf([]);
-    await handleAiGenerate(merged);
-  };
-
-  const handleQmRegenerate = () => {
-    setQmPhase('prompt');
-    resetAiSession();
-    const qPersist =
-      mode === 'edit' && questId ? graph.quests.find((x) => x.id === questId) : null;
-    const seed =
-      lastQmPromptRef.current.trim() ||
-      (qPersist && typeof qPersist.questmakerPrompt === 'string' ? qPersist.questmakerPrompt.trim() : '');
-    setAiPrompt(seed);
-    if (mode === 'edit' && editQmBaselineRef.current) {
-      const b = editQmBaselineRef.current;
-      setNodeDrafts(b.nodeDrafts);
-      setTitle(b.title);
-      setDescription(b.description);
-      setRewardRows(b.rewardRows);
-      setOrderInLayer(b.orderInLayer);
-    } else {
-      setNodeDrafts([]);
-      setTitle('');
-      setDescription('');
-      setId('');
-      setRewardRows([]);
-    }
   };
 
   const showQmPrompt = onlyQuestmaker && qmPhase === 'prompt';
@@ -1164,14 +782,14 @@ export default function RpgQuestGraphEditor({
         {showQmResult ? (
           <form class="rpg-graph-editor__form rpg-graph-editor__qm-result" onSubmit={handleSubmit}>
             <div class="rpg-graph-editor__qm-preview">
-              {aiPackageDraft && aiPackageDraft.quests.length > 0 ? (
+              {aiPackageDraft && aiPackageDraft.nodes.length > 0 ? (
                 <div class="rpg-graph-editor__qm-package-review">
                   <p class="rpg-graph-editor__label">Paket-Review (Unterabschnitt)</p>
                   {aiPackageDraft.title ? (
                     <p class="rpg-graph-editor__hint">{aiPackageDraft.title}</p>
                   ) : null}
                   <div class="rpg-graph-editor__qm-package-list">
-                    {aiPackageDraft.quests.map((q, i) => {
+                    {aiPackageDraft.nodes.map((q, i) => {
                       const qid = String(q.id || '');
                       const active = qid === aiPackageFocusQuestId;
                       return (
@@ -1192,7 +810,7 @@ export default function RpgQuestGraphEditor({
                     })}
                   </div>
                   <p class="rpg-graph-editor__hint">
-                    Speichern übernimmt das komplette Paket ({aiPackageDraft.quests.length} Quests).
+                    Speichern übernimmt das komplette Paket ({aiPackageDraft.nodes.length} Quests).
                   </p>
                 </div>
               ) : null}
@@ -1222,14 +840,28 @@ export default function RpgQuestGraphEditor({
               />
             </label>
 
+            {submitError && (
+              <p class="rpg-graph-editor__warning" role="alert">{submitError}</p>
+            )}
             <div class="rpg-graph-editor__actions">
               <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleQmRegenerate}>
                 Neu generieren
               </button>
               {mode === 'edit' ? (
-                <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
-                  Löschen
-                </button>
+                confirmingDelete ? (
+                  <>
+                    <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                      Endgültig löschen
+                    </button>
+                    <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={() => setConfirmingDelete(false)}>
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                    Löschen
+                  </button>
+                )
               ) : null}
               <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleRequestClose}>
                 Abbrechen
@@ -1316,11 +948,25 @@ export default function RpgQuestGraphEditor({
                 onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
               />
             </label>
+            {submitError && (
+              <p class="rpg-graph-editor__warning" role="alert">{submitError}</p>
+            )}
             <div class="rpg-graph-editor__actions">
               {mode === 'edit' && (
-                <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
-                  Löschen
-                </button>
+                confirmingDelete ? (
+                  <>
+                    <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                      Endgültig löschen
+                    </button>
+                    <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={() => setConfirmingDelete(false)}>
+                      Abbrechen
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--danger" onClick={handleDelete}>
+                    Löschen
+                  </button>
+                )
               )}
               <button type="button" class="rpg-graph-editor__btn rpg-graph-editor__btn--ghost" onClick={handleRequestClose}>
                 Abbrechen

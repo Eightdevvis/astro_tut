@@ -5,9 +5,9 @@
 import { isRpgItemCategoryId } from './rpg-item-categories.js';
 import {
   walkNodesPreOrder,
-  normalizeRewardEntry,
-  getQuestRewardEntries,
+  getNodeRewardEntries,
 } from './rpg-quest-nodes.js';
+import { normalizeRewardEntry } from './rpg-quest-rewards.js';
 import { graphNodes } from './rpg-quests-data.js';
 
 /**
@@ -45,15 +45,17 @@ export function collectItemRewardRefsFromGraph(graph) {
   const refs = new Map();
   for (const q of graphNodes(graph)) {
     walkNodesPreOrder(q.children || [], (s) => {
-      const e = normalizeRewardEntry(s.reward);
-      if (e?.type === 'item') {
-        const prev = refs.get(e.itemId) || {};
-        refs.set(e.itemId, {
-          displayName: e.displayName || prev.displayName,
-        });
+      for (const r of s.rewards || []) {
+        const e = normalizeRewardEntry(r);
+        if (e?.type === 'item') {
+          const prev = refs.get(e.itemId) || {};
+          refs.set(e.itemId, {
+            displayName: e.displayName || prev.displayName,
+          });
+        }
       }
     });
-    for (const e of getQuestRewardEntries(q)) {
+    for (const e of getNodeRewardEntries(q)) {
       if (e.type === 'item') {
         const prev = refs.get(e.itemId) || {};
         refs.set(e.itemId, {
@@ -67,15 +69,17 @@ export function collectItemRewardRefsFromGraph(graph) {
 
 /**
  * Item-IDs aus einer Quest (Nodes + questRewards), z. B. für KI-Validierung.
- * @param {import('./rpg-quest-nodes.js').RpgQuestNode[] | undefined} nodes
- * @param {import('./rpg-quest-nodes.js').RpgQuestRewardEntry[] | undefined} questRewardEntries
+ * @param {import('./rpg-quests-data.js').RpgNode[] | undefined} nodes
+ * @param {import('./rpg-quests-data.js').RpgRewardEntry[] | undefined} questRewardEntries
  * @returns {Set<string>}
  */
 export function collectItemIdsFromNodesAndQuestRewards(nodes, questRewardEntries) {
   const ids = new Set();
   walkNodesPreOrder(nodes || [], (s) => {
-    const e = normalizeRewardEntry(s.reward);
-    if (e?.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
+    for (const r of s.rewards || []) {
+      const e = normalizeRewardEntry(r);
+      if (e?.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
+    }
   });
   if (Array.isArray(questRewardEntries)) {
     for (const e of questRewardEntries) {

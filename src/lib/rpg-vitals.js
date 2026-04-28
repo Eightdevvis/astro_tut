@@ -1,9 +1,9 @@
 import {
   walkNodesPreOrder,
-  normalizeRewardEntry,
   isNodeCompleteInQuest,
-  getQuestRewardRows,
+  getNodeRewardRows,
 } from './rpg-quest-nodes.js';
+import { normalizeRewardEntry } from './rpg-quest-rewards.js';
 import { isQuestCompleted } from './rpg-quest-graph.js';
 import { graphNodes } from './rpg-quests-data.js';
 
@@ -114,18 +114,25 @@ export function reconcileRpgVitals(graph, nodeDone, rawState) {
 
   for (const q of graphNodes(graph)) {
     walkNodesPreOrder(q.children || [], (s) => {
-      const ent = normalizeRewardEntry(s.reward);
-      if (!ent || ent.type !== 'points') return;
-      if (!isNodeCompleteInQuest(q, s.id, nodeDone)) return;
-      const key = `node:${q.id}:${s.id}`;
-      if (applied.has(key)) return;
-      applied.add(key);
-      acc = applyPointsReward(acc, ent.pointKind, ent.amount);
-      changed = true;
+      // Neues Format: rewards[] Array. Legacy-Fallback: einzelnes reward Objekt.
+      const entries = Array.isArray(s.rewards) ? s.rewards : (s.reward ? [s.reward] : []);
+      for (let ri = 0; ri < entries.length; ri++) {
+        const ent = normalizeRewardEntry(entries[ri]);
+        if (!ent || ent.type !== 'points') continue;
+        if (!isNodeCompleteInQuest(q, s.id, nodeDone)) continue;
+        // Key: bei einem einzigen Reward bleibt der Legacy-Key erhalten (ohne Index)
+        const key = entries.length === 1 && ri === 0
+          ? `node:${q.id}:${s.id}`
+          : `node:${q.id}:${s.id}:${ri}`;
+        if (applied.has(key)) continue;
+        applied.add(key);
+        acc = applyPointsReward(acc, ent.pointKind, ent.amount);
+        changed = true;
+      }
     });
 
     if (isQuestCompleted(q, nodeDone)) {
-      const rows = getQuestRewardRows(q);
+      const rows = getNodeRewardRows(q);
       for (let i = 0; i < rows.length; i++) {
         const ent = rows[i]?.entry;
         if (!ent || ent.type !== 'points') continue;

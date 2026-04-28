@@ -135,10 +135,6 @@ export default function UserSettings() {
   const [testerMsg, setTesterMsg] = useState('');
   const [graffitiHotkey, setGraffitiHotkey] = useState(() => FGRAFFITI_DEFAULT_HOTKEY);
   const [graffitiMsg, setGraffitiMsg] = useState('');
-  const [rpgBackups, setRpgBackups] = useState([]);
-  const [rpgBackupsLoading, setRpgBackupsLoading] = useState(false);
-  const [rpgBackupsBusyId, setRpgBackupsBusyId] = useState(0);
-  const [rpgBackupMsg, setRpgBackupMsg] = useState('');
   const settingsLoadGen = useRef(0);
 
   useEffect(() => {
@@ -189,31 +185,6 @@ export default function UserSettings() {
     setGraffitiHotkey(loadGraffitiHotkey());
   }, []);
 
-  useEffect(() => {
-    if (tab !== 'rpg') return;
-    if (!user?.canUseRpg) return;
-    let cancelled = false;
-    (async () => {
-      setRpgBackupsLoading(true);
-      setRpgBackupMsg('');
-      try {
-        const res = await fetch('/api/rpg/quests-backups', { credentials: 'same-origin' });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Backups konnten nicht geladen werden.');
-        if (!cancelled) {
-          const backups = Array.isArray(data.backups) ? data.backups : [];
-          setRpgBackups(backups);
-        }
-      } catch (e) {
-        if (!cancelled) setErr(e?.message || 'Backups konnten nicht geladen werden.');
-      } finally {
-        if (!cancelled) setRpgBackupsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, user?.canUseRpg]);
 
   return (
     <div style={box}>
@@ -234,7 +205,6 @@ export default function UserSettings() {
           {user.canUseFeeds ? <TabButton id="feeds" label="Feed" active={tab === 'feeds'} onPick={setTab} /> : null}
           <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
           <TabButton id="fgraffiti" label="fgraffiti" active={tab === 'fgraffiti'} onPick={setTab} />
-          {user.canUseRpg ? <TabButton id="rpg" label="RPG" active={tab === 'rpg'} onPick={setTab} /> : null}
           {user.isTester ? (
             <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
           ) : null}
@@ -528,85 +498,6 @@ export default function UserSettings() {
         </section>
       )}
 
-      {!userLoading && tab === 'rpg' && user?.canUseRpg && (
-        <section style={section}>
-          <h2 style={h2}>RPG Backups</h2>
-          <p style={muted}>
-            Pro RPG-Speicheraktion wird automatisch doppelt gesichert. Diese Liste lädt nur auf diesem Tab, damit
-            das normale Einstellungs-Laden leicht bleibt.
-          </p>
-          {rpgBackupsLoading ? <p style={muted}>Backups laden…</p> : null}
-          {!rpgBackupsLoading && rpgBackups.length === 0 ? (
-            <p style={muted}>Noch keine Backups vorhanden.</p>
-          ) : null}
-          {!rpgBackupsLoading && rpgBackups.length > 0 ? (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={thtd}>Zeit (Deutschland)</th>
-                    <th style={thtd}>Typ</th>
-                    <th style={thtd}>Größe</th>
-                    <th style={thtd}>Aktion</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rpgBackups.map((b) => (
-                    <tr key={b.id}>
-                      <td style={thtd}>{formatBerlinTime(b.created_at)}</td>
-                      <td style={thtd}>{b.kind}</td>
-                      <td style={thtd}>{formatNum(b.payload_bytes)} B</td>
-                      <td style={thtd}>
-                        <button
-                          type="button"
-                          disabled={rpgBackupsBusyId === b.id}
-                          onClick={async () => {
-                            setErr('');
-                            setRpgBackupMsg('');
-                            const ok = window.confirm(
-                              'Backup wirklich wiederherstellen? Der aktuelle RPG-Stand wird davor erneut gesichert.'
-                            );
-                            if (!ok) return;
-                            setRpgBackupsBusyId(b.id);
-                            try {
-                              const res = await fetch('/api/rpg/quests-backups', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                credentials: 'same-origin',
-                                body: JSON.stringify({ backupId: b.id }),
-                              });
-                              const data = await res.json().catch(() => ({}));
-                              if (!res.ok) throw new Error(data.error || 'Restore fehlgeschlagen.');
-                              setRpgBackupMsg(`Backup #${b.id} wiederhergestellt.`);
-                              const listRes = await fetch('/api/rpg/quests-backups', { credentials: 'same-origin' });
-                              const listData = await listRes.json().catch(() => ({}));
-                              if (listRes.ok && Array.isArray(listData.backups)) setRpgBackups(listData.backups);
-                            } catch (e) {
-                              setErr(e?.message || 'Restore fehlgeschlagen.');
-                            } finally {
-                              setRpgBackupsBusyId(0);
-                            }
-                          }}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: 6,
-                            border: '1px solid rgba(0,0,0,0.2)',
-                            background: 'rgba(255,255,255,0.65)',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {rpgBackupsBusyId === b.id ? 'Restore…' : 'Wiederherstellen'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-          {rpgBackupMsg ? <p style={{ ...muted, marginTop: 10 }}>{rpgBackupMsg}</p> : null}
-        </section>
-      )}
     </div>
   );
 }

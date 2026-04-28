@@ -15,11 +15,13 @@ Ziel: schnelle Orientierung, ohne Informationsverlust durch Umbenennungen oder n
 | Questmaker+ API/Flow/Clarify/Fehlercodes | `memory/rpg/ai.mdc` | `memory/rpg/data-persistence.mdc` |
 | KI-Item-Retrieval-Flow | `memory/rpg/ai.mdc` | `memory/rpg/roadmap.mdc` |
 | Nodes/Container/dependsOn/optional/timeDueAt | `memory/rpg/nodes-rewards.mdc` | `memory/rpg/ui.mdc` |
-| Reward-Modell (Node/Quest/Points) | `memory/rpg/nodes-rewards.mdc` | `memory/rpg/data-persistence.mdc` |
+| Reward-Modell (Node-Level + Root-Level) | `memory/rpg/nodes-rewards.mdc` | `memory/rpg/data-persistence.mdc` |
 | Theme-System RPG | `memory/rpg/theme.mdc` | `memory/site-theme-system.mdc` |
+| Shared Hooks (Bootstrap, Pan/Zoom, SVG-Geometrie, Super-Notes, Editor-Ops, Editor-AI) | `memory/rpg/ui.mdc` | `memory/rpg/architecture.mdc` |
 | Testbarkeit (Invarianten, Regression-Scope) | `memory/rpg/testability.mdc` | `memory/rpg/architecture.mdc` |
 | Qualitätskontrolle (Statusberichte, Risiko-Trend) | `memory/rpg/quality-control.mdc` | `memory/rpg/testability.mdc` |
 | Roadmap (kommend) | `memory/rpg/roadmap.mdc` | `memory/rpg/architecture.mdc` |
+| Refactoring-Log (LOC-Trends, extrahierte Module) | `memory/rpg/refactoring-log.mdc` | `memory/rpg/quality-control.mdc` |
 
 ## Konsolidierungsregel
 

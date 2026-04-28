@@ -1,24 +1,13 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'preact/hooks';
-import { EMPTY_RPG_GRAPH } from '../lib/rpg-quests-data.js';
+import { useState, useEffect, useMemo, useCallback } from 'preact/hooks';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
   questMap,
   isQuestCompleted,
   isQuestUnlocked,
   questProgress,
-  mergeNodeDoneBase,
-  buildInitialNodeMapFromGraph,
 } from '../lib/rpg-quest-graph.js';
-import {
-  fetchRpgBootstrap,
-  migrateLocalRpgToServerIfNeeded,
-  deriveRpgUiStateFromPayload,
-  loadSessionCachedPayload,
-  saveSessionCachedPayload,
-  persistRpgState,
-} from '../lib/rpg-server-sync.js';
-import { normalizeRpgVitalsState, reconcileRpgVitals } from '../lib/rpg-vitals.js';
-import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from '../lib/rpg-location.js';
+import { reconcileRpgVitals } from '../lib/rpg-vitals.js';
+import { useRpgBootstrap } from '../lib/useRpgBootstrap.js';
 import RpgQuestNodesView from './RpgQuestNodesView.jsx';
 import './rpg-quest-hub.css';
 
@@ -28,7 +17,7 @@ function firstId(list) {
 
 function activeNodes(graph, added, nodeDone) {
   const out = [];
-  for (const q of graph.quests || []) {
+  for (const q of graph.nodes || []) {
     if (!added.has(q.id)) continue;
     if (isQuestCompleted(q, nodeDone)) continue;
     out.push(q);
@@ -91,187 +80,22 @@ function QuestDetail({
 }
 
 export default function RpgQuestHub() {
-  const [graph, setGraph] = useState(EMPTY_RPG_GRAPH);
-  const [added, setAdded] = useState(() => new Set());
+  const {
+    graph, setGraph,
+    added, setAdded,
+    nodeDone, setNodeDone,
+    itemCatalog,
+    vitals, setVitals,
+    location,
+    bootstrapped,
+    persistError, setPersistError,
+    markDirty,
+  } = useRpgBootstrap();
+
   const [focusedId, setFocusedId] = useState(/** @type {string | null} */ (null));
   const [expanded, setExpanded] = useState(() => new Set());
-  const [nodeDone, setNodeDone] = useState(() =>
-    mergeNodeDoneBase(buildInitialNodeMapFromGraph(EMPTY_RPG_GRAPH), {})
-  );
-  const itemCatalogRef = useRef(
-    /** @type {Record<string, { title: string; category: string; description: string }>} */ ({})
-  );
-  const persistFailFingerprintRef = useRef('');
-  const [itemCatalog, setItemCatalog] = useState(() => ({}));
-  const [vitals, setVitals] = useState(() => normalizeRpgVitalsState(null));
-  const [location, setLocation] = useState(() => normalizeRpgLocationState(null));
-  const [locationCatalog, setLocationCatalog] = useState(() => normalizeRpgLocationCatalog(null));
-  const [locations, setLocations] = useState(() => []);
-  const [bootstrapped, setBootstrapped] = useState(false);
-  const [canPersist, setCanPersist] = useState(true);
-  const [dirtySinceBootstrap, setDirtySinceBootstrap] = useState(false);
 
-  useEffect(() => {
-    itemCatalogRef.current = itemCatalog;
-  }, [itemCatalog]);
-
-  useEffect(() => {
-    const onLocation = (/** @type {CustomEvent} */ e) => {
-      setLocation(normalizeRpgLocationState(e.detail));
-    };
-    window.addEventListener('rpg-location-updated', onLocation);
-    return () => window.removeEventListener('rpg-location-updated', onLocation);
-  }, []);
-
-  useEffect(() => {
-    const onCatalog = (/** @type {CustomEvent} */ e) => {
-      const m = e.detail?.itemCatalog;
-      if (!m || typeof m !== 'object') return;
-      setItemCatalog(m);
-      itemCatalogRef.current = m;
-      saveSessionCachedPayload({
-        graph,
-        addedIds: [...added],
-        nodeDone,
-        vitals,
-        location,
-        locationCatalog,
-        locations,
-        itemCatalog: m,
-      });
-    };
-    window.addEventListener('rpg-questmaker-catalog-updated', onCatalog);
-    return () => window.removeEventListener('rpg-questmaker-catalog-updated', onCatalog);
-  }, [graph, added, nodeDone, vitals, location, locationCatalog, locations]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cached = loadSessionCachedPayload();
-      if (cached && !cancelled) {
-        const d = deriveRpgUiStateFromPayload(cached);
-        setGraph(d.graph);
-        setAdded(d.added);
-        setNodeDone(d.nodeDone || {});
-        setVitals(d.vitals);
-        setLocation(d.location);
-        setLocationCatalog(d.locationCatalog);
-        setLocations(d.locations);
-        setItemCatalog(d.itemCatalog);
-        itemCatalogRef.current = d.itemCatalog;
-        setBootstrapped(true);
-        setCanPersist(false);
-      }
-      let data = await fetchRpgBootstrap();
-      if (cancelled) return;
-      if (!data) {
-        const d = deriveRpgUiStateFromPayload(cached ?? null);
-        setGraph(d.graph);
-        setAdded(d.added);
-        setNodeDone(d.nodeDone || {});
-        setVitals(d.vitals);
-        setLocation(d.location);
-        setLocationCatalog(d.locationCatalog);
-        setLocations(d.locations);
-        setItemCatalog(d.itemCatalog);
-        itemCatalogRef.current = d.itemCatalog;
-        setBootstrapped(true);
-        setCanPersist(true);
-        setDirtySinceBootstrap(false);
-        return;
-      }
-      data = await migrateLocalRpgToServerIfNeeded(data);
-      if (!data || cancelled) return;
-      const d = deriveRpgUiStateFromPayload(data);
-      setGraph(d.graph);
-      setAdded(d.added);
-      setNodeDone(d.nodeDone || {});
-      setVitals(d.vitals);
-      setLocation(d.location);
-      setLocationCatalog(d.locationCatalog);
-      setLocations(d.locations);
-      setItemCatalog(d.itemCatalog);
-      itemCatalogRef.current = d.itemCatalog;
-      saveSessionCachedPayload({
-        graph: d.graph,
-        addedIds: [...d.added],
-        nodeDone: d.nodeDone || {},
-        vitals: d.vitals,
-        location: d.location,
-        locationCatalog: d.locationCatalog,
-        locations: d.locations,
-        itemCatalog: d.itemCatalog,
-      });
-      setBootstrapped(true);
-      setCanPersist(true);
-      setDirtySinceBootstrap(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!bootstrapped || !canPersist || !dirtySinceBootstrap) return;
-    const t = setTimeout(() => {
-      const payload = {
-        graph,
-        addedIds: [...added],
-        nodeDone,
-        vitals,
-        location,
-        locationCatalog,
-        locations,
-      };
-      void (async () => {
-        const r = await persistRpgState(payload);
-        if (r.ok) {
-          persistFailFingerprintRef.current = '';
-          setDirtySinceBootstrap(false);
-          if (r.itemCatalog) {
-            setItemCatalog(r.itemCatalog);
-            itemCatalogRef.current = r.itemCatalog;
-          }
-          if (r.locationCatalog) setLocationCatalog(r.locationCatalog);
-          if (Array.isArray(r.locations)) setLocations(r.locations);
-        } else if (r.error) {
-          const fp = `${r.status ?? ''}:${r.error}:${(r.missing || []).join(',')}`;
-          if (persistFailFingerprintRef.current !== fp) {
-            persistFailFingerprintRef.current = fp;
-            let msg = r.error;
-            if (r.missing?.length) msg += `\n\nFehlende Item-IDs: ${r.missing.join(', ')}`;
-            window.alert(msg);
-          }
-        }
-        saveSessionCachedPayload({
-          ...payload,
-          locationCatalog: r.locationCatalog ?? locationCatalog,
-          locations: Array.isArray(r.locations) ? r.locations : locations,
-          itemCatalog: r.itemCatalog ?? itemCatalogRef.current,
-        });
-      })();
-    }, 450);
-    return () => clearTimeout(t);
-  }, [
-    bootstrapped,
-    canPersist,
-    dirtySinceBootstrap,
-    graph,
-    added,
-    nodeDone,
-    vitals,
-    location,
-    locationCatalog,
-    locations,
-  ]);
-
-  useEffect(() => {
-    setVitals((prev) => {
-      const out = reconcileRpgVitals(graph, nodeDone, prev);
-      return out.changed ? out.state : prev;
-    });
-  }, [graph, nodeDone]);
-
+  // Hub-spezifisch: addedIds bereinigen wenn Quests abgeschlossen/gesperrt werden
   useEffect(() => {
     const m = questMap(graph);
     setAdded((prev) => {
@@ -306,7 +130,7 @@ export default function RpgQuestHub() {
 
   const onToggleNode = useCallback(
     (questId, nodeId) => {
-      setDirtySinceBootstrap(true);
+      markDirty();
       setNodeDone((prev) => {
         const next = {
           ...prev,
@@ -336,6 +160,12 @@ export default function RpgQuestHub() {
 
   return (
     <div class="rpg-hub">
+      {persistError && (
+        <div class="rpg-persist-error" role="alert">
+          <span>{persistError}</span>
+          <button type="button" onClick={() => setPersistError(null)} aria-label="Schließen">×</button>
+        </div>
+      )}
       <aside class="rpg-hub__rail" aria-label="Quests">
         <div class="rpg-hub__rail-label">Aktive Nodes</div>
         <div class="rpg-hub__rail-spacer" />

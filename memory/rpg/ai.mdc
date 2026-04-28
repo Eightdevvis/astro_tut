@@ -4,6 +4,8 @@
 
 - Questmaker ist temporaer deaktiviert (UI + API), Code bleibt im Projekt fuer spaetere Reaktivierung.
 - Schalter aktuell: `RPG_QUESTMAKER_ENABLED = false` in `src/components/RpgQuestTree.jsx`, `src/components/RpgQuestGraphEditor.jsx`, `src/pages/api/rpg/quests-generate.js`.
+- Client-seitiger KI-Flow ist in `src/lib/useEditorAiFlow.js` gekapselt (Session-State, Prompt, Clarify, Package, Generate/Regenerate).
+- KI-Fehlermeldungs-Mapping ist in `src/lib/rpg-graph-editor-ops.js` (`formatAiError`).
 - Reaktivierung spaeter: diese Schalter wieder auf `true` setzen.
 
 ## Zweck
