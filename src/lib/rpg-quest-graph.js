@@ -232,7 +232,7 @@ export function upsertQuestInGraph(graph, node, prerequisiteIds) {
       edges.push({ from, to: node.id, relation: 'dependency' });
     }
   }
-  return makeRpgGraph(nodes, edges);
+  return ensureStructureEdgesFromNodes(makeRpgGraph(nodes, edges));
 }
 
 /**
@@ -459,7 +459,9 @@ export function addParentChildEdge(graph, parentId, childId) {
   // buildFlatNodeMap sammelt sowohl Top-Level- als auch nested Nodes,
   // damit Compat-View-Inputs nicht versehentlich Kinder verlieren.
   const nodesById = Object.fromEntries(buildFlatNodeMap(graph));
-  return makeRpgGraph(nodesById, [...edges, { from: parentId, to: childId, relation: 'structure' }]);
+  return ensureStructureEdgesFromNodes(
+    makeRpgGraph(nodesById, [...edges, { from: parentId, to: childId, relation: 'structure' }])
+  );
 }
 
 /**
@@ -479,7 +481,45 @@ export function removeParentChildEdge(graph, parentId, childId) {
   });
   if (filtered.length === edges.length) return graph; // nichts zu tun
   const nodesById = Object.fromEntries(buildFlatNodeMap(graph));
-  return makeRpgGraph(nodesById, filtered);
+  return ensureStructureEdgesFromNodes(makeRpgGraph(nodesById, filtered));
+}
+
+/**
+ * Ergänzt fehlende structure-Edges aus dem aktuellen nested children-Baum.
+ * Wichtig für Compat-Inputs: Wenn ein Node Children trägt, müssen passende
+ * parent->child-Kanten existieren, sonst können Rebuilds Child-Subtrees
+ * versehentlich als eigene Roots materialisieren.
+ *
+ * @param {RpgGraph} graph
+ * @returns {RpgGraph}
+ */
+function ensureStructureEdgesFromNodes(graph) {
+  /** @type {Set<string>} */
+  const seen = new Set(
+    (graphEdges(graph) || [])
+      .filter((e) => isParentChildRelation(e))
+      .map((e) => `${e.from}->${e.to}`)
+  );
+  /** @type {RpgEdge[]} */
+  const merged = [...graphEdges(graph)];
+  /** @param {RpgNode[]} nodes */
+  function walk(nodes) {
+    for (const n of nodes || []) {
+      if (!n || typeof n !== 'object') continue;
+      for (const c of n.children || []) {
+        if (!c || typeof c !== 'object' || !n.id || !c.id || n.id === c.id) continue;
+        const k = `${n.id}->${c.id}`;
+        if (!seen.has(k)) {
+          seen.add(k);
+          merged.push({ from: n.id, to: c.id, relation: 'structure' });
+        }
+      }
+      if (Array.isArray(n.children) && n.children.length > 0) walk(n.children);
+    }
+  }
+  walk(graphNodes(graph));
+  if (merged.length === graphEdges(graph).length) return graph;
+  return makeRpgGraph(graphNodes(graph), merged);
 }
 
 /**

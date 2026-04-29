@@ -17,6 +17,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 const PAN_DRAG_THRESHOLD_PX = 5;
 const ZOOM_MIN = 0.24;
 const ZOOM_MAX = 2.4;
+const TRACKPAD_PAN_SPEED = 0.6;
 
 /**
  * @param {object} opts
@@ -40,7 +41,6 @@ export function useTreePanZoom({ blockGestures = false, enabled = true }) {
   const pinchRef = useRef(
     /** @type {{ d0: number; s0: number; px0: number; py0: number; wx: number; wy: number } | null} */ (null)
   );
-
   // Refs immer synchron halten
   useEffect(() => { panRef.current = pan; }, [pan]);
   useEffect(() => { scaleRef.current = scale; }, [scale]);
@@ -50,13 +50,27 @@ export function useTreePanZoom({ blockGestures = false, enabled = true }) {
     const el = viewportRef.current;
     if (!el || blockGestures) return;
 
-    // Mouse-Wheel: Zoom um Cursor-Position
+    // Wheel/Trackpad:
+    // - Zwei-Finger-Swipe/Scroll = Pan
+    // - Zoom nur mit gedrueckter Ctrl-Taste
     const onWheel = (/** @type {WheelEvent} */ e) => {
       e.preventDefault();
+      if (!enabled) return;
+      const isZoomGesture = e.ctrlKey;
+      if (!isZoomGesture) {
+        const panC = panRef.current;
+        const nextPan = {
+          x: panC.x - e.deltaX * TRACKPAD_PAN_SPEED,
+          y: panC.y - e.deltaY * TRACKPAD_PAN_SPEED,
+        };
+        setPan(nextPan);
+        return;
+      }
       const rect = el.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
-      const factor = Math.exp(-e.deltaY * 0.0012);
+      const zoomDelta = e.deltaY;
+      const factor = Math.exp(-zoomDelta * 0.0012);
       const panC = panRef.current;
       const scaleC = scaleRef.current;
       const nextScale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scaleC * factor));
@@ -107,7 +121,6 @@ export function useTreePanZoom({ blockGestures = false, enabled = true }) {
     };
 
     const onTouchEndPinch = () => { pinchRef.current = null; };
-
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });

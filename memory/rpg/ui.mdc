@@ -21,6 +21,9 @@
 - Einstellungen ueber Astrolab-Tool `settings` (→ Alchemie-Labor Modal mit Theme-Switch + Backups).
 - Manuelle Entwuerfe im Browser-`localStorage` (wie vorher).
 - Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeLayeredLayout`.
+  - Trackpad-Zwei-Finger-Swipe/Scroll verschiebt den Baum (Pan).
+  - Zoom ueber Wheel nur mit gedrueckter `Ctrl`-Taste.
+  - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`).
 - Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button.
 - Superuser-only Notizen ueber Astrolab-Tool `note`.
