@@ -1357,6 +1357,73 @@
   display: block;
 }
 
+.rpg-tree__mobile-tools {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.rpg-tree__mobile-tools-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: rgba(20,14,6,0.9);
+  color: var(--gold-bright);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+
+.rpg-tree__mobile-tools-btn.is-open,
+.rpg-tree__mobile-tools-btn:hover {
+  background: rgba(200,147,47,0.16);
+}
+
+.rpg-tree__mobile-tools-menu-wrap {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 35;
+}
+
+.rpg-tree__mobile-tools-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+  min-width: 180px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: rgba(20,14,6,0.96);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.48);
+}
+
+.rpg-tree__mobile-tools-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 0.78rem;
+}
+
+.rpg-tree__mobile-tools-item:hover:not(:disabled) {
+  background: rgba(200,147,47,0.14);
+  color: var(--gold-bright);
+}
+
+.rpg-tree__mobile-tools-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Mobil: Vessels-Overlay (Vollbild) */
 .rpg-tree__vessels-overlay {
   position: fixed;
@@ -1423,15 +1490,32 @@
 
 @media (max-width: 560px) {
   .rpg-tree__top {
-    padding-left: 1rem;
+    padding-left: 0.65rem;
+    padding-right: 0.8rem;
     height: auto;
     padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
     padding-bottom: 0.5rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 0.5rem;
   }
 
   .astrolab {
+    display: none;
+  }
+
+  .rpg-tree__top-title {
+    font-size: 0.88rem;
+    letter-spacing: 0.18em;
+    line-height: 1.2;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .rpg-tree__top-title em {
+    display: none;
+  }
+
+  .rpg-tree__top-breadcrumb {
     display: none;
   }
 

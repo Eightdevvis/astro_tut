@@ -118,6 +118,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const [direction, setDirection] = useState('astrolab');
   // Settings-Modal (Alchemie-Labor)
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
 
   // blockViewportGestures muss VOR dem Hook berechnet werden (stabil per Render)
   const blockViewportGestures = compact && !!selectedId;
@@ -144,6 +145,10 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
   useEffect(() => {
     if (!compact) setMobileManaOpen(false);
+  }, [compact]);
+
+  useEffect(() => {
+    if (!compact) setMobileToolsOpen(false);
   }, [compact]);
 
   useEffect(() => {
@@ -478,6 +483,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
    */
   const handleAstrolabTool = useCallback((toolId) => {
     setActiveTool(toolId);
+    setMobileToolsOpen(false);
     switch (toolId) {
       case 'add':
         openCreateNode('manual');
@@ -512,6 +518,18 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
         break;
     }
   }, [selectedQuest, selectedNode, canUseNotes]);
+
+  const mobileToolItems = useMemo(() => {
+    const tools = [
+      { id: 'add', label: 'Quest hinzufügen' },
+      { id: 'edit', label: 'Quest bearbeiten', disabled: !selectedQuest },
+      { id: 'focus', label: 'Fokus' },
+      { id: 'settings', label: 'Alchemie-Labor' },
+      { id: 'hub', label: 'Sammlung' },
+    ];
+    if (canUseNotes) tools.splice(2, 0, { id: 'note', label: 'Super-Notizen' });
+    return tools;
+  }, [canUseNotes, selectedQuest]);
 
   // Mobil: Dock + Overlay fuer Mana/Heart
   const mobileManaDock =
@@ -673,6 +691,39 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
       {/* Topbar: Titel + Breadcrumb */}
       <header class="rpg-tree__top">
+        {compact && (
+          <div class="rpg-tree__mobile-tools">
+            <button
+              type="button"
+              class={`rpg-tree__mobile-tools-btn${mobileToolsOpen ? ' is-open' : ''}`}
+              onClick={() => setMobileToolsOpen((prev) => !prev)}
+              aria-label="Quest-Werkzeuge öffnen"
+              aria-expanded={mobileToolsOpen}
+              aria-controls="rpg-tree-mobile-tools-menu"
+            >
+              <span aria-hidden="true">☰</span>
+            </button>
+            {mobileToolsOpen && (
+              <div class="rpg-tree__mobile-tools-menu-wrap">
+                <ul id="rpg-tree-mobile-tools-menu" class="rpg-tree__mobile-tools-menu" role="menu">
+                  {mobileToolItems.map((tool) => (
+                    <li key={tool.id} role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="rpg-tree__mobile-tools-item"
+                        onClick={() => handleAstrolabTool(tool.id)}
+                        disabled={tool.disabled}
+                      >
+                        {tool.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <p class="rpg-tree__top-title">
           Codex der Quests
           <em>· Quest-Baum</em>
