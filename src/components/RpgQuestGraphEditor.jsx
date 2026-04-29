@@ -63,6 +63,7 @@ const RPG_QUESTMAKER_ENABLED = false;
  *   treePickParentKey?: string | null;
  *   treePickNodeIds?: string[];
  *   onToggleTreePick?: (parentDraftKey: string) => void;
+ *   treePickDoneSignal?: number;
  *   onClose: () => void;
  *   onApply: (g: import('../lib/rpg-quest-graph.js').RpgGraph, opts?: { questmakerItems?: { id: string; category: string; title: string; description: string }[] }) => void;
  *   createEntry?: 'manual' | 'questmaker';
@@ -80,6 +81,7 @@ export default function RpgQuestGraphEditor({
   treePickParentKey = null,
   treePickNodeIds = [],
   onToggleTreePick,
+  treePickDoneSignal = 0,
   onClose,
   onApply,
   createEntry,
@@ -117,6 +119,7 @@ export default function RpgQuestGraphEditor({
   /** Two-Step-Delete: erster Klick setzt true, zweiter loescht tatsaechlich */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [draftListTick, setDraftListTick] = useState(0);
+  const lastTreePickDoneSignalRef = useRef(treePickDoneSignal);
   const itemCatalogRef = useRef(itemCatalog);
   useEffect(() => {
     itemCatalogRef.current = itemCatalog;
@@ -369,6 +372,13 @@ export default function RpgQuestGraphEditor({
     }
     onToggleTreePick(parentDraftKey);
   };
+
+  useEffect(() => {
+    if (treePickDoneSignal === lastTreePickDoneSignalRef.current) return;
+    lastTreePickDoneSignalRef.current = treePickDoneSignal;
+    if (!onToggleTreePick || !treePickParentKey) return;
+    handleToggleTreePick(treePickParentKey);
+  }, [treePickDoneSignal, treePickParentKey, onToggleTreePick, treePickNodeIds, graph]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

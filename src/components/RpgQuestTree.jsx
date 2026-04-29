@@ -104,6 +104,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const [treePickParentKey, setTreePickParentKey] = useState(/** @type {string | null} */ (null));
   const [treePickNodeIds, setTreePickNodeIds] = useState(() => new Set());
   const [treePickCycleWarning, setTreePickCycleWarning] = useState(false);
+  const [treePickDoneSignal, setTreePickDoneSignal] = useState(0);
   const cycleWarnTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   /** @type {'manual' | 'questmaker' | undefined} */
   const [editorCreateEntry, setEditorCreateEntry] = useState(undefined);
@@ -247,6 +248,8 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
   const treePickActive = editorOpen && !!treePickParentKey;
   const treePickIdList = useMemo(() => [...treePickNodeIds], [treePickNodeIds]);
+  const mobileTreePickMode = compact && treePickActive;
+  const panelRenderMode = mobileTreePickMode ? 'none' : editorOpen ? 'editor' : selectedId ? 'quest-panel' : 'none';
 
   // Nodes die einen Zirkelschluss erzeugen würden: die editierte Node selbst + alle ihre Vorfahren.
   // Wenn der User eine davon im Pick-Modus anklickt → Warnung statt Auswahl.
@@ -604,6 +607,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
       treePickParentKey={treePickParentKey}
       treePickNodeIds={treePickIdList}
       onToggleTreePick={handleToggleTreePick}
+      treePickDoneSignal={treePickDoneSignal}
     />
   );
 
@@ -677,7 +681,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const rootTreeClass = [
     'rpg-tree',
     `dir-${direction}`,
-    compact && selectedId ? 'rpg-tree--detail-mobile' : '',
+    compact && selectedId && !treePickActive ? 'rpg-tree--detail-mobile' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -762,10 +766,22 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
               {treePickNodeIds.size > 0 && (
                 <span class="rpg-tree__pick-banner-count">{treePickNodeIds.size} ausgewählt</span>
               )}
-              <span class="rpg-tree__pick-banner-hint">dann „Fertig" im Editor</span>
+              <span class="rpg-tree__pick-banner-hint">
+                {mobileTreePickMode ? 'dann unten „Fertig“ tippen' : 'dann „Fertig" im Editor'}
+              </span>
             </>
           )}
         </div>
+      )}
+
+      {mobileTreePickMode && (
+        <button
+          type="button"
+          class="rpg-tree__mobile-pick-finish"
+          onClick={() => setTreePickDoneSignal((prev) => prev + 1)}
+        >
+          Fertig{treePickNodeIds.size > 0 ? ` (${treePickNodeIds.size})` : ''}
+        </button>
       )}
 
       {/* Viewport: Pan/Zoom-Canvas mit dem Quest-Graphen */}
@@ -1017,11 +1033,11 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
       )}
 
       {/* Rechtes Panel: Quest-Details ODER Editor */}
-      {editorOpen ? (
+      {panelRenderMode === 'editor' ? (
         <aside class="qpanel qpanel--editor" aria-label="Editor">
           {graphEditor}
         </aside>
-      ) : selectedQuest ? (
+      ) : panelRenderMode === 'quest-panel' && selectedQuest ? (
         <RpgQuestPanel
           quest={selectedQuest}
           selectedNodeView={selectedNodeView}

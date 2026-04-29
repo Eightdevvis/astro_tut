@@ -1424,6 +1424,10 @@
   cursor: not-allowed;
 }
 
+.rpg-tree__mobile-pick-finish {
+  display: none;
+}
+
 /* Mobil: Vessels-Overlay (Vollbild) */
 .rpg-tree__vessels-overlay {
   position: fixed;
@@ -1521,6 +1525,31 @@
 
   .rpg-tree__vessels {
     display: none;
+  }
+
+  .rpg-tree__mobile-pick-finish {
+    display: inline-flex;
+    position: fixed;
+    left: 50%;
+    bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 42;
+    min-height: 44px;
+    padding: 0.62rem 1.1rem;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: rgba(20,14,6,0.95);
+    color: var(--gold-bright);
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.5);
+  }
+
+  .rpg-tree__mobile-pick-finish:hover {
+    background: rgba(200,147,47,0.18);
   }
 
   .rpg-tree__mobile-dock {

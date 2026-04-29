@@ -26,6 +26,7 @@
   - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`).
 - Mobile-Topbar: links Hamburger-Menue statt Astrolab; enthaelt die Tool-Aktionen `Quest hinzufuegen`, `Quest bearbeiten` (nur bei Selection aktiv), `Super-Notizen` (nur Superuser), `Fokus`, `Alchemie-Labor`, `Sammlung`.
+- Mobile-Tree-Pick-Flow (`+Node aus Tree` im Editor): wechselt in einen reinen Tree-Modus ohne Panel; Abschluss ueber schwebenden `Fertig`-Button unten; danach zurueck in den Editor.
 - Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button.
 - Superuser-only Notizen ueber Astrolab-Tool `note`.
 - Nodes:
