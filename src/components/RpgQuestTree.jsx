@@ -162,7 +162,8 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const applyGraph = useCallback((next, opts) => {
     // Zyklen und Duplikate sofort entfernen bevor der Graph in den State geht —
     // sonst würde ein Zirkelschluss (Node X → ... → X) den Render-Stack sprengen.
-    setGraph(deduplicateGraphRoots(breakGraphCycles(next)));
+    const cleaned = deduplicateGraphRoots(breakGraphCycles(next));
+    setGraph(cleaned);
     markDirty();
     const extra = opts?.questmakerItems;
     if (Array.isArray(extra) && extra.length > 0) {
