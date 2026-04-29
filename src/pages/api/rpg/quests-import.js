@@ -2,6 +2,7 @@ import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import { ensureDbSchema } from '../../../lib/db.js';
 import { isValidGraphShape, validateNodeDone } from '../../../lib/rpg-quest-graph.js';
+import { migrateNodeDoneToFlat } from '../../../lib/rpg-quests-data.js';
 import { validateRpgGraphReferences } from '../../../lib/rpg-graph-validation.js';
 import { saveRpgState } from '../../../lib/rpg-state-db.js';
 import {
@@ -79,7 +80,10 @@ export async function POST({ request, cookies }) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const nodeDoneCheck = validateNodeDone(incoming.nodeDone);
+  // Phase 2: Alt-Backups koennten verschachtelten nodeDone-State enthalten.
+  // Vor Validate flach machen (idempotent fuer V3).
+  const flattenedIncoming = migrateNodeDoneToFlat(incoming.nodeDone);
+  const nodeDoneCheck = validateNodeDone(flattenedIncoming);
   if (!nodeDoneCheck.ok) {
     return new Response(JSON.stringify({ error: nodeDoneCheck.reason }), {
       status: 400,

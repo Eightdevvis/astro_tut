@@ -47,5 +47,114 @@ Dient als Referenz fuer LOC-Trends, extrahierte Module und die Reihenfolge der A
 ### Teststand
 
 - 21 neue Vitals-Tests (`tests/rpg-vitals.test.js`)
-- Gesamtstand: 29 pass, 2 fail (pre-existierend)
+- Gesamtstand: 29 pass, 2 fail (pre-existierend, in spaeterem Cleanup behoben)
 - Browser-Verifikation: Tree manuell getestet (Pan, Zoom, Node-Klick, Super-Notizen)
+
+## 2026-04-28 — Hub-Redesign + UX-Naming-Durchzug + Cycle/Dedup-Schutz
+
+### Ausloeser
+
+- Hub-Seite war optisch provisorisch, nicht im Zauberer-Stil wie der Tree
+- "Node-..."-Begriffe in vielen UI-Texten obwohl der User "Quest" sehen sollte
+- Render-Stack-Overflow-Risiko bei zyklischen Graphen aus KI/Import
+
+### Aenderungen
+
+#### Hub-Redesign (`/rpg`)
+
+- `rpg-quest-hub.css` neu geschrieben (~660 LOC neu) mit identischer Token-Familie wie der Tree
+- `RpgQuestHub.jsx`: linke Rail entfernt, durch fixe Topbar (Titel + Pill-Link zum Quest-Baum) ersetzt
+- Hero-Block bekommt qpanel-aehnlichen Gold-Rim mit Eck-Markern
+- Strip-Liste vereinheitlicht (dunkle Karten mit Gold-Border, Mono-Pct-Pill, Expand-Chevron)
+- `pages/rpg/index.astro` laedt jetzt Serif-Fonts (IM Fell DW Pica + Cormorant Garamond)
+
+#### UX-Naming "Node → Quest" in sichtbaren Texten
+
+- Hub: "Aktive Nodes"→"Aktive Quests", "Node-Baum"→"Quest-Baum", "Weitere Nodes"→"Weitere Quests"
+- Tree-Topbar: "· Node-Baum"→"· Quest-Baum"; Pick-Banner "klicke Nodes an"→"klicke Quests an"
+- Panel: aria-labels, Edit-Button, Meta-Liste (`Wurzel-Nodes`/`Leaf-Nodes`/`Aktive Node` → `Zweige`/`Aufgaben`/`Auswahl`)
+- NodesView: Lock-Icon-Title `Lock-Node`→`Gesperrte Quest`, Tooltips `Node erledigt`→`Quest erledigt`
+- NodesBuilder: Feldlabels (`Node-Titel`→`Quest-Titel`), Buttons (`Node speichern`→`Quest speichern`, `+Neue Node`→`+Neue Quest`, `Child-Node hinzufuegen`→`Sub-Quest hinzufuegen`, `+Node aus Tree`→`+Quest aus Baum`), Badge `Lock`→`Sperre`
+- GraphEditor: Fehlertexte, Sektionslabel `Nodes & Rewards`→`Quests & Belohnungen`
+- Astrolab: Tooltip-Hint `Knoten bearbeiten`→`Quest bearbeiten`
+- **Code-Variablen** bleiben kanonisch `node`/`Node` — Trennung zwischen Datenmodell-Vokabular und User-Vokabular
+
+#### Cycle/Dedup-Schutz im Tree
+
+- `RpgQuestTree.jsx::applyGraph` wickelt jeden eingehenden Graph durch `breakGraphCycles` + `deduplicateGraphRoots`
+- Beide Funktionen in `src/lib/rpg-quest-nodes.js` (~734 LOC, +202 LOC zu vorherigem Stand)
+- Verhindert Render-Stack-Overflow bei zyklischen Graphen aus KI-Generierung oder fehlerhaftem Import
+
+### Ergebnis-Uebersicht (LOC, Stand 2026-04-28 nach Pass 4)
+
+| Komponente / Modul | Wert |
+|---|---|
+| `RpgQuestTree.jsx` | 989 |
+| `RpgQuestGraphEditor.jsx` | 906 (war 994 vor Pass 4) |
+| `RpgQuestNodesBuilder.jsx` | 718 |
+| `RpgQuestHub.jsx` | 321 |
+| `RpgAstrolab.jsx` | 330 |
+| `RpgVessel.jsx` | 309 |
+| `RpgQuestRewardsBuilder.jsx` | 192 |
+| `RpgTreeSettings.jsx` | 262 |
+| `RpgQuestPanel.jsx` | 257 |
+| `RpgQuestNodesView.jsx` | 364 |
+| `rpg-quest-nodes.js` | 791 |
+| `rpg-tree-svg.js` | 497 |
+| `rpg-quest-rewards.js` | 339 |
+| `rpg-quest-graph.js` | 327 |
+| `rpg-graph-editor-ops.js` | 385 |
+| `rpg-quest-editor-draft.js` | 680 |
+| `useEditorAiFlow.js` | 276 |
+| `useRpgBootstrap.js` | 280 |
+| `useTreePanZoom.js` | 175 |
+| `useManualQuestDraftAutosave.js` | 199 (NEU Pass 4) |
+| `rpg-quest-form-helpers.js` | 40 (war 142 vor Pass 4) |
+| `rpg-quests-data.js` | 242 (war 345 vor Pass 4) |
+
+### Teststand
+
+- 223 pass, 0 fail (`node --test tests/`) — +27 Tests gegenueber 2026-04-27 Stand
+- Browser-Verifikation: ausstehend (Astro-Build verlangt Node >=18.20.8, lokal teilweise 18.19)
+
+## 2026-04-28 (spaeter) — Pass 1-4 Konsolidierung
+
+### Pass 1 (Display): tiefenagnostisch
+- `buildRewardDisplayList` macht keine Subtypen-Verzweigung Root vs. Sub mehr
+- `selectedNodeView` ohne ID-Spoof
+- Panel/Hub/Tooltip einheitlich
+
+### Pass 2 (Reward-Sammler): vereinheitlicht
+- `reconcileRpgVitals` liest Sub-Node Rewards via `getNodeRewardRows` (nicht mehr `s.rewards/s.reward`)
+- `collectItemRewardRefsFromGraph` ueber Tiefen konsistent (legacy + canonical)
+
+### Pass 3 (Editor-Save): einheitlicher Helper
+- Neuer `applyNodeFieldsUpdate` in `rpg-graph-editor-ops.js` — Root-Edit und Child-Edit laufen durch denselben Code
+- PUT-Schreib-Migration (`migrateRpgGraphToV2`) in `quests.js` Zeile 142
+- Session-Cache-Migration in `useRpgBootstrap.js`
+- Lock/Optional bleiben reine Boolean-Flags (keine Subtypen)
+
+### Pass 4 (Final-Konsolidierung)
+
+#### A1 — Editor-LOC reduziert
+- `useManualQuestDraftAutosave.js` (~199) extrahiert: kapselt Snapshot-Build,
+  payloadHasContent-Heuristik, Debounced-Save (180ms), Flush-on-pagehide/visibility/beforeunload
+- `RpgQuestGraphEditor.jsx` 994 → 906 LOC (-88, klar unter Anti-Monolith-Limit)
+
+#### A2 — Tote/redundante Funktionen entfernt
+- `rpg-quest-form-helpers.js`: 7 ungenutzte Editor-Text-Modus-Helper entfernt
+  (`linesToNodes`, `parseRewards`, `isSimpleFlatNodesForEditor`, `serializeNodesToEditorText`,
+  `parseNodesFromEditorText`, `serializeQuestRewardsToEditorText`, `parseQuestRewardsFromEditorText`)
+- Datei von 142 → 40 LOC, behaelt nur `normalizeQuestId` + `labelsToNodes`
+- `rpg-quests-data.js`: drei tote Exports entfernt (`graphNodesById`, `SAMPLE_RPG_GRAPH`, `SAMPLE_RPG_QUESTS`)
+- Datei von 345 → 242 LOC
+
+#### B18 — Tiefe-3 Roundtrip-Tests
+- 4 neue Tests in `tests/rpg-consistency.test.js`:
+  - Tiefe-3 Roundtrip: alle 4 Reward-Typen ueberleben questNodesToDrafts → JSON → normalizeQuestNodesTree
+  - Tiefe-3 leere Children-Listen bleiben Arrays
+  - Boundary B19: invalide Reward-Eintraege gefiltert
+  - Boundary B19: Node ohne Title bleibt verarbeitbar
+
+#### Test-Total
+- Pass 4 Endstand: 223 pass, 0 fail (4 neue Tests)

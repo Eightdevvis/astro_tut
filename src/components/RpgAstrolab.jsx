@@ -12,7 +12,7 @@
  * Tools:
  * - add: Neue Quest anlegen
  * - edit: Quest/Node bearbeiten
- * - note: Superuser-Notizen (nur wenn isSuperuser)
+ * - note: Private Notizen (nur wenn canUseNotes)
  * - focus: Auf aktive Quest zentrieren
  * - settings: RPG-Einstellungen (Backups, Theme-Wechsel)
  * - hub: Zum Quest-Hub navigieren
@@ -26,11 +26,11 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
  * @param {{
  *   activeTool: string;
  *   onTool: (id: string) => void;
- *   isSuperuser?: boolean;
+ *   canUseNotes?: boolean;
  *   hubLabel?: string;
  * }} props
  */
-export default function RpgAstrolab({ activeTool, onTool, isSuperuser = false, hubLabel = 'Hub' }) {
+export default function RpgAstrolab({ activeTool, onTool, canUseNotes = false, hubLabel = 'Hub' }) {
   const [hover, setHover] = useState(/** @type {string | null} */ (null));
 
   // Euler-Winkel fuer die drei Ringe
@@ -44,9 +44,9 @@ export default function RpgAstrolab({ activeTool, onTool, isSuperuser = false, h
   // Werkzeuge: Glyphe, Label, Tooltip, Ring-Zuordnung, Position auf dem Ring (0..1)
   const TOOLS = [
     { id: 'add', glyph: '+', label: 'Quest +', hint: 'Neue Quest anlegen', ring: 1, t: 0.15 },
-    { id: 'edit', glyph: '\u26AF', label: 'Verwalten', hint: 'Knoten bearbeiten', ring: 1, t: 0.62 },
-    // Notiz nur fuer Superuser sichtbar
-    ...(isSuperuser
+    { id: 'edit', glyph: '\u26AF', label: 'Verwalten', hint: 'Quest bearbeiten', ring: 1, t: 0.62 },
+    // Notiz nur fuer User mit RPG-Zugang sichtbar
+    ...(canUseNotes
       ? [{ id: 'note', glyph: '\u261E', label: 'Notiz', hint: 'Tree-Notiz \u00f6ffnen', ring: 2, t: 0.30 }]
       : []),
     { id: 'focus', glyph: '\u25C9', label: 'Fokus', hint: 'Aktive Quest', ring: 2, t: 0.78 },

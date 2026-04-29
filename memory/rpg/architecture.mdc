@@ -15,7 +15,9 @@
 ## Nicht verhandelbare Invarianten
 
 - Modellregel: **Node-only** — jede Einheit ist ein Node; Parent/Child sind ebenfalls Nodes; keine fachliche Trennung Quest-vs-Node.
+- **Render-Pipeline tiefenagnostisch**: Display/Reward/Progress-Funktionen (`buildRewardDisplayList`, `questLeafProgressRatio`, `RpgQuestNodesView`, `RpgQuestPanel`) arbeiten ohne Subtypen-Verzweigung Root-vs-Sub-Node. Lookup-Scope wird ueber `scopeQuestId`-Parameter explizit getragen, nicht ueber ID-Spoofing oder `source: 'quest'/'node'`-Flags.
 - Graph-Form: kanonisch `{ nodes: RpgNode[], edges: RpgEdge[] }` mit `RpgEdge = { from, to, relation }`. Legacy-Aliase (`quests`, `fromNodeId`/`toNodeId`) werden von Normalizern beim Einlesen akzeptiert, aber nie geschrieben.
+- **DAG-Form (V3, ab Phase 1)**: Hierarchie lebt ausschliesslich in `graph.edges` als `relation: 'parent_of'` (Alias `'structure'`). In V3-canonical sind Nodes flach in `graph.nodes` (kein nested `children`, kein `parentId`). Multi-Parent-Knoten sind dadurch moeglich. Die **Compat-View** (`denormalizeGraphForCompat`) baut zur Laufzeit `children`/`parentId` zurueck, sodass Phase-1-Aufrufer unveraendert weiterlaufen. Phase 2 stellt Aufrufer auf Edge-Helper (`getChildIds`, `getParentIds`, `addParentChildEdge`, `hasDagCycle` etc.) um, Phase 3+4 entfernen Compat.
 - Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
 - Quest-Differenzierung erfolgt nicht mehr ueber `main`/`side`, sondern nur ueber Struktur (`children`) + Kanten.
 - Naming-Regel: `node*` ist kanonisch (`nodeDone`, `graph.nodes`). Feld `title` (nicht `label`), `rewards: RpgRewardEntry[]` (nicht `questRewards`/`reward`). Alle Quellen schreiben kanonisch; Normalizer akzeptieren Legacy-Felder nur beim Lesen.
@@ -37,19 +39,28 @@
 
 - `src/pages/api/rpg/quests.js`
 - `src/pages/api/rpg/quests-generate.js`
-- `src/lib/rpg-quest-graph.js`
-- `src/lib/rpg-quest-nodes.js`
+- `src/pages/api/rpg/achievements.js`
+- `src/pages/api/rpg/locations.js`
+- `src/lib/rpg-quest-graph.js` — inkl. V3 DAG-Helper (`getChildIds`, `getParentIds`, `getChildNodes`, `getParentNodes`, `getRootNodeIds`, `addParentChildEdge`, `removeParentChildEdge`, `hasDagCycle`)
+- `src/lib/rpg-quest-nodes.js` — inkl. `breakGraphCycles` + `deduplicateGraphRoots` (Sicherung gegen Render-Stack-Overflow)
+- `src/lib/rpg-payload-schema.js` — `RPG_PAYLOAD_SCHEMA_VERSION = 3`, `migrateRpgGraphToV3`, `stripGraphCompatFields`
+- `src/lib/rpg-graph-validation.js` — Referenz-/Subtree-Guards
 - `src/components/RpgQuestHub.jsx`
 - `src/components/RpgQuestTree.jsx`
 - `src/components/RpgQuestGraphEditor.jsx`
+- `src/components/RpgAchievementCombobox.jsx` — Editor-UI fuer den vierten Reward-Typ `achievement`
 
-### Shared Hooks und extrahierte Module
+### Shared Hooks und extrahierte Module (Stand 2026-04-28 nach Pass 4)
 
-- `src/lib/useRpgBootstrap.js` — Bootstrap/Persist/Vitals-Reconciliation (Hub + Tree)
-- `src/lib/useTreePanZoom.js` — Pan/Zoom-Viewport-Hook (Tree)
-- `src/lib/rpg-tree-svg.js` — Pure SVG-Geometrie/Layout-Helper (Tree)
-- `src/components/RpgTreeSuperNotes.jsx` — Superuser-Notizen Hook + Modal (Tree)
-- `src/lib/rpg-graph-editor-ops.js` — Pure Editor-Operationen (Graph-Traversal, Node-Manipulation)
-- `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook (Editor)
-- `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (~290 LOC)
-- `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution (~225 LOC)
+- `src/lib/useRpgBootstrap.js` (~280) — Bootstrap/Persist/Vitals-Reconciliation (Hub + Tree)
+- `src/lib/useTreePanZoom.js` (~175) — Pan/Zoom-Viewport-Hook (Tree)
+- `src/lib/rpg-tree-svg.js` (~497) — Pure SVG-Geometrie/Layout-Helper (Tree)
+- `src/components/RpgTreeSuperNotes.jsx` (~235) — Superuser-Notizen Hook + Modal (Tree)
+- `src/lib/rpg-graph-editor-ops.js` (~385) — Pure Editor-Operationen (Graph-Traversal, applyNodeFieldsUpdate, formatAiError)
+- `src/lib/useEditorAiFlow.js` (~276) — Questmaker-/KI-Session-Hook (Editor)
+- `src/lib/useManualQuestDraftAutosave.js` (~199) — Manual-Draft Autosave/Restore-Hook (Editor, Pass 4)
+- `src/lib/rpg-quest-rewards.js` (~339) — Reward-Normalisierung, Display, Unlock-Schedule
+- `src/lib/rpg-quest-editor-draft.js` (~680) — Editor-Draft-Modell (Drafts <-> Nodes)
+- `src/lib/rpg-graph-layout.js` (~243) — Layered-Layout und Collision-Resolution
+- `src/lib/rpg-achievement-catalog-db.js` (~129) — DB-Backing fuer den `achievement`-Reward-Typ
+- `src/lib/rpg-quest-form-helpers.js` (~40) — minimaler Helper-Modul (normalizeQuestId, labelsToNodes); historische Editor-Text-Modus-Funktionen in Pass 4 entfernt

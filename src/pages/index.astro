@@ -1,37 +1,169 @@
 ---
 import Nav2 from '../components/Nav2.astro';
 import QuoteDisplay from '../components/QuoteDisplay.jsx';
-import Grid from '../components/Grid.astro';
-import Veranda from '../components/Veranda.astro';
 import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
-import UserFeedHomeGrid from '../components/UserFeedHomeGrid.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
-import { getUsernameFromCookies } from '../lib/session.js';
-import { hasPermission } from '../lib/permissions.js';
+import { ensureDbSchema, getDb } from '../lib/db.js';
 import '../styles/global.css';
 
-const sessionUser = await getUsernameFromCookies(Astro.cookies);
-const canUseMinigames = Boolean(sessionUser) && (await hasPermission(sessionUser, 'minigames_access'));
-const canUseFeeds = Boolean(sessionUser) && (await hasPermission(sessionUser, 'feed_access'));
-
+// Alle Markdown-Posts unter ./posts einsammeln. eager:true heisst: zur Build-Zeit
+// werden alle Module direkt geladen; jedes Modul hat frontmatter, url, Content,
+// rawContent() (Body als Markdown ohne Frontmatter), compiledContent().
 const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
+
+// pubDate aus Frontmatter strikt in ms umwandeln (fehlt/ungueltig -> 0).
+// Wichtig: Date.parse() akzeptiert manche kaputten Formate "irgendwie" und kann
+// dadurch falsche Zukunftsdaten erzeugen.
+function parseStrictFrontmatterDate(value: unknown): number {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?(Z)?)?$/);
+  if (!m) return 0;
+
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const hour = Number(m[4] ?? '0');
+  const minute = Number(m[5] ?? '0');
+  const second = Number(m[6] ?? '0');
+  const hasTime = Boolean(m[4]);
+  const hasZulu = m[7] === 'Z';
+
+  if (month < 1 || month > 12) return 0;
+  if (day < 1 || day > 31) return 0;
+  if (hour < 0 || hour > 23) return 0;
+  if (minute < 0 || minute > 59) return 0;
+  if (second < 0 || second > 59) return 0;
+
+  const t = hasTime && hasZulu
+    ? Date.UTC(year, month - 1, day, hour, minute, second, 0)
+    : new Date(year, month - 1, day, hour, minute, second, 0).getTime();
+
+  if (Number.isNaN(t)) return 0;
+  const check = hasTime && hasZulu ? new Date(t) : new Date(t);
+  if (
+    check.getFullYear() !== year ||
+    check.getMonth() !== month - 1 ||
+    check.getDate() !== day ||
+    check.getHours() !== hour ||
+    check.getMinutes() !== minute ||
+    check.getSeconds() !== second
+  ) {
+    return 0;
+  }
+  return t;
+}
 
 function pubTime(post: any): number {
   const d = post?.frontmatter?.pubDate;
   if (d == null) return 0;
-  const t = Date.parse(String(d));
-  return Number.isNaN(t) ? 0 : t;
+  return parseStrictFrontmatterDate(d);
 }
 
+// Neuester Post zuerst; bei Gleichstand deterministisch ueber url.
 const sorted = [...allPosts].sort((a, b) => {
   const diff = pubTime(b) - pubTime(a);
   if (diff !== 0) return diff;
   return String(b.url ?? '').localeCompare(String(a.url ?? ''));
 });
-const lastPost = sorted[0] ?? null;
+const lastMarkdownPost = sorted[0] ?? null;
+
+function dbTime(value: unknown): number {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+  const t = Date.parse(normalized);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+let lastDbPost: null | {
+  id: number;
+  created_at: string;
+  content_text: string;
+} = null;
+try {
+  await ensureDbSchema();
+  const result = await getDb().execute({
+    sql: `SELECT id, created_at, content_text
+       FROM blog_posts
+      ORDER BY datetime(created_at) DESC, id DESC
+      LIMIT 1`,
+    args: [],
+  });
+  const row = result.rows?.[0];
+  if (row) {
+    lastDbPost = {
+      id: Number(row.id ?? 0),
+      created_at: String(row.created_at ?? ''),
+      content_text: String(row.content_text ?? ''),
+    };
+  }
+} catch (err) {
+  console.error('index: failed to load latest db blog post', err);
+}
+
+// Markdown-Syntax leicht abraeumen, damit das Snippet als Klartext lesbar bleibt.
+// Bewusst minimal: Headings, Links, Inline-Emphasis, Quote-/Code-Marker raus.
+// Komplexere Sachen (Tabellen, HTML) sind hier kein Thema.
+function stripMarkdownLight(src: string): string {
+  return src
+    .replace(/```[\s\S]*?```/g, ' ')          // Codeblocks komplett raus
+    .replace(/`([^`]+)`/g, '$1')               // Inline-Code: nur Backticks raus
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')     // Bilder raus
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // Links: nur Anzeigetext behalten
+    .replace(/^#{1,6}\s+/gm, '')               // Heading-Marker
+    .replace(/^\s*[-*+]\s+/gm, '')             // Listen-Marker
+    .replace(/^\s*>\s?/gm, '')                 // Blockquote-Marker
+    .replace(/[*_~]+/g, '')                    // bold/italic/strike
+    .replace(/\s+/g, ' ')                      // Whitespace kollabieren
+    .trim();
+}
+
+// Aus dem Klartext ein zufaelliges Stueck der gewuenschten Laenge schneiden.
+// Wortgrenzen respektieren: Anfang an naechsten Space, Ende am letzten Space davor.
+// Wenn der Text kuerzer als length ist, gebe ihn ganz zurueck.
+function pickRandomSnippet(plain: string, length = 220): string {
+  if (!plain) return '';
+  if (plain.length <= length) return plain;
+  const maxStart = plain.length - length;
+  const rawStart = Math.floor(Math.random() * (maxStart + 1));
+  // Vom Random-Start zum naechsten Space springen, damit wir nicht mitten im Wort starten.
+  const spaceAfter = plain.indexOf(' ', rawStart);
+  const start = rawStart === 0 ? 0 : (spaceAfter > -1 && spaceAfter < rawStart + 40 ? spaceAfter + 1 : rawStart);
+  const slice = plain.slice(start, start + length);
+  // Letztes vollstaendiges Wort als Ende.
+  const lastSpace = slice.lastIndexOf(' ');
+  const trimmed = lastSpace > length * 0.6 ? slice.slice(0, lastSpace) : slice;
+  const prefix = start > 0 ? '… ' : '';
+  const suffix = start + length < plain.length ? ' …' : '';
+  return `${prefix}${trimmed.trim()}${suffix}`;
+}
+
+// Roh-Body des letzten Posts holen und Snippet bauen. rawContent ist eine Funktion
+// am Astro-Markdown-Modul; defensive Fallbacks fuer den Fall, dass der Build-Hook
+// das Modul anders liefert.
+let lastPostSnippet = '';
+let lastPostTitle = '';
+let lastPostUrl = '';
+const markdownTs = pubTime(lastMarkdownPost);
+const dbTs = dbTime(lastDbPost?.created_at);
+
+if (dbTs > markdownTs && lastDbPost) {
+  const plain = String(lastDbPost.content_text || '').trim();
+  lastPostTitle = plain.split('\n').find((line) => line.trim().length > 0)?.trim().slice(0, 90) || 'Neuer Blogpost';
+  lastPostSnippet = pickRandomSnippet(plain, 220);
+  lastPostUrl = lastDbPost.id > 0 ? `/posts/db/${lastDbPost.id}` : '';
+} else if (lastMarkdownPost) {
+  const raw = typeof lastMarkdownPost.rawContent === 'function' ? String(lastMarkdownPost.rawContent() ?? '') : '';
+  const plain = stripMarkdownLight(raw);
+  lastPostTitle = String(lastMarkdownPost.frontmatter?.title ?? '').trim();
+  lastPostSnippet = pickRandomSnippet(plain, 220);
+  lastPostUrl = String(lastMarkdownPost.url ?? '').trim();
+}
 ---
 
 <html lang="en" class="home">
@@ -51,39 +183,20 @@ const lastPost = sorted[0] ?? null;
     </header>
     <QuoteDisplay client:load />
 
-    <section class="home-tail" aria-label="Blog-Vorschau (Entwurf)">
-      <Veranda />
-      <Grid>
-        {canUseMinigames && (
-          <a
-            href="/minigames"
-            class="grid-item grid-item--minigames"
-            style="text-decoration: none; color: inherit; display: block;"
-            aria-label="Minigames"
-          >
-            <span class="minigames-icon-wrap" aria-hidden="true">
-              <svg class="minigames-icon" width="56" height="56" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="6" y="14" width="36" height="22" rx="4" stroke="currentColor" stroke-width="1.8" />
-                <path d="M14 22h4v4h-4z M22 22h4v4h-4z" fill="currentColor" />
-                <path d="M32 24a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" fill="currentColor" />
-                <path d="M10 20c8-6 20-6 28 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45" />
-              </svg>
-            </span>
-            <span class="minigames-label">minigames</span>
-          </a>
-        )}
-        {lastPost?.url && lastPost?.frontmatter?.title && (
-          <a
-            href={lastPost.url}
-            class="grid-item grid-item--inset"
-            style="text-decoration: none; color: inherit; display: block;"
-          >
-            <h1 class="lastPost-title">{lastPost.frontmatter.title}</h1>
-            <div class="lastPost-eye">eye</div>
-          </a>
-        )}
-        {canUseFeeds ? <UserFeedHomeGrid client:load /> : null}
-      </Grid>
+    <section class="home-tail" aria-label="Letzter Blogpost">
+      {lastPostTitle && lastPostUrl && (
+        <a
+          href={lastPostUrl}
+          class="last-post-card"
+          aria-label={`Letzter Blogpost: ${lastPostTitle}`}
+        >
+          <span class="last-post-card__eyebrow">letzter blogpost</span>
+          <h2 class="last-post-card__title">{lastPostTitle}</h2>
+          {lastPostSnippet && (
+            <p class="last-post-card__snippet">{lastPostSnippet}</p>
+          )}
+        </a>
+      )}
     </section>
     <GraffitiLayer client:load />
     <TesterBugBar client:load />
@@ -156,70 +269,62 @@ const lastPost = sorted[0] ?? null;
     margin-top: 4rem;
     padding: 0 1rem 3rem;
     opacity: var(--home-tail-opacity);
-  }
-
-  :global(.grid-item--minigames) {
-    background: var(--home-minigame-card-bg);
-    box-shadow: var(--home-minigame-card-shadow);
-    border-radius: 1rem;
-    color: var(--home-minigame-card-fg);
-    padding: 1rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 7rem;
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
-  }
-
-  :global(.grid-item--minigames:hover) {
-    transform: translateY(-2px);
-    box-shadow: var(--home-minigame-card-hover);
-  }
-
-  .minigames-icon-wrap {
     display: flex;
     justify-content: center;
-    align-items: center;
   }
 
-  .minigames-icon {
-    opacity: 0.95;
-  }
-
-  .minigames-label {
-    font-size: 0.75rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.75;
-  }
-
-  :global(.grid-item--inset) {
+  .last-post-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: min(640px, 100%);
+    padding: 1.5rem 1.5rem 1.75rem;
+    border-radius: 1rem;
     background: var(--site-card-bg);
     color: var(--site-card-text);
     border: 1px solid var(--site-card-border);
-    box-shadow: var(--site-card-inset-soft), var(--site-card-inset-strong), var(--site-card-shadow);
-    border-radius: 1rem;
+    box-shadow:
+      var(--site-card-inset-soft),
+      var(--site-card-inset-strong),
+      var(--site-card-shadow);
+    text-decoration: none;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
   }
 
-  :global(.grid-item--inset h1) {
-    font-size: 2.5rem;
-    transition: font-size 0.5s cubic-bezier(0.4, 1.6, 0.4, 1);
+  .last-post-card:hover,
+  .last-post-card:focus-visible {
+    transform: translateY(-2px);
+    outline: none;
   }
 
-  :global(.grid-item--inset:hover h1) {
-    font-size: 1.2rem;
+  .last-post-card__eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.6;
   }
 
-  .lastPost-title {
-    font-size: 1rem;
-    padding: 10px;
+  .last-post-card__title {
+    margin: 0;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    font-weight: 600;
   }
 
-  .lastPost-eye {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
+  .last-post-card__snippet {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    opacity: 0.85;
+    font-style: italic;
+  }
+
+  @media (max-width: 480px) {
+    .last-post-card {
+      padding: 1.1rem 1.1rem 1.3rem;
+    }
+    .last-post-card__title {
+      font-size: 1.35rem;
+    }
   }
 </style>

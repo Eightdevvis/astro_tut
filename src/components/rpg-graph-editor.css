@@ -44,7 +44,8 @@
 /* Color-scheme folgt dem aktiven Theme automatisch */
 
 @media (min-width: 560px) {
-  .rpg-graph-editor {
+  /* Nur standalone (nicht embedded): border-radius und max-height begrenzen */
+  .rpg-graph-editor:not(.rpg-graph-editor--embedded) {
     border-radius: 14px;
     max-height: min(88vh, 640px);
   }
@@ -1988,4 +1989,239 @@
 .rpg-tree.dir-orrery .rpg-graph-editor__drafts-panel {
   background: linear-gradient(180deg, rgba(10,24,42,0.99), rgba(6,16,28,0.99));
   border-color: var(--line-strong);
+}
+
+/* ─── Achievement-Combobox ─────────────────────────────────── */
+
+.rpg-achievement-combobox {
+  position: relative;
+  width: 100%;
+}
+
+.rpg-achievement-combobox__input {
+  width: 100%;
+}
+
+/* Pill-Ansicht wenn Achievement ausgewählt */
+.rpg-achievement-combobox--selected {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rpg-achievement-combobox__pill {
+  flex: 1;
+  padding: 0.28rem 0.55rem;
+  background: rgba(200,147,47,0.12);
+  border: 1px solid rgba(200,147,47,0.3);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  color: var(--gold-bright, #f0c060);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rpg-achievement-combobox__clear {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: color-mix(in srgb, var(--rpg-ink) 50%, transparent);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+
+.rpg-achievement-combobox__clear:hover {
+  color: var(--rpg-ink);
+}
+
+/* Dropdown-Liste */
+.rpg-achievement-combobox__dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 120;
+  margin: 0;
+  padding: 0.2rem 0;
+  list-style: none;
+  background: color-mix(in srgb, var(--rpg-page-bg) 97%, var(--rpg-ink));
+  border: 1px solid var(--line-strong, rgba(200,147,47,0.25));
+  border-radius: 5px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.rpg-achievement-combobox__option {
+  padding: 0.38rem 0.65rem;
+  font-size: 0.83rem;
+  cursor: pointer;
+  color: var(--rpg-ink);
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.rpg-achievement-combobox__option:hover {
+  background: rgba(200,147,47,0.1);
+}
+
+/* "Neu anlegen"-Eintrag */
+.rpg-achievement-combobox__option--create {
+  color: color-mix(in srgb, var(--gold-bright, #f0c060) 80%, var(--rpg-ink));
+  font-style: italic;
+  border-top: 1px solid var(--line, rgba(255,255,255,0.07));
+  margin-top: 0.1rem;
+  padding-top: 0.42rem;
+}
+
+/* Status-Zeilen (laden, leer, Fehler) */
+.rpg-achievement-combobox__state {
+  padding: 0.38rem 0.65rem;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--rpg-ink) 45%, transparent);
+  font-style: italic;
+}
+
+.rpg-achievement-combobox__state--error {
+  color: #f08080;
+  font-style: normal;
+}
+
+/* ─── Item-Combobox ─────────────────────────────────────────── */
+
+.rpg-item-combobox {
+  position: relative;
+  width: 100%;
+}
+
+.rpg-item-combobox__input {
+  width: 100%;
+}
+
+/* Pill-Ansicht wenn Item ausgewählt */
+.rpg-item-combobox--selected {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rpg-item-combobox__pill {
+  flex: 1;
+  padding: 0.28rem 0.55rem;
+  background: rgba(100,180,100,0.12);
+  border: 1px solid rgba(100,180,100,0.3);
+  border-radius: 4px;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, #90c870 85%, var(--rpg-ink));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rpg-item-combobox__clear {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: color-mix(in srgb, var(--rpg-ink) 50%, transparent);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+
+.rpg-item-combobox__clear:hover {
+  color: var(--rpg-ink);
+}
+
+/* Dropdown-Liste */
+.rpg-item-combobox__dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 120;
+  margin: 0;
+  padding: 0.2rem 0;
+  list-style: none;
+  background: color-mix(in srgb, var(--rpg-page-bg) 97%, var(--rpg-ink));
+  border: 1px solid var(--line-strong, rgba(200,147,47,0.25));
+  border-radius: 5px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.rpg-item-combobox__option {
+  padding: 0.38rem 0.65rem;
+  font-size: 0.83rem;
+  cursor: pointer;
+  color: var(--rpg-ink);
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.rpg-item-combobox__option:hover {
+  background: rgba(100,180,100,0.1);
+}
+
+/* "Neu anlegen"-Eintrag */
+.rpg-item-combobox__option--create {
+  color: color-mix(in srgb, #90c870 80%, var(--rpg-ink));
+  font-style: italic;
+  border-top: 1px solid var(--line, rgba(255,255,255,0.07));
+  margin-top: 0.1rem;
+  padding-top: 0.42rem;
+}
+
+/* Status-Zeilen (leer, Hinweis) */
+.rpg-item-combobox__state {
+  padding: 0.38rem 0.65rem;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--rpg-ink) 45%, transparent);
+  font-style: italic;
+}
+
+/* Inline-Formular für neue Items */
+.rpg-item-combobox__create-form {
+  padding: 0.5rem 0.65rem 0.6rem;
+  border-top: 1px solid var(--line, rgba(255,255,255,0.07));
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+}
+
+.rpg-item-combobox__create-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.rpg-item-combobox__create-row > input,
+.rpg-item-combobox__create-row > select {
+  flex: 1;
+  font-size: 0.81rem;
+}
+
+.rpg-item-combobox__create-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  margin-top: 0.1rem;
+}
+
+/* ─── Punkte-Felder (Reward Builder) ────────────────────────── */
+
+/* Flexbox-Wrapper für den Punkte-Reward: Typ-Select + Wert-Input nebeneinander */
+.rpg-reward-builder__points-fields {
+  display: flex;
+  gap: 0.45rem;
+  flex: 1 1 12rem;
+  min-width: 0;
 }

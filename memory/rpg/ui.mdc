@@ -11,10 +11,10 @@
   - `codex`: Pergament & Tinte, warmer heller Stil
   - `orrery`: Blueprint/Celestial, tiefes Indigo + Cyan
   - Theme wird ueber `.dir-astrolab/.dir-codex/.dir-orrery` auf `.rpg-tree` gesetzt
-- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads (add/edit/note/focus/hub). Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
+- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads — **6 Tools**: `add`, `edit`, `note` (super-only), `focus`, `settings` (Alchemie-Labor), `hub`. Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
 - **Vessels** (RpgVessel.jsx): Canvas-2D-Glasgefaesse fuer Mana (blau) und Heart (rot) links unten. Glitzer-Partikel, Fresnel-Rimlight, Glass-Highlights. Desktop-only; Mobil weiterhin LiquidVessels im Overlay.
-- **Quest-Panel** (RpgQuestPanel.jsx): Rechtes Detail-Panel im Codex-Stil. Sigil-Header mit Eyebrow-Status, Fortschrittsbalken (Meter), Reward-Pills, Node-Baum via RpgQuestNodesView, Meta-Details.
-- **Topbar**: Serif-Titel "Codex der Quests · Node-Baum" + Location-Breadcrumb rechts. Glasmorphism-Hintergrund.
+- **Quest-Panel** (RpgQuestPanel.jsx): Rechtes Detail-Panel im Codex-Stil. Sigil-Header mit Eyebrow-Status, Fortschrittsbalken (Meter), Reward-Pills, Node-Baum via RpgQuestNodesView, Meta-Details (`Quest-ID`/`Zweige`/`Aufgaben`/`Auswahl`).
+- **Topbar**: Serif-Titel "Codex der Quests · **Quest-Baum**" + Location-Breadcrumb rechts. Glasmorphism-Hintergrund.
 - **Location-Strip**: Pill am unteren Viewport-Rand (Desktop). Zeigt Stadt · Ort.
 - **Sternenfeld**: SVG-Hintergrund im Viewport (60 Sterne + Linien). Ausgeblendet im Codex-Theme.
 - Neuanlage und Bearbeitung ueber Astrolab-Tools `add` (→ openCreateNode) und `edit` (→ openEditNode).
@@ -37,13 +37,18 @@
   - sonst → subtiles Braun
 - Bootstrap: Loading-Screen (`RpgBootstrapLoading`) wie vorher.
 
-## Hub (UI)
+## Hub (UI) — "Zauberer" Design (Stand 2026-04-28)
 
-- Fokusmodell ohne Kategorien: eine Fokus-Quest als Hero-Block; weitere aktive Quests als ein-/ausklappbare Strips.
-- Sidebar-Link "Quest-Baum" -> `/rpg/tree`.
-- Pro Quest Link mit Mini-Graph-SVG -> `/rpg/tree?focus=<id>`.
-- Nodes beruecksichtigen Location-State:
-  - Quest-Lock ueber `quest.cityLocation`
+- **Layout** (Redesign 2026-04-28): fixe Topbar oben + zentrierter Main-Bereich; **keine** linke Rail mehr.
+  - Topbar: Serif-Titel "Codex der Quests · **Sammlung**" links, **Pill-Link** „Quest-Baum" rechts (analog zur Tree-Topbar, gleiche Hoehe 56px).
+  - Hero-Block (Fokus-Quest): qpanel-aehnlicher Gold-Rim mit Eck-Markern, Serif-Titel, Beschreibung, Sub-Quest-Baum via `RpgQuestNodesView`.
+  - Strip-Liste (weitere aktive Quests): dunkle Karten mit Gold-Border, Titel + Mono-Pct-Pill + Teaser, Expand-Chevron.
+  - Tree-Deep-Link unten links am Hero-Block: rundes Icon, fuehrt zu `/rpg/tree?focus=<id>`.
+- **Token-System**: identisch zum Tree (`--gold`, `--ink`, `--serif`, Grain-Overlay) — beide Seiten teilen die gleiche Design-Sprache.
+- **Fokusmodell** (unveraendert): eine Fokus-Quest als Hero; weitere aktive Quests als ein-/ausklappbare Strips. Klick auf Strip-Titel = neuer Fokus, Klick auf Chevron = inline aufklappen.
+- **Mobile**: Topbar schrumpft (52px, Untertitel ausgeblendet), Strip-Teaser ausgeblendet, Touch-Targets >=44px.
+- **Location-Logik**:
+  - Quest-Lock ueber `quest.cityLocation` (nur im Hub angezeigt)
   - Node-Hinweis ueber `node.placeLocation` (nur Hub, nicht Tree-Panel)
 - Globaler Location-Katalog in `rpg_locations`; user-relevante IDs in `payload.locationCatalog`.
 
@@ -56,28 +61,83 @@
   - Zauberer-Stil: gleicher Design-Sprache wie Quest-Panel (Gold, Messing, dekorativer Rand).
   - Escape schliesst das Modal; Klick auf Overlay ebenfalls.
 
-## Code-Pfade
+## Code-Pfade (Stand 2026-04-28)
 
-| Teil | Pfade |
-|------|-------|
-| Hub (~253 LOC) | `src/components/RpgQuestHub.jsx`, `src/components/rpg-quest-hub.css` |
-| Baum (~960 LOC) + Editor-Modal (~952 LOC) | `src/components/RpgQuestTree.jsx`, `src/components/RpgQuestGraphEditor.jsx`, `src/components/rpg-quest-tree.css`, `src/components/rpg-graph-editor.css` |
-| Astrolab (~240 LOC) | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere als Navigation (6 Tools: add/edit/note/focus/settings/hub); vom Tree genutzt |
-| Vessel (~230 LOC) | `src/components/RpgVessel.jsx` — Canvas-2D-Glasgefaesse (Mana/Heart); vom Tree genutzt |
-| Quest-Panel (~180 LOC) | `src/components/RpgQuestPanel.jsx` — Rechtes Detail-Panel im Codex-Stil; vom Tree genutzt |
-| Settings-Modal (~220 LOC) | `src/components/RpgTreeSettings.jsx` — Alchemie-Labor: Theme-Switch + Backups; vom Tree genutzt |
-| Editor-Ops (~230 LOC) | `src/lib/rpg-graph-editor-ops.js` — Pure Helfer: Graph-Traversal, Node-Manipulation, ID-Generierung, KI-Fehler-Mapping; vom Editor genutzt |
-| Editor-AI-Flow (~220 LOC) | `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook: Prompt, Clarify, Package, Generate; vom Editor genutzt |
-| Shared Bootstrap-Hook (~277 LOC) | `src/lib/useRpgBootstrap.js` — Bootstrap, Persist, Vitals-Reconciliation, Event-Listener; von Hub + Tree genutzt |
-| Pan/Zoom-Hook (~165 LOC) | `src/lib/useTreePanZoom.js` — Wheel-Zoom, Touch-Pinch, Pointer-Drag; vom Tree genutzt |
-| SVG-Geometrie (~310 LOC) | `src/lib/rpg-tree-svg.js` — Pure Helper fuer Node-Shapes, Edge-Ports, Cluster-Spread, Layout; vom Tree genutzt |
-| Superuser-Notizen (~155 LOC) | `src/components/RpgTreeSuperNotes.jsx` — Hook + Modal-Komponente; vom Tree genutzt |
-| Nodes-Ansicht | `src/components/RpgQuestNodesView.jsx` |
-| Location | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
-| Rewards (~290 LOC) | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule |
-| Graph-Layout (~225 LOC) | `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution |
-| Vitals | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
-| Seiten | `src/pages/rpg/index.astro`, `src/pages/rpg/tree.astro` |
+| Teil | LOC | Pfade |
+|------|-----|-------|
+| Hub | ~322 | `src/components/RpgQuestHub.jsx`, `src/components/rpg-quest-hub.css` — Zauberer-Topbar + Hero-Rim + Strips |
+| Baum | ~989 | `src/components/RpgQuestTree.jsx`, `src/components/rpg-quest-tree.css` |
+| Editor-Modal | ~987 | `src/components/RpgQuestGraphEditor.jsx`, `src/components/rpg-graph-editor.css` |
+| NodesBuilder | ~859 | `src/components/RpgQuestNodesBuilder.jsx` — Editor-Subkomponente fuer Quest-Struktur |
+| RewardsBuilder | ~261 | `src/components/RpgQuestRewardsBuilder.jsx` — aus NodesBuilder extrahiert |
+| Achievement-Combobox | ~klein | `src/components/RpgAchievementCombobox.jsx` — Editor-UI fuer den `achievement`-Reward-Typ |
+| Astrolab | ~330 | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere mit 6 Tools (add/edit/note/focus/settings/hub) |
+| Vessel | ~309 | `src/components/RpgVessel.jsx` — Canvas-2D-Glasgefaesse (Mana/Heart) |
+| Quest-Panel | ~247 | `src/components/RpgQuestPanel.jsx` — Rechtes Detail-Panel; vom Tree genutzt |
+| Settings-Modal | ~262 | `src/components/RpgTreeSettings.jsx` — Alchemie-Labor: Theme-Switch + Backups |
+| Editor-Ops | ~370 | `src/lib/rpg-graph-editor-ops.js` — Pure Helfer fuer Graph-Traversal, ID-Generierung; `applyNodeFieldsUpdate` als zentraler Save-Helper (Root + Child) |
+| Editor-AI-Flow | ~276 | `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook |
+| Shared Bootstrap-Hook | ~280 | `src/lib/useRpgBootstrap.js` — Bootstrap, Persist, Vitals, Event-Listener; Hub + Tree |
+| Pan/Zoom-Hook | ~175 | `src/lib/useTreePanZoom.js` — Wheel/Pinch/Drag |
+| SVG-Geometrie | ~497 | `src/lib/rpg-tree-svg.js` — Pure Helper fuer Node-Shapes, Edge-Ports, Cluster-Spread, computeNodeTreeOverlay |
+| Superuser-Notizen | ~235 | `src/components/RpgTreeSuperNotes.jsx` — Hook + Modal-Komponente |
+| Nodes-Ansicht | ~354 | `src/components/RpgQuestNodesView.jsx` — gemeinsam von Hub + Panel + Editor-Preview genutzt |
+| Location | ~571 | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
+| Rewards | ~339 | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (4 Typen inkl. achievement) |
+| Graph-Layout | ~243 | `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution |
+| Vitals | ~161 | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
+| Seiten | — | `src/pages/rpg/index.astro` (Hub mit Serif-Fonts), `src/pages/rpg/tree.astro` |
+
+## Render-Pipeline-Konsolidierung (Stand 2026-04-28)
+
+Render fuer Detail-Panel und Hub ist tiefenagnostisch — EIN Pfad fuer Root, Sub-Node, Leaf:
+
+- **`buildRewardDisplayList(node, nodeDone, opts?)`**: Sammelt Self- + Sub-Node-Rewards. Output-Form pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. Kein `source: 'node'/'quest'` mehr — die Halluzination wurde entfernt. `opts.scopeQuestId` traegt den Lookup-Scope (Root-Quest-ID), `opts.selfProgressPercent` ist optionaler Override fuer Self-Unlock (nur bei Root-View ausgewertet).
+- **`questLeafProgressRatio(quest, nodeDone, scopeQuestId?)`**: Tiefenagnostischer Progress. Aufrufer reichen `scopeQuestId` weiter wenn der `quest`-Parameter ein Sub-Node ist.
+- **`deriveRpgTreeSelectionView`**: Liefert den View-Node mit SEINER eigenen ID (kein Spoofing) plus `scopeQuestId` separat. Aufrufer geben den Scope an `RpgQuestNodesView`/`buildRewardDisplayList` weiter.
+- **`RpgQuestPanel`**: Title/Description/Rewards/Children werden alle aus `viewNode = selectedNodeView || quest` gelesen — gleicher Code-Pfad fuer Root- und Sub-Node-Selection.
+- **`RpgQuestNodesView`**: Reward-Tooltip vereinheitlicht (`'Quest erledigt'` / `'Nach Erledigung der Quest'` fuer JEDEN Reward, egal Origin). Aggregierter Graph-Progress wird nur fuer Root-Views (scopeId === node.id) genutzt.
+- **`RpgQuestHub`**: Strip-Progress berechnet via `questLeafProgressRatio(node, nodeDone, rootQuestId).percent` fuer Root und Sub-Node identisch (Verlust: aggregierter Graph-Progress fuer Root-Strips — bewusste Vereinheitlichung).
+
+## Editor-Save-Konsolidierung (Stand 2026-04-28, Pass 3)
+
+Der `RpgQuestGraphEditor::handleSubmit`-Pfad fuer Edit (Root + Child) laeuft jetzt durch EINEN Code-Pfad — der Helper `applyNodeFieldsUpdate(container, targetId, fields, containerOverlay)` in `rpg-graph-editor-ops.js`:
+
+- **Root-Edit**: `targetId == container.id` → der Helper aendert den Container direkt mit den kanonischen Node-Feldern (`title`, `description`, `rewards`, `children`).
+- **Child-Edit**: `targetId` zeigt auf einen Node tief im Subtree → der Helper traversiert via privatem `mapNodeRecursive` und mutiert nur den Sub-Node, der Container wird via `{...container, children: ...}` neu zusammengesetzt.
+- **Container-Overlay**: `orderInLayer` und `questmakerPrompt` sind Container-only-Felder, werden via `containerOverlay`-Parameter immer am Container appliziert (auch bei Sub-Node-Edit). Niemals am Sub-Node.
+- **Reward-Loeschen-Semantik**: `rewards: []` wird IMMER gesetzt (statt `delete`), damit der `upsertQuestInGraph`-Spread `{...prev, ...node}` alte Rewards bei Root-Edit ueberschreibt. User koennen also Rewards entfernen.
+- **Andere kanonische Felder erhalten**: `cityLocation`, `placeLocation`, `dependsOn`, `optional`, `isLock`, `timeDueAt`, `orderLinked`, `parentId` — bleiben unangetastet (durch `...node`-Spread).
+- **Create-Pfad** unveraendert eigenstaendig — neuer Top-Level-Quest hat keinen Container, sondern wird komplett gebaut.
+
+## Tree-Pick = reine Edge-Operation (Phase 3, 04/2026)
+
+Der „+Quest aus Baum"-Button im Builder (`RpgQuestNodesBuilder`) erlaubt dem User, eine bereits existierende Quest aus dem Baum als zusaetzliches Child unter einem anderen Parent einzuhaengen — Multi-Parent ist im V3-DAG erlaubt.
+
+**Verhalten (Phase 3)**: Tree-Pick laesst den ausgewaehlten Node UNVERAENDERT im Graph und fuegt nur eine `parent_of`-Edge hinzu. Kein Verschieben, kein Klonen, kein Duplikat — auch wenn der Node vorher Root war.
+
+**Implementierung**:
+1. **UI**: User klickt im Quest-Baum die Ziel-Nodes an. Wenn er „Fertig" klickt, wird via `graphNodeIdToDraft` ein Draft mit gesetzter `stableId` (= Original-Node-ID) im Builder eingefuegt — visuelles Feedback bleibt.
+2. **Save**: `splitDraftsForTreePick(drafts, parentId, existingIds, selfSubtreeIds)` aus `rpg-graph-editor-ops.js` trennt die Drafts in:
+   - `cleanDrafts` (echte neue/edited) — gehen an `draftNodesToQuestNodes`
+   - `treePickEdges` (`{parentId, childId}`-Liste) — gehen an `applyTreePickEdges`
+3. **Edge-Apply**: `applyTreePickEdges(graph, edges)` ist idempotent und prueft Cycle via `hasDagCycle`. Bei Zyklus → Inline-Fehler `Verlinken nicht möglich: ... würde einen Kreis im Quest-Baum erzeugen.`, Editor bleibt offen.
+
+**Erkennung Tree-Pick vs. echter Edit**: Ein Draft gilt als Tree-Pick, wenn `stableId` im aktuellen Graph existiert UND nicht im eigenen editierten Subtree liegt (`collectSubtreeIds(container)`). So wird ein normaler Sub-Node-Edit nicht versehentlich zur Edge-Operation.
+
+**Remove-Child**: Wenn der User im Builder einen Sub-Quest entfernt, prunt `pruneStaleParentEdgesForContainer(graph, targetId, newSubtreeIds)` die `parent_of`-Edge `target → child`. Multi-Parent-Schutz: Edges anderer Parents auf dasselbe Child bleiben unberuehrt.
+
+**Geschichtlicher Bug** (vor Phase 3): User pickte einen Child-Node von Quest A als Child unter Quest B → durch `graphNodeIdToDraft` + `draftNodesToQuestNodes` wurde ein Duplikat-Node mit neuer (label-basierter) ID erzeugt, der Original blieb daneben stehen. Statt Verkabelung gabs eine Klon-Kopie. Phase 3 fixt das via Edge-Promotion.
+
+## Lock/Optional sind Modifikatoren, keine Subtypen
+
+`isLock: true` und `optional: true` sind reine Boolean-Flags am Node. Kein eigener Render-Pfad, keine eigenen Datenfelder, kein Subtyp im Datenmodell. Der Render-Code in `RpgQuestNodesView`/`RpgQuestNodesBuilder` zeigt sie als Badge/Icon, die Completion-Logik in `rpg-quest-nodes.js` (`isNodeCompleteInQuest`, `canSetNodeDone`) interpretiert sie — aber alles ueber das gleiche Render-Schema.
+
+## UX-Naming-Regel (verbindlich, Stand 2026-04-28)
+
+- **Code/Variablen** bleiben kanonisch `node`/`Node` (z. B. `nodeDone`, `RpgNode`, `findNodeWithAncestors`).
+- **Sichtbare UI-Texte** verwenden ausschliesslich „Quest" — Topbar (`Quest-Baum`), Buttons (`Quest bearbeiten`, `Quest speichern`), aria-labels (`Quest als erledigt markieren`), Tooltips (`Gesperrte Quest`, `Sub-Quest`, `Sperre`), Builder-Felder (`Quest-Titel`, `Sub-Quest hinzufügen`).
+- Fuer Zaehl-Labels in Meta-Listen: `Zweige` (direkte Sub-Quests), `Aufgaben` (Leaves), `Auswahl` (aktiv selektierter Knoten).
 
 ## Siehe auch
 

@@ -87,7 +87,11 @@ export function validateGraphEdges(quests, edges) {
     if (!idSet.has(from) || !idSet.has(to)) {
       return { ok: false, reason: `Ungültige Kante ${from || '?'} -> ${to || '?'}: Quest-ID fehlt im Graph` };
     }
-    if (relation !== 'structure' && relation !== 'dependency') {
+    // V3: 'parent_of' ist ein Alias für 'structure' — beide werden akzeptiert.
+    // Der Edge-Normalizer mappt 'parent_of' intern auf 'structure', aber falls
+    // ein Client den Alias direkt persistiert ohne zwischen-Normalisierung,
+    // soll die Validation nicht fehlschlagen.
+    if (relation !== 'structure' && relation !== 'parent_of' && relation !== 'dependency') {
       return { ok: false, reason: `Ungültige Kanten-Relation bei ${from} -> ${to}` };
     }
   }

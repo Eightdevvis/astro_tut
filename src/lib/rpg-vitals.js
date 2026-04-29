@@ -3,7 +3,6 @@ import {
   isNodeCompleteInQuest,
   getNodeRewardRows,
 } from './rpg-quest-nodes.js';
-import { normalizeRewardEntry } from './rpg-quest-rewards.js';
 import { isQuestCompleted } from './rpg-quest-graph.js';
 import { graphNodes } from './rpg-quests-data.js';
 
@@ -63,6 +62,64 @@ export function applyPointsReward(state, pointKind, amount) {
 }
 
 /**
+ * Migriert einen einzelnen appliedNodeRewardId-Key vom V2-Format zu Phase-2-V3.
+ *
+ * Mapping:
+ *   - `node:<questId>:<nodeId>`         → `node:<nodeId>`
+ *   - `node:<questId>:<nodeId>:<idx>`   → `node:<nodeId>:<idx>`
+ *   - `quest:<questId>:reward:<idx>`    → `node:<questId>:reward:<idx>`
+ *     (im DAG ist die "Quest" ein normaler Node — Reward-Buchung gehoert zu ihm)
+ *   - alles andere bleibt unveraendert (idempotent fuer bereits migrierte Keys).
+ *
+ * @param {string} key
+ * @returns {string}
+ */
+function migrateAppliedRewardKey(key) {
+  if (typeof key !== 'string' || !key) return key;
+  if (key.startsWith('quest:')) {
+    // 'quest:<questId>:reward:<idx>' → 'node:<questId>:reward:<idx>'
+    const parts = key.split(':');
+    if (parts.length === 4 && parts[2] === 'reward') {
+      return `node:${parts[1]}:reward:${parts[3]}`;
+    }
+    return key;
+  }
+  if (key.startsWith('node:')) {
+    const parts = key.split(':');
+    // Format-Erkennung:
+    //   V2-single: node:<questId>:<nodeId>             (3 Teile, letztes nicht-numerisch)
+    //   V2-multi:  node:<questId>:<nodeId>:<idx>       (4 Teile, letztes numerisch)
+    //   V3-single: node:<nodeId>                        (2 Teile)
+    //   V3-multi:  node:<nodeId>:<idx>                  (3 Teile, letztes numerisch)
+    //   V3-quest:  node:<nodeId>:reward:<idx>           (4 Teile, parts[2] === 'reward')
+    //
+    // Spezialfall: parts[2] === 'reward' bedeutet immer V3-Quest-Reward — bleibt unveraendert.
+    if (parts.length === 4 && parts[2] === 'reward') {
+      return key; // V3-quest-Reward, bereits korrekt
+    }
+    if (parts.length === 4) {
+      const last = parts[3];
+      if (/^\d+$/.test(last)) {
+        // V2-multi: node:<questId>:<nodeId>:<idx> → node:<nodeId>:<idx>
+        return `node:${parts[2]}:${parts[3]}`;
+      }
+      return key;
+    }
+    if (parts.length === 3) {
+      const last = parts[2];
+      if (!/^\d+$/.test(last)) {
+        // V2-single: node:<questId>:<nodeId> → node:<nodeId>
+        return `node:${parts[2]}`;
+      }
+      // bereits V3-multi
+      return key;
+    }
+    return key;
+  }
+  return key;
+}
+
+/**
  * @param {unknown} raw
  * @returns {RpgVitalsState}
  */
@@ -75,9 +132,18 @@ export function normalizeRpgVitalsState(raw) {
     : Array.isArray(o.appliedRewardIds)
       ? o.appliedRewardIds
       : [];
-  const appliedNodeRewardIds = rawApplied
-    .filter((x) => typeof x === 'string' && x.trim())
-    .map((x) => x.trim());
+  // Phase-2-Migration: alte Keys auf das neue Schema heben.
+  // Idempotent — bereits migrierte Keys bleiben unveraendert.
+  const seen = new Set();
+  /** @type {string[]} */
+  const appliedNodeRewardIds = [];
+  for (const x of rawApplied) {
+    if (typeof x !== 'string' || !x.trim()) continue;
+    const migrated = migrateAppliedRewardKey(x.trim());
+    if (seen.has(migrated)) continue;
+    seen.add(migrated);
+    appliedNodeRewardIds.push(migrated);
+  }
   return { heart, mana, appliedNodeRewardIds };
 }
 
@@ -96,8 +162,15 @@ export function toRpgVitalsView(state) {
 /**
  * Schreibt genau einmal gut, sobald ein Node mit points-Reward erledigt ist.
  * Kein automatisches Zurückbuchen beim Ent-Haken.
+ *
+ * Phase 2: nodeDone ist flach. Alle Reward-Keys leben jetzt im einheitlichen
+ * Namespace `node:<nodeId>` bzw. `node:<nodeId>:<idx>`. Der frueher
+ * verwendete Quest-Key (`quest:<id>:reward:<i>`) wurde durch
+ * `node:<id>:reward:<i>` ersetzt — die "Quest" ist im DAG nur ein Node ohne
+ * Parent.
+ *
  * @param {import('./rpg-quests-data.js').RpgGraph} graph
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone — flach (V3) oder verschachtelt (V2-Compat)
  * @param {unknown} rawState
  * @returns {{ state: RpgVitalsState; changed: boolean }}
  */
@@ -114,16 +187,18 @@ export function reconcileRpgVitals(graph, nodeDone, rawState) {
 
   for (const q of graphNodes(graph)) {
     walkNodesPreOrder(q.children || [], (s) => {
-      // Neues Format: rewards[] Array. Legacy-Fallback: einzelnes reward Objekt.
-      const entries = Array.isArray(s.rewards) ? s.rewards : (s.reward ? [s.reward] : []);
-      for (let ri = 0; ri < entries.length; ri++) {
-        const ent = normalizeRewardEntry(entries[ri]);
+      // Einheitlich via getNodeRewardRows — liest sowohl 'rewards' (kanonisch) als auch
+      // Legacy-Felder ('questRewards', 'reward').
+      const subRows = getNodeRewardRows(s);
+      for (let ri = 0; ri < subRows.length; ri++) {
+        const ent = subRows[ri]?.entry;
         if (!ent || ent.type !== 'points') continue;
         if (!isNodeCompleteInQuest(q, s.id, nodeDone)) continue;
-        // Key: bei einem einzigen Reward bleibt der Legacy-Key erhalten (ohne Index)
-        const key = entries.length === 1 && ri === 0
-          ? `node:${q.id}:${s.id}`
-          : `node:${q.id}:${s.id}:${ri}`;
+        // Phase-2-Key: kein questId-Praefix mehr. Single-Reward bleibt ohne Index,
+        // multi-Reward bekommt den Index-Suffix.
+        const key = subRows.length === 1 && ri === 0
+          ? `node:${s.id}`
+          : `node:${s.id}:${ri}`;
         if (applied.has(key)) continue;
         applied.add(key);
         acc = applyPointsReward(acc, ent.pointKind, ent.amount);
@@ -136,7 +211,10 @@ export function reconcileRpgVitals(graph, nodeDone, rawState) {
       for (let i = 0; i < rows.length; i++) {
         const ent = rows[i]?.entry;
         if (!ent || ent.type !== 'points') continue;
-        const key = `quest:${q.id}:reward:${i}`;
+        // Phase-2-Key: 'quest:<id>:reward:<i>' → 'node:<id>:reward:<i>'.
+        // Im DAG ist die "Quest" ein Node, also gehoert die Reward-Buchung
+        // in den node-Namespace.
+        const key = `node:${q.id}:reward:${i}`;
         if (applied.has(key)) continue;
         applied.add(key);
         acc = applyPointsReward(acc, ent.pointKind, ent.amount);

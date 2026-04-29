@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import {
+  TILE_SIZE,
+  tilesCoveringBounds,
+  fetchTilesForPage,
+  extractTilePngBase64,
+  uploadTile,
+  getStrokeBounds,
+  loadTileImageFromBase64,
+} from '../lib/graffiti-client.js';
 
 const HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
 const DEFAULT_HOTKEY = ['Enter', '1'];
-const FADE_DAYS = 90;
-/** Muss mit ERASE_RADIUS_PX in api/graffiti.js uebereinstimmen */
+/** Schwamm-Radius in CSS-Pixeln. Muss konsistent mit Server-/Tile-Render-Logik sein. */
 const ERASE_RADIUS = 26;
 
 function normalizeKeyName(key) {
@@ -38,11 +46,6 @@ function seededRng(seed) {
   };
 }
 
-function strokeAlpha(ageDays) {
-  const progress = Math.max(0, Math.min(1, ageDays / FADE_DAYS));
-  return Math.max(0.06, 1 - progress);
-}
-
 function isFunctionalAtPoint(clientX, clientY) {
   const el = document.elementFromPoint(clientX, clientY);
   if (!el) return false;
@@ -58,26 +61,33 @@ export default function GraffitiLayer() {
   const [enabled, setEnabled] = useState(false);
   const [mode, setMode] = useState('tag');
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
-  const [strokes, setStrokes] = useState([]);
-  const strokesRef = useRef(strokes);
+  // tiles: Map<"x:y", { x, y, version, image: HTMLImageElement }>
+  // Jeder Eintrag ist ein bereits dekodiertes Tile-Image bereit zum drawImage.
+  const [tiles, setTiles] = useState(() => new Map());
+  const tilesRef = useRef(tiles);
   const canvasRef = useRef(/** @type {HTMLCanvasElement | null} */ (null));
   const baseCanvasRef = useRef(/** @type {HTMLCanvasElement | null} */ (null));
   const baseDirtyRef = useRef(true);
   const rafRef = useRef(0);
   const modeRef = useRef(mode);
-  const pendingEraseVisualRef = useRef(/** @type {{ points: { x: number; y: number }[] } | null} */ (null));
-  const pendingCommitVisualRef = useRef(/** @type {{ id: number; mode: string; points: { x: number; y: number }[] }[]} */ ([]));
-  const pendingCommitIdRef = useRef(0);
+  // Index-Cursor fuer den inkrementellen Schwamm-Commit:
+  // Punkte 0..eraseCommittedUpToRef-1 wurden bereits ins Base-Canvas gezeichnet
+  // (destination-out). Pro Frame werden nur die Punkte ab diesem Index neu commited,
+  // damit nicht jeder Frame die ganze Schwamm-Spur neu malt.
+  const eraseCommittedUpToRef = useRef(0);
   const pressedRef = useRef(new Set());
   const chordRef = useRef({ ab: false });
   const uiRef = useRef({ visible: false, mode: 'tag' });
   const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
-  const graffitiListAbortRef = useRef(/** @type {AbortController | null} */ (null));
-  const graffitiSyncGenRef = useRef(0);
+  // Generations-Counter fuer Tile-Sync. Wird bei jedem pointerup/Reload erhoeht;
+  // alte in-flight-Responses (zu kleinerer Gen) werden ignoriert.
+  const tileSyncGenRef = useRef(0);
+  // Abort-Controller fuer den initialen Tile-Fetch (wird beim Unmount gecancelt).
+  const tilesFetchAbortRef = useRef(/** @type {AbortController | null} */ (null));
 
   useEffect(() => {
-    strokesRef.current = strokes;
-  }, [strokes]);
+    tilesRef.current = tiles;
+  }, [tiles]);
 
   useEffect(() => {
     uiRef.current = { visible: featureVisible, mode };
@@ -89,7 +99,12 @@ export default function GraffitiLayer() {
 
   useEffect(() => {
     if (mode !== 'erase') {
-      pendingEraseVisualRef.current = null;
+      // Beim Verlassen des Schwamm-Modus: Counter resetten und Base neu malen.
+      // Sonst bleiben evtl. waehrend eines aktiven Erase-Strichs angesammelte
+      // destination-out-Pixel im Base-Canvas sichtbar, obwohl der Stroke nie
+      // gepostet wurde.
+      eraseCommittedUpToRef.current = 0;
+      baseDirtyRef.current = true;
       schedulePaint();
     }
   }, [mode]);
@@ -108,10 +123,25 @@ export default function GraffitiLayer() {
 
   useEffect(() => {
     const page = typeof location !== 'undefined' ? location.pathname : '/';
-    fetch(`/api/graffiti?page=${encodeURIComponent(page)}`)
-      .then((res) => (res.ok ? res.json() : { strokes: [] }))
-      .then((data) => setStrokes(Array.isArray(data?.strokes) ? data.strokes : []))
-      .catch(() => setStrokes([]));
+    const ctrl = new AbortController();
+    tilesFetchAbortRef.current = ctrl;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { tiles: list } = await fetchTilesForPage(page, { signal: ctrl.signal });
+        if (cancelled) return;
+        const map = new Map();
+        for (const t of list) map.set(`${t.x}:${t.y}`, t);
+        setTiles(map);
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        console.warn('[graffiti] Tiles laden fehlgeschlagen', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -178,35 +208,56 @@ export default function GraffitiLayer() {
     };
   }, [hotkey]);
 
-  function drawStrokesOntoContext(ctx, list) {
-    for (const stroke of list) {
-      const points = Array.isArray(stroke.points) ? stroke.points : [];
-      if (points.length < 1) continue;
-      const alpha = strokeAlpha(Number(stroke.ageDays || 0));
-      if (stroke.mode === 'spray') {
-        for (const p of points) {
-          drawSprayCloud(ctx, Number(stroke.id || 0), Number(p?.x || 0), Number(p?.y || 0), alpha);
-        }
-        continue;
-      }
-      const first = points[0];
-      ctx.strokeStyle = '#111';
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = alpha * 0.93;
-      ctx.beginPath();
-      ctx.moveTo(Number(first?.x || 0), Number(first?.y || 0));
-      for (let i = 1; i < points.length; i += 1) {
-        const point = points[i];
-        ctx.lineTo(Number(point?.x || 0), Number(point?.y || 0));
-      }
-      ctx.stroke();
+  // Malt alle Tiles in ihrer Zielposition ins Base-Canvas. Erwartet dass ctx
+  // bereits via setTransform(DPR, ...) skaliert ist — die Tile-Coords werden
+  // in CSS-Pixeln angegeben, nicht physisch.
+  function drawTilesOntoContext(ctx, tilesMap) {
+    if (!tilesMap || tilesMap.size === 0) return;
+    for (const tile of tilesMap.values()) {
+      if (!tile?.image) continue;
+      ctx.drawImage(tile.image, tile.x * TILE_SIZE, tile.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
     }
-    ctx.globalAlpha = 1;
   }
 
-  function applyEraseVisual(ctx, points) {
+  // Schreibt einen Tag-Stroke (Polyline) permanent ins Base. Pixel-identisch zur
+  // Live-Vorschau in paintComposite, damit der User keinen Sprung sieht wenn
+  // pointerup den Stroke commitet.
+  function commitTagStroke(ctx, points) {
+    if (!Array.isArray(points) || points.length < 2) return;
+    ctx.save();
+    ctx.strokeStyle = '#111';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.93;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Schreibt einen Spray-Stroke permanent ins Base. seedBase verschiebt den
+  // RNG-Seed pro Punkt, damit derselbe Stroke wiederholbar diesselbe Pixel-
+  // verteilung produziert (Live-Vorschau verwendet dasselbe Seed-Schema).
+  function commitSprayStroke(ctx, points, seedBase) {
+    if (!Array.isArray(points) || points.length < 1) return;
+    ctx.save();
+    for (let i = 0; i < points.length; i += 1) {
+      const p = points[i];
+      drawSprayCloud(ctx, seedBase + i, p.x, p.y, 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // Wendet Schwamm-Punkte permanent (destination-out) auf einen Context an.
+  // Wird sowohl beim inkrementellen Live-Commit als auch beim Resync (z.B. nach
+  // Resize) aufgerufen. Bewusst OHNE Cursor-Outline — die Outline lebt nur im
+  // Composite-Canvas und wird pro Frame neu gemalt.
+  function commitErasePoints(ctx, points) {
     if (!points || points.length < 1) return;
     ctx.save();
     ctx.globalCompositeOperation = 'destination-out';
@@ -217,13 +268,18 @@ export default function GraffitiLayer() {
       ctx.fill();
     }
     ctx.restore();
-    const lp = points[points.length - 1];
+  }
+
+  // Visueller Cursor-Ring (pink, dezent) am aktuellen Schwamm-Mittelpunkt.
+  // Wird nur ins Composite-Canvas gemalt und ist pro Frame ephemer.
+  function drawEraseCursor(ctx, point) {
+    if (!point) return;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = 'rgba(200, 70, 160, 0.5)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(lp.x, lp.y, ERASE_RADIUS, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, ERASE_RADIUS, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -262,7 +318,18 @@ export default function GraffitiLayer() {
     if (baseDirtyRef.current) {
       bctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       bctx.clearRect(0, 0, docWidth, docHeight);
-      drawStrokesOntoContext(bctx, strokesRef.current);
+      // Tiles vom Server in ihrer Zielposition aufs Base malen.
+      drawTilesOntoContext(bctx, tilesRef.current);
+      // Falls gerade ein Schwamm-Stroke aktiv ist, MUSS die bisherige Spur erneut
+      // ins frisch gemalte Base committeted werden — sonst wuerde sie bei einem
+      // Resize / Tile-Resync mid-stroke einfach verschwinden, der User sieht
+      // ploetzlich wieder alles was er gerade weggewischt hat.
+      if (drawRef.current.active && modeRef.current === 'erase' && drawRef.current.points.length) {
+        commitErasePoints(bctx, drawRef.current.points);
+        eraseCommittedUpToRef.current = drawRef.current.points.length;
+      } else {
+        eraseCommittedUpToRef.current = 0;
+      }
       baseDirtyRef.current = false;
     }
 
@@ -275,59 +342,35 @@ export default function GraffitiLayer() {
     const dr = drawRef.current;
     const m = modeRef.current;
 
-    if (dr.active && m === 'tag' && dr.points.length >= 2) {
-      ctx.strokeStyle = '#111';
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.93;
-      ctx.beginPath();
-      ctx.moveTo(dr.points[0].x, dr.points[0].y);
-      for (let i = 1; i < dr.points.length; i += 1) {
-        ctx.lineTo(dr.points[i].x, dr.points[i].y);
-      }
-      ctx.stroke();
-      ctx.globalAlpha = 1;
+    // Live-Vorschau Tag: pixel-identisch zum spaeteren commitTagStroke.
+    if (dr.active && m === 'tag') {
+      commitTagStroke(ctx, dr.points);
     }
 
+    // Live-Vorschau Spray: seedBase=0 — der spaetere finale Commit verwendet
+    // dasselbe Seed-Schema, damit kein Sprung beim pointerup entsteht.
     if (dr.active && m === 'spray') {
-      for (let i = 0; i < dr.points.length; i += 1) {
-        const p = dr.points[i];
-        drawSprayCloud(ctx, i, p.x, p.y, 1);
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    const pcs = pendingCommitVisualRef.current;
-    for (let c = 0; c < pcs.length; c += 1) {
-      const pc = pcs[c];
-      if (pc.mode === 'tag' && pc.points.length >= 2) {
-        ctx.strokeStyle = '#111';
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = 0.93;
-        ctx.beginPath();
-        ctx.moveTo(pc.points[0].x, pc.points[0].y);
-        for (let i = 1; i < pc.points.length; i += 1) {
-          ctx.lineTo(pc.points[i].x, pc.points[i].y);
-        }
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-      if (pc.mode === 'spray') {
-        for (let i = 0; i < pc.points.length; i += 1) {
-          const p = pc.points[i];
-          drawSprayCloud(ctx, i + 10000 + c * 1000, p.x, p.y, 1);
-        }
-        ctx.globalAlpha = 1;
-      }
+      commitSprayStroke(ctx, dr.points, 0);
     }
 
     if (dr.active && m === 'erase' && dr.points.length) {
-      applyEraseVisual(ctx, dr.points);
-    } else if (m === 'erase' && pendingEraseVisualRef.current?.points?.length) {
-      applyEraseVisual(ctx, pendingEraseVisualRef.current.points);
+      // Inkrementeller Commit: nur die Punkte ab eraseCommittedUpToRef sind neu.
+      // Bei einem typischen Move-Frame ist das genau 1 Punkt — ein einziger
+      // destination-out-Arc statt n*destination-out wie vorher.
+      const total = dr.points.length;
+      const upTo = eraseCommittedUpToRef.current;
+      if (total > upTo) {
+        const newPts = dr.points.slice(upTo);
+        commitErasePoints(bctx, newPts);
+        eraseCommittedUpToRef.current = total;
+        // Base hat sich gerade geaendert -> Composite muss neu daraus gezogen werden.
+        ctx.clearRect(0, 0, docWidth, docHeight);
+        ctx.drawImage(base, 0, 0, docWidth, docHeight);
+      }
+      // Cursor-Outline am aktuellen Punkt: lebt nur im Composite, wird pro Frame
+      // neu gezeichnet — KEIN Commit ins Base. Das ist der visuelle Indikator
+      // damit der User sieht "hier waere meine naechste Loesch-Region".
+      drawEraseCursor(ctx, dr.points[dr.points.length - 1]);
     }
   }
 
@@ -366,7 +409,7 @@ export default function GraffitiLayer() {
   useEffect(() => {
     baseDirtyRef.current = true;
     schedulePaint();
-  }, [strokes]);
+  }, [tiles]);
 
   useEffect(() => {
     function onResize() {
@@ -395,130 +438,170 @@ export default function GraffitiLayer() {
         className={`fgraffiti-canvas ${enabled ? 'is-active' : ''} ${enabled && mode === 'erase' ? 'is-erase' : ''}`}
         onPointerDown={(e) => {
           if (!enabled) return;
-          if (mode !== 'erase') {
-            pendingEraseVisualRef.current = null;
+          // Pointer-Capture: alle weiteren Events dieses Pointers (move/up/cancel)
+          // gehen an dieses Canvas, auch wenn der Finger/Stift es geometrisch verlaesst.
+          // Behebt: "Strich verschwindet sobald man uebers Canvas-Ende rauszieht".
+          // Try/catch weil aeltere Safari/Webkit-Versionen unter speziellen Bedingungen werfen.
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            // Pointer-Capture nicht verfuegbar — Stroke funktioniert trotzdem,
+            // aber bricht ab wenn der Pointer das Canvas verlaesst.
           }
+          // Counter fuer den inkrementellen Schwamm-Commit zuruecksetzen,
+          // egal welcher Mode aktiv ist — neuer Stroke = frischer Counter.
+          eraseCommittedUpToRef.current = 0;
           const pos = pointerToCanvas(e);
           drawRef.current = {
             active: true,
             x: pos.x,
             y: pos.y,
             points: [{ x: Math.round(pos.x), y: Math.round(pos.y) }],
+            // Einmalig beim Down: liegt der Stroke-Start auf einem geschuetzten Element?
+            // Server blockt dann Erase. Bewusst nicht im Move neu pruefen — siehe pointermove.
             functionalHit: isFunctionalAtPoint(e.clientX, e.clientY),
           };
-          if (mode === 'erase') {
-            schedulePaint();
-            return;
-          }
           schedulePaint();
         }}
         onPointerMove={(e) => {
+          // Hot-Path: wird pro Pointer-Frame aufgerufen (oft 60-120Hz auf Tablet).
+          // Hier KEINE DOM-Layout-Abfragen wie elementFromPoint — das forciert Reflow.
+          // functionalHit wurde bereits einmalig in pointerdown gesetzt; der Server-
+          // seitige Schutz vor Erase auf Buttons greift weiterhin auf diesem Wert.
           if (!enabled || !drawRef.current.active) return;
           const pos = pointerToCanvas(e);
-          if (mode === 'erase') {
-            if (drawRef.current.points.length < 420) {
-              drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
-            }
-            if (!drawRef.current.functionalHit) {
-              drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);
-            }
-            schedulePaint();
-            return;
-          }
+          // Punkt-Limit verhindert Endlos-Speicherwachstum bei sehr langen Strichen.
           if (drawRef.current.points.length < 420) {
             drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
-          }
-          if (!drawRef.current.functionalHit) {
-            drawRef.current.functionalHit = isFunctionalAtPoint(e.clientX, e.clientY);
           }
           schedulePaint();
         }}
         onPointerUp={async () => {
           if (!drawRef.current.active) return;
-          const payload = {
-            pagePath: location.pathname,
-            mode,
-            points: drawRef.current.points,
-            isFunctional: drawRef.current.functionalHit,
-          };
-          const wasErase = mode === 'erase';
-          const commitVisualId = !wasErase ? ++pendingCommitIdRef.current : 0;
-          const eraseSnap = wasErase ? drawRef.current.points.slice() : null;
-          drawRef.current.active = false;
-          if (wasErase && eraseSnap?.length) {
-            pendingEraseVisualRef.current = { points: eraseSnap };
-            pendingCommitVisualRef.current = [];
-          } else if (!wasErase) {
-            pendingCommitVisualRef.current = [
-              ...pendingCommitVisualRef.current,
-              { id: commitVisualId, mode, points: drawRef.current.points.slice() },
-            ];
-            pendingEraseVisualRef.current = null;
+          // Snapshot der Stroke-Punkte — drawRef.points wird ggf. spaeter resettet.
+          const points = drawRef.current.points.slice();
+          const strokeMode = modeRef.current;
+          const base = baseCanvasRef.current;
+          const bctx = base?.getContext('2d');
+
+          // 1) Stroke permanent ins Base committen.
+          //    Erase ist durch Phase-1 inkrementell schon committed; tag/spray
+          //    werden hier final festgehalten — pixel-identisch zur Live-Vorschau,
+          //    damit kein Sprung im Composite auftaucht.
+          if (bctx) {
+            if (strokeMode === 'tag') commitTagStroke(bctx, points);
+            else if (strokeMode === 'spray') commitSprayStroke(bctx, points, 0);
           }
+          drawRef.current.active = false;
           schedulePaint();
-          let syncGen = 0;
-          try {
-            syncGen = ++graffitiSyncGenRef.current;
-            const res = await fetch('/api/graffiti', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'same-origin',
-              body: JSON.stringify(payload),
-            });
-            if (res.ok) {
-              graffitiListAbortRef.current?.abort();
-              const listCtl = new AbortController();
-              graffitiListAbortRef.current = listCtl;
-              let data;
+
+          // 2) Bestimme welche Tiles vom Stroke beruehrt wurden.
+          //    getStrokeBounds enthaelt bereits Padding fuer Pinsel-/Spray-/Erase-Radius.
+          const bounds = getStrokeBounds(points);
+          if (!bounds || !base || !bctx) return;
+          const affected = tilesCoveringBounds(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY);
+          if (affected.length === 0) return;
+
+          const dpr = window.devicePixelRatio || 1;
+          const pagePath = location.pathname;
+          // Generation-Counter: spaetere Stroke-Uploads invalidieren in-flight Responses
+          // dieses hier (z.B. wenn der User schnell mehrere Strokes hintereinander
+          // macht und der erste noch nicht ge-acked ist).
+          const myGen = ++tileSyncGenRef.current;
+
+          // 3) Pro betroffenem Tile parallel: Region aus Base extrahieren und uploaden.
+          const results = await Promise.all(
+            affected.map(async ({ x: tx, y: ty }) => {
               try {
-                const list = await fetch(`/api/graffiti?page=${encodeURIComponent(location.pathname)}`, {
-                  credentials: 'same-origin',
-                  signal: listCtl.signal,
+                const pngBase64 = await extractTilePngBase64(base, tx, ty, dpr);
+                const key = `${tx}:${ty}`;
+                const known = tilesRef.current.get(key);
+                const baseVersion = known?.version || 0;
+                const upload = await uploadTile({
+                  pagePath,
+                  tileX: tx,
+                  tileY: ty,
+                  baseVersion,
+                  pngBase64,
+                  strokeBounds: bounds,
                 });
-                data = await list.json().catch(() => ({ strokes: [] }));
-              } catch (e) {
-                if (e?.name === 'AbortError') return;
-                throw e;
+                return { tx, ty, pngBase64, upload };
+              } catch (err) {
+                return { tx, ty, error: err };
               }
-              const next = Array.isArray(data?.strokes) ? data.strokes : [];
-              if (syncGen !== graffitiSyncGenRef.current) return;
-              strokesRef.current = next;
+            })
+          );
+          if (myGen !== tileSyncGenRef.current) return;
+
+          // 4) Auswerten. Bei IRGENDEINEM Conflict / Fehler: Hard-Reload aller Tiles
+          //    von der Server-Truth — der lokale Strich geht dabei verloren.
+          //    Fuer Phase 2 die pragmatische Konfliktloesung; ein granulares Retry
+          //    pro Tile waere praeziser, aber deutlich mehr Code.
+          const anyFailure = results.some((r) => r.error || !r.upload?.ok);
+          if (anyFailure) {
+            try {
+              const fresh = await fetchTilesForPage(pagePath);
+              if (myGen !== tileSyncGenRef.current) return;
+              const map = new Map();
+              for (const t of fresh.tiles) map.set(`${t.x}:${t.y}`, t);
+              setTiles(map);
+              // baseDirty triggert Repaint aus Server-Truth -> lokale destination-out
+              // / tag / spray Pixel verschwinden, Server-Stand wird sichtbar.
               baseDirtyRef.current = true;
-              pendingCommitVisualRef.current = [];
-              if (wasErase) pendingEraseVisualRef.current = null;
-              setStrokes(next);
+              eraseCommittedUpToRef.current = 0;
               flushPaintComposite();
-            } else if (wasErase) {
-              if (syncGen === graffitiSyncGenRef.current) {
-                pendingEraseVisualRef.current = null;
-                flushPaintComposite();
-              }
-            } else {
-              if (syncGen === graffitiSyncGenRef.current) {
-                pendingCommitVisualRef.current = pendingCommitVisualRef.current.filter((item) => item.id !== commitVisualId);
-                flushPaintComposite();
-              }
+            } catch (err) {
+              console.warn('[graffiti] Tile-Reload nach Fehler fehlgeschlagen', err);
             }
-          } catch (e) {
-            if (e?.name === 'AbortError') return;
-            if (wasErase) {
-              if (syncGen === graffitiSyncGenRef.current) {
-                pendingEraseVisualRef.current = null;
-                flushPaintComposite();
-              }
-            } else {
-              if (syncGen === graffitiSyncGenRef.current) {
-                pendingCommitVisualRef.current = pendingCommitVisualRef.current.filter((item) => item.id !== commitVisualId);
-                flushPaintComposite();
-              }
-            }
+            return;
           }
+
+          // 5) Alles OK: lokale tile-Map mit neuen Versionen + Images aktualisieren.
+          //    Wir laden das exportierte PNG nochmal als Image-Element, damit ein
+          //    spaeterer baseDirty (Resize, Mode-Wechsel) den frischen Strich
+          //    wieder rendern kann statt das alte Tile-Image zu nehmen.
+          const nextMap = new Map(tilesRef.current);
+          await Promise.all(
+            results.map(async (r) => {
+              try {
+                const img = await loadTileImageFromBase64(r.pngBase64);
+                nextMap.set(`${r.tx}:${r.ty}`, {
+                  x: r.tx,
+                  y: r.ty,
+                  version: r.upload.version,
+                  image: img,
+                });
+              } catch {
+                // Wenn der eigene PNG-Decode failed haben wir ein groesseres Problem,
+                // aber serverseitig ist das Tile bereits gespeichert -> beim naechsten
+                // Page-Load wird's korrekt geladen.
+              }
+            })
+          );
+          if (myGen !== tileSyncGenRef.current) return;
+          eraseCommittedUpToRef.current = 0;
+          setTiles(nextMap);
         }}
-        onPointerLeave={() => {
+        onPointerCancel={() => {
+          // Echter Abbruch: System hat das Pointer-Tracking unterbrochen
+          // (z.B. iOS-Notification, eingehender Anruf, Browser-Gesture-Override).
+          // Hier ist der aktuelle Strich verloren — Cleanup nicht-committeter Vorschau.
+          // pointerLeave wurde absichtlich entfernt: dank setPointerCapture feuert es
+          // waehrend eines Strokes nicht, und sein vorheriges Verhalten ("Stroke killen
+          // wenn Finger ueber den Canvas-Rand geht") war auf Tablets nervig.
           if (!drawRef.current.active) return;
+          const wasErase = modeRef.current === 'erase';
           drawRef.current.active = false;
-          pendingEraseVisualRef.current = null;
-          pendingCommitVisualRef.current = [];
+          if (wasErase) {
+            // Lokal angewandte destination-out-Pixel im Base verwerfen — Stroke
+            // wurde nie an den Server geschickt, der Effekt darf nicht haengen bleiben.
+            baseDirtyRef.current = true;
+            eraseCommittedUpToRef.current = 0;
+          } else {
+            // Tag/Spray: live-Vorschau ist im Composite (nicht im Base), wird beim
+            // naechsten paint nicht mehr gezeichnet weil drawRef.active=false.
+            // Nichts zu tun ausser repaint.
+          }
           schedulePaint();
         }}
       />

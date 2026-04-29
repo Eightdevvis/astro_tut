@@ -45,6 +45,7 @@ if (token) {
         padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
       }
       .page {
+        --past-posts-offset: 8dvh;
         max-width: 1100px;
         margin: 0 auto;
         padding: max(2rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
@@ -186,16 +187,7 @@ if (token) {
         opacity: 0.85;
       }
       .past-posts {
-        margin-top: 82vh;
-        opacity: 0;
-        transform: translateY(40px);
-        transition: opacity 0.35s ease, transform 0.35s ease;
-        pointer-events: none;
-      }
-      .past-posts.show {
-        opacity: 1;
-        transform: translateY(0);
-        pointer-events: auto;
+        margin-top: var(--past-posts-offset);
       }
       .past-posts h2 {
         margin: 0 0 0.8rem;
@@ -256,15 +248,28 @@ if (token) {
       }
       .post-modal-head {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.7rem;
         margin-bottom: 0.6rem;
       }
+      .post-modal-actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .post-modal-edit,
+      .post-modal-delete,
       .post-modal-close {
         border: 1px solid var(--site-card-border);
         background: transparent;
         color: inherit;
         border-radius: 0.45rem;
         cursor: pointer;
+        padding: 0.35rem 0.55rem;
+      }
+      .post-modal-delete {
+        border-color: rgba(220, 80, 80, 0.55);
+        color: #d04d4d;
       }
       .post-modal-body {
         white-space: pre-wrap;
@@ -330,6 +335,10 @@ if (token) {
         <div class="post-modal" id="postModal" aria-hidden="true">
           <div class="post-modal-panel">
             <div class="post-modal-head">
+              <div class="post-modal-actions">
+                <button class="post-modal-edit" id="postModalEdit" type="button">Bearbeiten</button>
+                <button class="post-modal-delete" id="postModalDelete" type="button">Loeschen</button>
+              </div>
               <button class="post-modal-close" id="postModalClose" type="button">Schliessen</button>
             </div>
             <div class="post-modal-body" id="postModalBody"></div>
@@ -349,6 +358,8 @@ if (token) {
       const pastPostsGrid = document.getElementById('pastPostsGrid');
       const postModal = document.getElementById('postModal');
       const postModalClose = document.getElementById('postModalClose');
+      const postModalEdit = document.getElementById('postModalEdit');
+      const postModalDelete = document.getElementById('postModalDelete');
       const postModalBody = document.getElementById('postModalBody');
       const doodleCanvas = document.getElementById('doodleCanvas');
       const toolButtons = Array.from(document.querySelectorAll('.tool'));
@@ -363,6 +374,9 @@ if (token) {
       let drawing = false;
       let lastX = 0;
       let lastY = 0;
+      let currentEditingPostId = null;
+      let openPostId = null;
+      const postsById = new Map();
 
       function setMsg(text, good) {
         if (!msg) return;
@@ -412,6 +426,11 @@ if (token) {
           const data = await res.json().catch(() => ({}));
           if (!res.ok) return;
           const rows = Array.isArray(data.posts) ? data.posts : [];
+          postsById.clear();
+          rows.forEach((row) => {
+            const id = Number(row?.id);
+            if (Number.isInteger(id) && id > 0) postsById.set(id, row);
+          });
           if (rows.length === 0) {
             pastPostsGrid.innerHTML = '<div class="post-card"><div class="post-preview">Noch keine Posts.</div></div>';
             return;
@@ -426,7 +445,8 @@ if (token) {
               const preview = fullText.slice(start, start + span);
               const date = String(row.created_at || '').replace('T', ' ').slice(0, 16);
               const escapedFull = fullText.replace(/[<>&]/g, '');
-              return `<button class="post-card" type="button" data-full="${escapedFull.replace(/"/g, '&quot;')}">
+              const id = Number(row.id);
+              return `<button class="post-card" type="button" data-id="${id}" data-full="${escapedFull.replace(/"/g, '&quot;')}">
                 <div class="post-date">${date}</div>
                 <div class="post-preview">${preview.replace(/[<>&]/g, '')}</div>
               </button>`;
@@ -434,6 +454,8 @@ if (token) {
             .join('');
           Array.from(pastPostsGrid.querySelectorAll('.post-card')).forEach((el) => {
             el.addEventListener('click', () => {
+              const id = Number(el.getAttribute('data-id') || 0);
+              openPostId = Number.isInteger(id) && id > 0 ? id : null;
               const full = el.getAttribute('data-full') || '';
               if (postModalBody) postModalBody.textContent = full;
               postModal?.classList.add('show');
@@ -456,12 +478,57 @@ if (token) {
         }
       });
 
+      postModalEdit?.addEventListener('click', () => {
+        if (!editor || !editorWrap || !openPostId) return;
+        const row = postsById.get(openPostId);
+        if (!row) return;
+        editorWrap.classList.add('active');
+        editor.innerHTML = String(row.content_html || '');
+        currentEditingPostId = openPostId;
+        if (savePostBtn) savePostBtn.textContent = 'Post aktualisieren';
+        postModal?.classList.remove('show');
+        postModal?.setAttribute('aria-hidden', 'true');
+        editor.focus();
+        resizeCanvasToBox();
+        setMsg('Bearbeitungsmodus aktiv.', true);
+      });
+
+      postModalDelete?.addEventListener('click', async () => {
+        if (!openPostId) return;
+        const sure = window.confirm('Diesen Post wirklich loeschen?');
+        if (!sure) return;
+        postModalDelete.disabled = true;
+        try {
+          const res = await fetch(`/api/posts/${openPostId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            setMsg((data.error || 'Loeschen fehlgeschlagen').toUpperCase(), false);
+            return;
+          }
+          if (currentEditingPostId === openPostId) {
+            currentEditingPostId = null;
+            if (savePostBtn) savePostBtn.textContent = 'Post speichern';
+          }
+          postModal?.classList.remove('show');
+          postModal?.setAttribute('aria-hidden', 'true');
+          openPostId = null;
+          await loadPosts();
+          setMsg('Post geloescht.', true);
+        } catch {
+          setMsg('Netzwerkfehler.', false);
+        } finally {
+          postModalDelete.disabled = false;
+        }
+      });
+
       if (activation && editorWrap && editor) {
         activation.addEventListener('click', () => {
           editorWrap.classList.add('active');
           editor.focus();
           resizeCanvasToBox();
-          void loadPosts();
         });
       }
 
@@ -570,8 +637,10 @@ if (token) {
           savePostBtn.disabled = true;
           setMsg('', true);
           try {
-            const res = await fetch('/api/posts/add', {
-              method: 'POST',
+            const isEditing = Number.isInteger(currentEditingPostId) && currentEditingPostId > 0;
+            const endpoint = isEditing ? `/api/posts/${currentEditingPostId}` : '/api/posts/add';
+            const res = await fetch(endpoint, {
+              method: isEditing ? 'PATCH' : 'POST',
               headers: { 'Content-Type': 'application/json' },
               credentials: 'same-origin',
               body: JSON.stringify({
@@ -586,7 +655,13 @@ if (token) {
               setMsg((data.error || 'Speichern fehlgeschlagen').toUpperCase(), false);
               return;
             }
-            setMsg('Post gespeichert.', true);
+            if (isEditing) {
+              setMsg('Post aktualisiert.', true);
+              currentEditingPostId = null;
+              if (savePostBtn) savePostBtn.textContent = 'Post speichern';
+            } else {
+              setMsg('Post gespeichert.', true);
+            }
             await loadPosts();
           } catch {
             setMsg('Netzwerkfehler.', false);
@@ -596,14 +671,8 @@ if (token) {
         });
       }
 
-      if (pastPostsSection) {
-        const showOnScroll = () => {
-          if (window.scrollY > 40) pastPostsSection.classList.add('show');
-        };
-        window.addEventListener('scroll', showOnScroll, { passive: true });
-      }
-
       applyColor();
+      void loadPosts();
     </script>
     <ThemeClient />
   </body>

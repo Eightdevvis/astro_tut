@@ -9,7 +9,8 @@ import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
-const canUseMinigames = Boolean(username) && (await hasPermission(username, 'minigames_access'));
+// Vorerst nur Superuser (siehe minigames/index.astro fuer Begruendung).
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
@@ -28,7 +29,7 @@ if (!canUseMinigames) {
   <body>
     <Nav2 variant="subpage" />
     <header class="fs-page-head">
-      <p class="fs-page-kicker"><a href="/minigames">le mathematicos rainbow</a></p>
+      <p class="fs-page-kicker"><a href="/minigames">← Spielwiese</a></p>
       <p class="fs-page-lead">
         Iterationen z<sub>n+1</sub> = z<sub>n</sub>² + c — Mandelbrot (c aus der Ebene) und Julia (festes c). Ziehen zum Erkunden,
         Zoomen mit Mausrad oder zwei Fingern, Farben und c per Regler oder (Julia) „Ziehen bewegt c“.

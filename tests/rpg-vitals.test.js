@@ -68,7 +68,10 @@ test('normalizeRpgVitalsState clamps values to 0..50', () => {
   assert.equal(v.mana, RPG_VITAL_MAX_POINTS);
 });
 
-test('normalizeRpgVitalsState preserves valid applied IDs', () => {
+test('normalizeRpgVitalsState migriert V2-Schluessel auf das Phase-2-Format', () => {
+  // Phase-2-Migration: alte Schluessel werden idempotent transformiert.
+  //   node:<questId>:<nodeId>     -> node:<nodeId>
+  //   quest:<questId>:reward:<i>  -> node:<questId>:reward:<i>
   const v = normalizeRpgVitalsState({
     heart: 30,
     mana: 20,
@@ -76,16 +79,37 @@ test('normalizeRpgVitalsState preserves valid applied IDs', () => {
   });
   assert.equal(v.heart, 30);
   assert.equal(v.mana, 20);
-  assert.deepEqual(v.appliedNodeRewardIds, ['node:q1:a', 'quest:q1:reward:0']);
+  assert.deepEqual(v.appliedNodeRewardIds, ['node:a', 'node:q1:reward:0']);
 });
 
-test('normalizeRpgVitalsState reads legacy appliedRewardIds', () => {
+test('normalizeRpgVitalsState ist idempotent fuer bereits migrierte Phase-2-Schluessel', () => {
+  const v = normalizeRpgVitalsState({
+    heart: 25,
+    mana: 25,
+    appliedNodeRewardIds: ['node:a', 'node:q1:reward:0'],
+  });
+  assert.deepEqual(v.appliedNodeRewardIds, ['node:a', 'node:q1:reward:0']);
+});
+
+test('normalizeRpgVitalsState reads legacy appliedRewardIds und migriert ebenfalls', () => {
   const v = normalizeRpgVitalsState({
     heart: 25,
     mana: 25,
     appliedRewardIds: ['node:q1:a'],
   });
-  assert.deepEqual(v.appliedNodeRewardIds, ['node:q1:a']);
+  // Migration: node:q1:a -> node:a
+  assert.deepEqual(v.appliedNodeRewardIds, ['node:a']);
+});
+
+test('normalizeRpgVitalsState dedupliziert nach Migration (zwei V2-Keys -> ein V3-Key)', () => {
+  // Zwei verschiedene Quests, derselbe nodeId — V2 hatte unterschiedliche Keys,
+  // V3 bekommt einen Key. Der zweite wird verworfen (Idempotenz beim ersten Trip).
+  const v = normalizeRpgVitalsState({
+    heart: 25,
+    mana: 25,
+    appliedNodeRewardIds: ['node:q1:shared', 'node:q2:shared'],
+  });
+  assert.deepEqual(v.appliedNodeRewardIds, ['node:shared']);
 });
 
 // ============================================================
@@ -150,12 +174,14 @@ test('reconcileRpgVitals: node with heart reward, node done → reward applied',
     ])],
     []
   );
-  const nodeDone = { q1: { a: true } };
+  // Phase 2: nodeDone ist flach (Record<nodeId, boolean>)
+  const nodeDone = { a: true };
   const result = reconcileRpgVitals(graph, nodeDone, freshVitals());
   assert.equal(result.changed, true);
   assert.equal(result.state.heart, 30); // 25 + 5
   assert.equal(result.state.mana, RPG_VITAL_BASE_MANA);
-  assert.ok(result.state.appliedNodeRewardIds.includes('node:q1:a'));
+  // Phase 2: Key ohne questId-Praefix
+  assert.ok(result.state.appliedNodeRewardIds.includes('node:a'));
 });
 
 test('reconcileRpgVitals: node NOT done → reward NOT applied', () => {
@@ -218,13 +244,15 @@ test('reconcileRpgVitals: multiple node rewards accumulated', () => {
     ])],
     []
   );
-  const nodeDone = { q1: { a: true, b: true } };
+  // Phase 2: flaches nodeDone
+  const nodeDone = { a: true, b: true };
   const result = reconcileRpgVitals(graph, nodeDone, freshVitals());
   assert.equal(result.changed, true);
   assert.equal(result.state.heart, 28); // 25 + 3
   assert.equal(result.state.mana, 23); // 25 - 2
-  assert.ok(result.state.appliedNodeRewardIds.includes('node:q1:a'));
-  assert.ok(result.state.appliedNodeRewardIds.includes('node:q1:b'));
+  // Phase 2: Keys ohne questId
+  assert.ok(result.state.appliedNodeRewardIds.includes('node:a'));
+  assert.ok(result.state.appliedNodeRewardIds.includes('node:b'));
 });
 
 test('reconcileRpgVitals: clamping at 0 and 50', () => {
@@ -256,12 +284,13 @@ test('reconcileRpgVitals: quest reward applied when quest completed', () => {
     )],
     []
   );
-  // Node 'a' done → Quest 100% → Quest-Reward wird gebucht
-  const nodeDone = { q1: { a: true } };
+  // Phase 2: flaches nodeDone
+  const nodeDone = { a: true };
   const result = reconcileRpgVitals(graph, nodeDone, freshVitals());
   assert.equal(result.changed, true);
   assert.equal(result.state.mana, 32); // 25 + 7
-  assert.ok(result.state.appliedNodeRewardIds.includes('quest:q1:reward:0'));
+  // Phase 2: 'quest:<id>:reward:<i>' wurde durch 'node:<id>:reward:<i>' ersetzt
+  assert.ok(result.state.appliedNodeRewardIds.includes('node:q1:reward:0'));
 });
 
 test('reconcileRpgVitals: quest reward NOT applied when quest incomplete', () => {

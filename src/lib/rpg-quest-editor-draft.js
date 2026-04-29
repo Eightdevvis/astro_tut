@@ -16,12 +16,15 @@ import { normalizeQuestId } from './rpg-quest-form-helpers.js';
  *   description: string;
  *   optional: boolean;
  *   rewardOn: boolean;
- *   rewardKind: 'text' | 'item' | 'points';
+ *   rewardRows: QuestRewardDraftRow[];
+ *   rewardKind: 'text' | 'item' | 'points' | 'achievement';
  *   rewardText: string;
  *   itemId: string;
  *   itemDisplayName: string;
  *   itemCategory: string;
  *   itemDescription: string;
+ *   achievementId: string;
+ *   achievementDisplayName: string;
  *   pointKind: 'heart' | 'mana';
  *   pointsAmount: string;
  *   subnodesOn: boolean;
@@ -51,12 +54,15 @@ export function createEmptyNodeDraft(saved = false) {
     description: '',
     optional: false,
     rewardOn: false,
+    rewardRows: [],
     rewardKind: 'text',
     rewardText: '',
     itemId: '',
     itemDisplayName: '',
     itemCategory: '',
     itemDescription: '',
+    achievementId: '',
+    achievementDisplayName: '',
     pointKind: 'heart',
     pointsAmount: '',
     subnodesOn: false,
@@ -83,10 +89,14 @@ export function questNodeToDraft(node) {
   const rent = normalizeRewardEntry(Array.isArray(node.rewards) && node.rewards.length > 0 ? node.rewards[0] : node.reward);
   const rewardOn = !!rent;
   const rewardKind =
-    rent && rent.type === 'item' ? 'item' : rent && rent.type === 'points' ? 'points' : 'text';
+    rent?.type === 'item' ? 'item' :
+    rent?.type === 'points' ? 'points' :
+    rent?.type === 'achievement' ? 'achievement' : 'text';
   const rewardText = rent && rent.type === 'text' ? rent.text : '';
   const itemId = rent && rent.type === 'item' ? rent.itemId : '';
   const itemDisplayName = rent && rent.type === 'item' && rent.displayName ? rent.displayName : '';
+  const achievementId = rent && rent.type === 'achievement' ? rent.achievementId : '';
+  const achievementDisplayName = rent && rent.type === 'achievement' && rent.displayName ? rent.displayName : '';
   const pointKind = rent && rent.type === 'points' ? rent.pointKind : 'heart';
   const pointsAmount = rent && rent.type === 'points' ? String(rent.amount) : '';
   return {
@@ -98,10 +108,13 @@ export function questNodeToDraft(node) {
     rewardOn,
     rewardKind,
     rewardText,
+    rewardRows: questRewardsToDraftRows(Array.isArray(node.rewards) ? node.rewards : rent ? [rent] : []),
     itemId,
     itemDisplayName,
     itemCategory: '',
     itemDescription: '',
+    achievementId,
+    achievementDisplayName,
     pointKind,
     pointsAmount,
     subnodesOn: subs,
@@ -183,23 +196,8 @@ function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
   const label = (d.title || '').trim() || 'Schritt';
   const description = (d.description || '').trim();
   const optional = !!d.optional;
-  /** @type {import('./rpg-quest-nodes.js').RpgQuestRewardEntry | undefined} */
-  let reward;
-  if (d.rewardOn) {
-    if (d.rewardKind === 'item' && (d.itemId || '').trim()) {
-      const itemId = (d.itemId || '').trim();
-      const dn = (d.itemDisplayName || '').trim();
-      reward = dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
-    } else if (d.rewardKind === 'points' && (d.pointsAmount || '').trim()) {
-      const n = Number(String(d.pointsAmount).trim());
-      if (Number.isFinite(n)) {
-        const pointKind = d.pointKind === 'mana' ? 'mana' : 'heart';
-        reward = { type: 'points', pointKind, amount: Math.trunc(n) };
-      }
-    } else if ((d.rewardText || '').trim()) {
-      reward = { type: 'text', text: (d.rewardText || '').trim() };
-    }
-  }
+  // Rewards kommen aus rewardRows[] (kanonisches Array-Format)
+  const rewards = draftRewardRowsToQuestRewards(d.rewardRows || []);
   const due =
     d.timeLimitOn && (d.timeDueAt || '').trim()
       ? (d.timeDueAt || '').trim().slice(0, 10)
@@ -208,20 +206,22 @@ function buildRawFromDraft(d, id, chainDependsOn, usedIds, parentId) {
 
   if (meaningfulKids.length > 0) {
     const children = processDraftSiblings(meaningfulKids, usedIds, id);
+    // Kanonisches Feld ist 'title', nicht 'label' — wichtig fuer Normalisierung und DB-Persistenz.
     /** @type {import('./rpg-quests-data.js').RpgNode} */
-    const out = { id, parentId, label, optional, children, ...(description ? { description } : {}) };
-  if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
-    if (reward) out.reward = reward;
+    const out = { id, parentId, title: label, optional, children, ...(description ? { description } : {}) };
+    if (chainDependsOn.length) out.dependsOn = [...chainDependsOn];
+    if (rewards.length) out.rewards = rewards;
     if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) out.timeDueAt = due;
     if (d.orderLinked) out.orderLinked = true;
     if (d.isLock) out.isLock = true;
     return out;
   }
 
+  // Kanonisches Feld ist 'title', nicht 'label' — wichtig fuer Normalisierung und DB-Persistenz.
   /** @type {import('./rpg-quests-data.js').RpgNode} */
-  const leaf = { id, parentId, label, optional, children: [], ...(description ? { description } : {}) };
+  const leaf = { id, parentId, title: label, optional, children: [], ...(description ? { description } : {}) };
   if (chainDependsOn.length) leaf.dependsOn = [...chainDependsOn];
-  if (reward) leaf.reward = reward;
+  if (rewards.length) leaf.rewards = rewards;
   if (due && /^\d{4}-\d{2}-\d{2}$/.test(due)) leaf.timeDueAt = due;
   if (d.orderLinked) leaf.orderLinked = true;
   if (d.isLock) leaf.isLock = true;
@@ -290,15 +290,16 @@ export function aiQuestNodesToDraftNodes(nodes) {
 /**
  * @typedef {{
  *   key: string;
- *   kind: 'text' | 'item' | 'points';
+ *   kind: 'text' | 'item' | 'points' | 'achievement';
  *   text: string;
  *   itemId: string;
  *   displayName: string;
  *   itemCategory: string;
  *   itemDescription: string;
+ *   achievementId: string;
+ *   achievementTitle: string;
  *   pointKind: 'heart' | 'mana';
  *   pointsAmount: string;
- *   unlockAtPercent: string;
  * }} QuestRewardDraftRow
  */
 
@@ -312,9 +313,10 @@ export function createEmptyRewardRow() {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    achievementId: '',
+    achievementTitle: '',
     pointKind: 'heart',
     pointsAmount: '',
-    unlockAtPercent: '',
   };
 }
 
@@ -336,9 +338,25 @@ export function ensureRewardRowFields(raw) {
       displayName: typeof r.displayName === 'string' ? r.displayName : '',
       itemCategory: typeof r.itemCategory === 'string' ? r.itemCategory : '',
       itemDescription: typeof r.itemDescription === 'string' ? r.itemDescription : '',
+      achievementId: '',
+      achievementTitle: '',
       pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
       pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
-      unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
+    };
+  }
+  if (r.kind === 'achievement') {
+    return {
+      key,
+      kind: 'achievement',
+      text: '',
+      itemId: '',
+      displayName: '',
+      itemCategory: '',
+      itemDescription: '',
+      achievementId: typeof r.achievementId === 'string' ? r.achievementId : '',
+      achievementTitle: typeof r.achievementTitle === 'string' ? r.achievementTitle : '',
+      pointKind: 'heart',
+      pointsAmount: '',
     };
   }
   if (r.kind === 'points') {
@@ -350,9 +368,10 @@ export function ensureRewardRowFields(raw) {
       displayName: '',
       itemCategory: '',
       itemDescription: '',
+      achievementId: '',
+      achievementTitle: '',
       pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
       pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
-      unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
     };
   }
   return {
@@ -363,10 +382,36 @@ export function ensureRewardRowFields(raw) {
     displayName: '',
     itemCategory: '',
     itemDescription: '',
+    achievementId: '',
+    achievementTitle: '',
     pointKind: r.pointKind === 'mana' ? 'mana' : 'heart',
     pointsAmount: typeof r.pointsAmount === 'string' ? r.pointsAmount : '',
-    unlockAtPercent: typeof r.unlockAtPercent === 'string' ? r.unlockAtPercent : '',
   };
+}
+
+/**
+ * Baut einen kanonischen RewardEntry aus alten Single-Reward-Feldern eines QuestNodeDraft.
+ * Nur für die Migration in ensureNodeDraftFields.
+ * @param {any} d
+ * @returns {import('./rpg-quests-data.js').RpgRewardEntry | null}
+ */
+function _legacySingleRewardToEntry(d) {
+  if (d.rewardKind === 'item' && (d.itemId || '').trim()) {
+    const itemId = d.itemId.trim();
+    const dn = (d.itemDisplayName || '').trim();
+    return dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
+  }
+  if (d.rewardKind === 'achievement' && (d.achievementId || '').trim()) {
+    const achievementId = d.achievementId.trim();
+    const dn = (d.achievementDisplayName || '').trim();
+    return dn ? { type: 'achievement', achievementId, displayName: dn } : { type: 'achievement', achievementId };
+  }
+  if (d.rewardKind === 'points' && (d.pointsAmount || '').trim()) {
+    const n = Number(String(d.pointsAmount).trim());
+    if (Number.isFinite(n)) return { type: 'points', pointKind: d.pointKind === 'mana' ? 'mana' : 'heart', amount: Math.trunc(n) };
+  }
+  if ((d.rewardText || '').trim()) return { type: 'text', text: d.rewardText.trim() };
+  return null;
 }
 
 /**
@@ -376,13 +421,24 @@ export function ensureRewardRowFields(raw) {
 export function ensureNodeDraftFields(raw) {
   if (!raw || typeof raw !== 'object') return createEmptyNodeDraft(false);
   const d = /** @type {QuestNodeDraft} */ ({ ...createEmptyNodeDraft(!!/** @type {any} */ (raw).saved), ...raw });
-  if (d.rewardKind !== 'text' && d.rewardKind !== 'item' && d.rewardKind !== 'points') {
-    d.rewardKind = (d.itemId || '').trim() ? 'item' : 'text';
+  // rewardRows: Migration aus altem Single-Reward-Format falls noch nicht vorhanden
+  if (!Array.isArray(d.rewardRows)) {
+    if (d.rewardOn) {
+      const oldEntry = _legacySingleRewardToEntry(d);
+      d.rewardRows = oldEntry ? questRewardsToDraftRows([oldEntry]) : [];
+    } else {
+      d.rewardRows = [];
+    }
+  }
+  if (d.rewardKind !== 'text' && d.rewardKind !== 'item' && d.rewardKind !== 'points' && d.rewardKind !== 'achievement') {
+    d.rewardKind = (d.itemId || '').trim() ? 'item' : (d.achievementId || '').trim() ? 'achievement' : 'text';
   }
   if (typeof d.itemId !== 'string') d.itemId = '';
   if (typeof d.itemDisplayName !== 'string') d.itemDisplayName = '';
   if (typeof d.itemCategory !== 'string') d.itemCategory = '';
   if (typeof d.itemDescription !== 'string') d.itemDescription = '';
+  if (typeof d.achievementId !== 'string') d.achievementId = '';
+  if (typeof d.achievementDisplayName !== 'string') d.achievementDisplayName = '';
   if (typeof d.pointKind !== 'string' || (d.pointKind !== 'heart' && d.pointKind !== 'mana')) {
     d.pointKind = 'heart';
   }
@@ -404,10 +460,6 @@ export function ensureNodeDraftFields(raw) {
 export function questRewardRowsToDraftRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   return rows.map((row) => {
-    const up =
-      typeof row.unlockAtPercent === 'number' && Number.isFinite(row.unlockAtPercent)
-        ? String(Math.round(row.unlockAtPercent))
-        : '';
     const e = row.entry;
     if (e.type === 'item') {
       return {
@@ -418,9 +470,25 @@ export function questRewardRowsToDraftRows(rows) {
         displayName: e.displayName || '',
         itemCategory: '',
         itemDescription: '',
+        achievementId: '',
+        achievementTitle: '',
         pointKind: 'heart',
         pointsAmount: '',
-        unlockAtPercent: up,
+      };
+    }
+    if (e.type === 'achievement') {
+      return {
+        key: newDraftKey(),
+        kind: 'achievement',
+        text: '',
+        itemId: '',
+        displayName: '',
+        itemCategory: '',
+        itemDescription: '',
+        achievementId: e.achievementId,
+        achievementTitle: e.displayName || '',
+        pointKind: 'heart',
+        pointsAmount: '',
       };
     }
     if (e.type === 'points') {
@@ -432,9 +500,10 @@ export function questRewardRowsToDraftRows(rows) {
         displayName: '',
         itemCategory: '',
         itemDescription: '',
+        achievementId: '',
+        achievementTitle: '',
         pointKind: e.pointKind,
         pointsAmount: String(e.amount),
-        unlockAtPercent: up,
       };
     }
     return {
@@ -445,9 +514,10 @@ export function questRewardRowsToDraftRows(rows) {
       displayName: '',
       itemCategory: '',
       itemDescription: '',
+      achievementId: '',
+      achievementTitle: '',
       pointKind: 'heart',
       pointsAmount: '',
-      unlockAtPercent: up,
     };
   });
 }
@@ -473,6 +543,11 @@ export function draftRewardRowsToQuestRewards(rows) {
       const dn = typeof e.displayName === 'string' ? e.displayName.trim() : '';
       return dn ? { type: 'item', itemId, displayName: dn } : { type: 'item', itemId };
     }
+    if (e.type === 'achievement') {
+      const achievementId = String(e.achievementId ?? '');
+      const dn = typeof e.displayName === 'string' ? e.displayName.trim() : '';
+      return dn ? { type: 'achievement', achievementId, displayName: dn } : { type: 'achievement', achievementId };
+    }
     if (e.type === 'points') {
       const pointKind = e.pointKind === 'mana' ? 'mana' : 'heart';
       const amt = Number(e.amount);
@@ -484,7 +559,7 @@ export function draftRewardRowsToQuestRewards(rows) {
 }
 
 /**
- * Persistenz-Form inkl. optionalem unlockAtPercent (leeres Feld = automatische Verteilung).
+ * Wandelt Draft-Reward-Rows in gespeicherte Reward-Einträge um.
  * @param {QuestRewardDraftRow[]} rows
  * @returns {Record<string, unknown>[]}
  */
@@ -492,34 +567,28 @@ export function draftRewardRowsToStoredRewards(rows) {
   /** @type {Record<string, unknown>[]} */
   const out = [];
   for (const r of rows) {
-    const upRaw = (r.unlockAtPercent || '').trim();
-    const upNum = upRaw === '' ? NaN : Number(upRaw);
-    const hasExplicit =
-      upRaw !== '' && Number.isFinite(upNum) && upNum >= 0 && upNum <= 100;
-    const unlockAtPercent = hasExplicit ? Math.round(upNum) : undefined;
-
     if (r.kind === 'item' && (r.itemId || '').trim()) {
       const itemId = (r.itemId || '').trim();
       const dn = (r.displayName || '').trim();
       /** @type {Record<string, unknown>} */
       const o = { type: 'item', itemId };
       if (dn) o.displayName = dn;
-      if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
+      out.push(o);
+    } else if (r.kind === 'achievement' && (r.achievementId || '').trim()) {
+      const achievementId = (r.achievementId || '').trim();
+      const dn = (r.achievementTitle || '').trim();
+      /** @type {Record<string, unknown>} */
+      const o = { type: 'achievement', achievementId };
+      if (dn) o.displayName = dn;
       out.push(o);
     } else if (r.kind === 'points' && (r.pointsAmount || '').trim()) {
       const n = Number(String(r.pointsAmount).trim());
       if (Number.isFinite(n)) {
         const pointKind = r.pointKind === 'mana' ? 'mana' : 'heart';
-        /** @type {Record<string, unknown>} */
-        const o = { type: 'points', pointKind, amount: Math.trunc(n) };
-        if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
-        out.push(o);
+        out.push({ type: 'points', pointKind, amount: Math.trunc(n) });
       }
     } else if (r.kind === 'text' && (r.text || '').trim()) {
-      /** @type {Record<string, unknown>} */
-      const o = { type: 'text', text: (r.text || '').trim() };
-      if (unlockAtPercent !== undefined) o.unlockAtPercent = unlockAtPercent;
-      out.push(o);
+      out.push({ type: 'text', text: (r.text || '').trim() });
     }
   }
   return out;
@@ -573,16 +642,18 @@ export function collectQuestmakerItemsFromDrafts(nodeDrafts, rewardRows, catalog
   const map = new Map();
   /** @param {QuestNodeDraft} d */
   function walk(d) {
-    if (d.rewardOn && d.rewardKind === 'item' && (d.itemId || '').trim()) {
-      const id = d.itemId.trim();
-      if (inCatalog.has(id)) return;
+    // Über rewardRows iterieren (kanonisches Array-Format)
+    for (const r of d.rewardRows || []) {
+      if (r.kind !== 'item' || !(r.itemId || '').trim()) continue;
+      const id = r.itemId.trim();
+      if (inCatalog.has(id)) continue;
       const row = {
         id,
-        category: isRpgItemCategoryId((d.itemCategory || '').trim())
-          ? /** @type {string} */ ((d.itemCategory || '').trim())
+        category: isRpgItemCategoryId((r.itemCategory || '').trim())
+          ? /** @type {string} */ ((r.itemCategory || '').trim())
           : 'sonstiges',
-        title: (d.itemDisplayName || '').trim(),
-        description: (d.itemDescription || '').trim(),
+        title: (r.displayName || '').trim(),
+        description: (r.itemDescription || '').trim(),
       };
       const n = normalizeQuestmakerCatalogPayloadItem(row);
       if (n) map.set(id, n);

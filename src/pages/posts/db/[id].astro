@@ -1,0 +1,72 @@
+---
+import MarkdownPostLayout from '../../../layouts/MarkdownPostLayout.astro';
+import { ensureDbSchema, getDb } from '../../../lib/db.js';
+
+const rawId = String(Astro.params?.id ?? '').trim();
+const id = Number(rawId);
+
+let post: null | {
+  id: number;
+  username: string;
+  content_html: string;
+  content_text: string;
+  created_at: string;
+} = null;
+
+if (Number.isInteger(id) && id > 0) {
+  try {
+    await ensureDbSchema();
+    const result = await getDb().execute({
+      sql: `SELECT id, username, content_html, content_text, created_at
+            FROM blog_posts
+            WHERE id = ?
+            LIMIT 1`,
+      args: [id],
+    });
+    const row = result.rows?.[0];
+    if (row) {
+      post = {
+        id: Number(row.id),
+        username: String(row.username || ''),
+        content_html: String(row.content_html || ''),
+        content_text: String(row.content_text || ''),
+        created_at: String(row.created_at || ''),
+      };
+    }
+  } catch (err) {
+    console.error('posts/db/[id]', err);
+  }
+}
+
+if (!post) {
+  return Astro.redirect('/blog', 302);
+}
+
+const firstLine = post.content_text
+  .split('\n')
+  .map((line) => line.trim())
+  .find((line) => line.length > 0);
+
+const frontmatter = {
+  title: firstLine?.slice(0, 90) || `Post #${post.id}`,
+  pubDate: post.created_at,
+  description: '',
+  author: post.username || 'Unknown',
+  image: null,
+  tags: [],
+};
+---
+
+<MarkdownPostLayout frontmatter={frontmatter}>
+  <article class="db-post-content" set:html={post.content_html}></article>
+</MarkdownPostLayout>
+
+<style>
+  .db-post-content {
+    white-space: normal;
+    line-height: 1.6;
+  }
+  .db-post-content :global(*) {
+    max-width: 100%;
+  }
+</style>

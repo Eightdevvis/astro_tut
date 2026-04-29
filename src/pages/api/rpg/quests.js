@@ -5,9 +5,12 @@ import { EMPTY_RPG_GRAPH } from '../../../lib/rpg-quests-data.js';
 import { graphNodes, makeRpgGraph, graphEdges } from '../../../lib/rpg-quests-data.js';
 import { getRpgState, saveRpgState, deleteRpgState } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape, validateNodeDone } from '../../../lib/rpg-quest-graph.js';
+import { migrateNodeDoneToFlat } from '../../../lib/rpg-quests-data.js';
 import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
+  migrateRpgGraphToV3,
+  stripGraphCompatFields,
 } from '../../../lib/rpg-payload-schema.js';
 import { migrateRpgGraphToV2 } from '../../../lib/rpg-quest-nodes.js';
 import { normalizeRpgVitalsState } from '../../../lib/rpg-vitals.js';
@@ -64,14 +67,19 @@ export async function GET({ cookies }) {
     persisted = true;
     schemaVersion = coerceRpgPayloadSchemaVersion(stored.schemaVersion);
     if (Array.isArray(stored.addedIds)) addedIds = stored.addedIds.filter((x) => typeof x === 'string');
+    // Phase 2: nodeDone wird beim Lesen unmittelbar in das flache Format
+    // migriert. Idempotent — flache Eingabe bleibt flach.
     const nodeDoneRaw = stored.nodeDone;
-    if (nodeDoneRaw && typeof nodeDoneRaw === 'object') nodeDone = nodeDoneRaw;
+    if (nodeDoneRaw && typeof nodeDoneRaw === 'object') nodeDone = migrateNodeDoneToFlat(nodeDoneRaw);
     vitals = normalizeRpgVitalsState(stored.vitals);
     location = normalizeRpgLocationState(stored.location);
     locationCatalog = normalizeRpgLocationCatalog(stored.locationCatalog);
   }
 
-  graph = migrateRpgGraphToV2(graph);
+  // V1 → V2 → V3 Migration. V3 ist DAG-Foundation: nested children werden
+  // zu flachen Nodes + parent_of-Edges aufgelöst (idempotent für bereits
+  // migrierte Graphen).
+  graph = migrateRpgGraphToV3(migrateRpgGraphToV2(graph));
   schemaVersion = Math.max(schemaVersion, RPG_PAYLOAD_SCHEMA_VERSION);
 
   const questmakerItems = await listQuestmakerCatalogRows();
@@ -135,7 +143,11 @@ export async function PUT({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Ungültiger graph' }), { status: 400 });
   }
 
-  const nodes = graphNodes(body.graph);
+  // Schreib-Migration: V1 → V2 → V3. V3 plättet nested children zu
+  // parent_of-Edges. Idempotent — wenn der Graph schon V3 ist passiert nichts.
+  const migratedGraph = migrateRpgGraphToV3(migrateRpgGraphToV2(body.graph));
+
+  const nodes = graphNodes(migratedGraph);
   const questIds = nodes.map((/** @type {{ id?: unknown }} */ q) => q?.id);
   if (questIds.some((x) => typeof x !== 'string' || !x.trim())) {
     return new Response(JSON.stringify({ error: 'Jede Quest braucht eine nicht-leere id' }), { status: 400 });
@@ -144,15 +156,19 @@ export async function PUT({ request, cookies }) {
   if (idSet.size !== questIds.length) {
     return new Response(JSON.stringify({ error: 'Doppelte Quest-IDs im Graph' }), { status: 400 });
   }
-  const edges = graphEdges(body.graph);
-  const refCheck = validateRpgGraphReferences(body.graph, edges);
+  const edges = graphEdges(migratedGraph);
+  const refCheck = validateRpgGraphReferences(migratedGraph, edges);
   if (!refCheck.ok) {
     return new Response(JSON.stringify({ error: refCheck.reason }), { status: 400 });
   }
   if (!Array.isArray(body.addedIds)) {
     return new Response(JSON.stringify({ error: 'addedIds fehlt' }), { status: 400 });
   }
-  const nodeDoneCheck = validateNodeDone(body.nodeDone);
+  // Phase 2: ein Client koennte alten verschachtelten nodeDone-State schicken.
+  // Wir migrieren idempotent zu flach BEVOR wir validieren — alte Tabs/Caches
+  // werden so transparent abgefangen.
+  const flattenedIncoming = migrateNodeDoneToFlat(body.nodeDone);
+  const nodeDoneCheck = validateNodeDone(flattenedIncoming);
   if (!nodeDoneCheck.ok) {
     return new Response(JSON.stringify({ error: nodeDoneCheck.reason }), { status: 400 });
   }
@@ -178,11 +194,14 @@ export async function PUT({ request, cookies }) {
   const base =
     existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
   const normalizedGraph = makeRpgGraph(nodes, edges);
+  // V3-Persistenz-Format: flache Nodes ohne Compat-Felder (children/parentId).
+  // Hierarchie lebt ausschliesslich in edges. Phase-1-Schreibinvariante.
+  const persistedGraph = stripGraphCompatFields(normalizedGraph);
   const payload = {
     ...base,
     graph: {
-      nodes: normalizedGraph.nodes,
-      edges: normalizedGraph.edges,
+      nodes: persistedGraph.nodes,
+      edges: persistedGraph.edges,
     },
     addedIds,
     nodeDone: nodeDoneRaw,

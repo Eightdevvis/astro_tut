@@ -10,7 +10,6 @@ import {
   draftNodesToQuestNodes,
   questRewardRowsToDraftRows,
   draftRewardRowsToStoredRewards,
-  isDraftNodeMeaningful,
   ensureNodeDraftFields,
   ensureRewardRowFields,
   collectQuestmakerItemsFromDrafts,
@@ -25,17 +24,23 @@ import {
   removeManualQuestDraft,
   loadManualQuestDrafts,
   loadManualQuestInProgressDraft,
-  saveManualQuestInProgressDraft,
   clearManualQuestInProgressDraft,
 } from '../lib/rpg-quest-manual-drafts.js';
+import { useManualQuestDraftAutosave } from '../lib/useManualQuestDraftAutosave.js';
 import {
   makeUniqueQuestId,
   resolveEditTarget,
-  mapNodeRecursive,
+  applyNodeFieldsUpdate,
   removeNodeRecursive,
   stripDependsOnReferences,
   expandDraftsToFocusedNode,
   graphNodeIdToDraft,
+  updateDraftByKeyRecursive,
+  splitDraftsForTreePick,
+  applyTreePickEdges,
+  collectAllNodeIds,
+  collectSubtreeIds,
+  pruneStaleParentEdgesForContainer,
 } from '../lib/rpg-graph-editor-ops.js';
 import { useEditorAiFlow } from '../lib/useEditorAiFlow.js';
 import { RpgQuestNodesBuilder } from './RpgQuestNodesBuilder.jsx';
@@ -116,6 +121,10 @@ export default function RpgQuestGraphEditor({
   useEffect(() => {
     itemCatalogRef.current = itemCatalog;
   }, [itemCatalog]);
+  // Phase 3: Tree-Pick ist eine reine Edge-Operation. Drafts mit stableId aus
+  // dem Graph werden beim Submit via `splitDraftsForTreePick` zu parent_of-Edges
+  // promoted — kein Verschieben, kein Klonen, keine Duplikate. mergedRootIdsRef
+  // ist deshalb obsolet und wurde entfernt.
 
   /** Baum setzt createEntry / editEntry; Defaults: neue Quest = manuell, Bearbeiten = Formular */
   const onlyQuestmaker =
@@ -172,7 +181,9 @@ export default function RpgQuestGraphEditor({
       setDescription(target.description || '');
       const drafts = questNodesToDrafts(target.children || []);
       const expandedDrafts = expandDraftsToFocusedNode(drafts, focusNodeId);
-      const rrows = questRewardRowsToDraftRows(getNodeRewardRows(containerQuest));
+      // Bei Child-Nodes: Rewards des Nodes selbst laden, nicht der Container-Quest
+      const rewardSource = resolved.isTopLevel ? containerQuest : target;
+      const rrows = questRewardRowsToDraftRows(getNodeRewardRows(rewardSource));
       hydrateItemFieldsFromCatalog(expandedDrafts, rrows, itemCatalogRef.current);
       setNodeDrafts(expandedDrafts);
       setRewardRows(rrows);
@@ -242,100 +253,13 @@ export default function RpgQuestGraphEditor({
   const isManualCreateContext =
     mode === 'create' && (resolvedCreateEntry ?? 'manual') !== 'questmaker';
 
-  const buildManualDraftPayload = () => ({
-    id,
-    title,
-    description,
-    nodeDrafts: JSON.parse(JSON.stringify(nodeDrafts)),
-    rewardRows: JSON.parse(JSON.stringify(rewardRows)),
-    orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+  // Manual-Draft Autosave/Restore — Hook kapselt Debounced-Save, Flush-on-Hide
+  // und Snapshot-Building. `active` ist der einzige Schalter; Hook macht
+  // automatisch Cleanup wenn er false wird.
+  const { buildSnapshot, currentSnapshotHasContent } = useManualQuestDraftAutosave({
+    active: open && isManualCreateContext,
+    id, title, description, nodeDrafts, rewardRows, orderInLayer,
   });
-
-  /**
-   * @param {ReturnType<typeof buildManualDraftPayload>} payload
-   */
-  const manualDraftPayloadHasContent = (payload) => {
-    if ((payload.id || '').trim().length > 0) return true;
-    if ((payload.title || '').trim().length > 0) return true;
-    if ((payload.description || '').trim().length > 0) return true;
-    const o = Number(payload.orderInLayer);
-    if (Number.isFinite(o) && o !== 0) return true;
-    if ((payload.nodeDrafts || []).some((s) => isDraftNodeMeaningful(s))) return true;
-    if (
-      (payload.rewardRows || []).some((r) =>
-        r.kind === 'item'
-          ? (r.itemId || '').trim().length > 0
-          : r.kind === 'points'
-            ? (r.pointsAmount || '').trim().length > 0
-            : (r.text || '').trim().length > 0
-      )
-    )
-      return true;
-    return false;
-  };
-
-  const manualAbortDraftHasContent = () => {
-    return manualDraftPayloadHasContent(buildManualDraftPayload());
-  };
-
-  const manualDraftPayloadRef = useRef(/** @type {ReturnType<typeof buildManualDraftPayload> | null} */ (null));
-  useEffect(() => {
-    if (!open || !isManualCreateContext) {
-      manualDraftPayloadRef.current = null;
-      return;
-    }
-    manualDraftPayloadRef.current = buildManualDraftPayload();
-  }, [
-    open,
-    isManualCreateContext,
-    id,
-    title,
-    description,
-    nodeDrafts,
-    rewardRows,
-    orderInLayer,
-  ]);
-
-  useEffect(() => {
-    if (!open || !isManualCreateContext) return;
-    const t = setTimeout(() => {
-      const payload = manualDraftPayloadRef.current;
-      if (!payload) return;
-      if (manualDraftPayloadHasContent(payload)) saveManualQuestInProgressDraft(payload);
-      else clearManualQuestInProgressDraft();
-    }, 180);
-    return () => clearTimeout(t);
-  }, [
-    open,
-    isManualCreateContext,
-    id,
-    title,
-    description,
-    nodeDrafts,
-    rewardRows,
-    orderInLayer,
-  ]);
-
-  useEffect(() => {
-    if (!open || !isManualCreateContext) return;
-    const flush = () => {
-      const payload = manualDraftPayloadRef.current;
-      if (!payload) return;
-      if (manualDraftPayloadHasContent(payload)) saveManualQuestInProgressDraft(payload);
-      else clearManualQuestInProgressDraft();
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') flush();
-    };
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('beforeunload', flush);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('beforeunload', flush);
-    };
-  }, [open, isManualCreateContext]);
 
   const handleRequestClose = () => {
     const legacyManual =
@@ -345,9 +269,9 @@ export default function RpgQuestGraphEditor({
       mode === 'create' &&
       (resolvedCreateEntry ?? 'manual') !== 'questmaker' &&
       (explicitManual || legacyManual) &&
-      manualAbortDraftHasContent()
+      currentSnapshotHasContent()
     ) {
-      addManualQuestDraft(buildManualDraftPayload());
+      addManualQuestDraft(buildSnapshot());
       setDraftListTick((t) => t + 1);
       clearManualQuestInProgressDraft();
     }
@@ -415,25 +339,28 @@ export default function RpgQuestGraphEditor({
     const ROOT_PICK = '__root__';
     if (treePickParentKey === parentDraftKey) {
       const selectedIds = (treePickNodeIds || []).map((x) => String(x || '').trim()).filter(Boolean);
+      // Phase 3: Drafts werden ZUR ANZEIGE eingefügt (UI bleibt erhalten —
+      // der User sieht direkt, was er gerade verlinkt hat). Beim Submit
+      // erkennt `splitDraftsForTreePick` Drafts mit `stableId` aus dem Graph
+      // als Tree-Pick und promotet sie zu `parent_of`-Edges, statt sie als
+      // neue Nodes zu klonen. Kein Move, kein Duplikat — multi-parent-fähig.
       const selectedDrafts = selectedIds
         .map((id) => graphNodeIdToDraft(graph, id))
         .filter(Boolean);
+
       if (selectedDrafts.length > 0) {
         if (parentDraftKey === ROOT_PICK) {
           setNodeDrafts((prev) => [...prev, ...selectedDrafts]);
         } else {
+          // Rekursive Suche: der Parent-Draft kann beliebig tief verschachtelt sein
           setNodeDrafts((prev) =>
-            prev.map((draft) =>
-              draft.key === parentDraftKey
-                ? {
-                    ...draft,
-                    children: [...(draft.children || []), ...selectedDrafts],
-                    subnodesOn: true,
-                    timeLimitOn: false,
-                    timeDueAt: '',
-                  }
-                : draft
-            )
+            updateDraftByKeyRecursive(prev, parentDraftKey, (d) => ({
+              ...d,
+              children: [...(d.children || []), ...selectedDrafts],
+              subnodesOn: true,
+              timeLimitOn: false,
+              timeDueAt: '',
+            }))
           );
         }
       }
@@ -495,33 +422,74 @@ export default function RpgQuestGraphEditor({
       setSubmitError('Bitte zuerst einen Titel eingeben (daraus wird die ID automatisch erzeugt).');
       return;
     }
-    const children = draftNodesToQuestNodes(nodeDrafts, nid);
     const rewards = draftRewardRowsToStoredRewards(rewardRows);
     const qmSaved = lastQmPromptRef.current.trim();
+    // Container-Felder (orderInLayer, questmakerPrompt) leben am enthaltenden Root-Quest.
+    // Bei Sub-Node-Edit landen sie trotzdem am Container — der Sub-Node hat sie nicht.
+    const containerOverlay = {
+      orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
+      ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
+    };
+
+    // Phase 3: Drafts splitten in (a) echte neue/edited Drafts und (b) Tree-Pick-
+    // Verweise auf existierende Graph-Nodes. (b) wird NICHT geklont, sondern
+    // unten als parent_of-Edge angehängt. So entstehen keine Duplikate, und
+    // Multi-Parent ist erlaubt.
+    const existingIdsForSplit = collectAllNodeIds(graph);
+    let parentStableIdForSplit;
+    let selfSubtreeIdsForSplit;
+    if (mode === 'edit' && questId) {
+      const containerIdForSplit = String(editContainerQuestId || questId).trim();
+      const containerForSplit = graph.nodes.find((q) => q.id === containerIdForSplit);
+      parentStableIdForSplit = String(editTargetNodeId || questId).trim();
+      // Eigener Subtree: alles unter dem Container, damit Drafts mit stableId
+      // aus diesem Subtree NICHT als Tree-Pick missverstanden werden.
+      selfSubtreeIdsForSplit = collectSubtreeIds(containerForSplit);
+    } else {
+      // Create-Pfad: noch kein Container im Graph, kein eigener Subtree.
+      parentStableIdForSplit = nid;
+      selfSubtreeIdsForSplit = new Set();
+    }
+    const { cleanDrafts, treePickEdges } = splitDraftsForTreePick(
+      nodeDrafts,
+      parentStableIdForSplit,
+      existingIdsForSplit,
+      selfSubtreeIdsForSplit
+    );
+
     let next;
-    if (mode === 'edit' && questId && editContainerQuestId && editContainerQuestId !== questId) {
-      const container = graph.nodes.find((q) => q.id === editContainerQuestId);
+    if (mode === 'edit' && questId) {
+      // Edit-Pfad: Root und Child laufen jetzt durch denselben Code.
+      // resolveEditTarget liefert containerQuestId; targetId == containerId fuer
+      // Root-Edit, sonst die Sub-Node-ID.
+      const containerId = String(editContainerQuestId || questId).trim();
+      const container = graph.nodes.find((q) => q.id === containerId);
       if (!container) {
-        setSubmitError('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        setSubmitError('Container-Quest für diese Bearbeitung wurde nicht gefunden.');
         return;
       }
-      const targetId = String(questId).trim();
-      const effectiveTargetId = String(editTargetNodeId || targetId).trim();
-      const updatedChildren = mapNodeRecursive(container.children || [], effectiveTargetId, (node) => ({
-        ...node,
-        label: title.trim() || effectiveTargetId,
+      const targetId = String(editTargetNodeId || questId).trim();
+      // Kanonische Node-Felder (gleich fuer Root und Child) — ohne Tree-Pick-
+      // Drafts, die separat als Edges hinzukommen.
+      const fields = {
+        title: title.trim(),
         description: description.trim(),
-        children: draftNodesToQuestNodes(nodeDrafts, effectiveTargetId),
-      }));
-      const updatedContainer = {
-        ...container,
-        children: updatedChildren,
         rewards,
-        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
-        ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
+        children: draftNodesToQuestNodes(cleanDrafts, targetId),
       };
-      next = upsertQuestInGraph(graph, updatedContainer, []);
+      const updatedContainer = applyNodeFieldsUpdate(container, targetId, fields, containerOverlay);
+
+      // Phase 3: Stale parent_of-Edges des Targets prunen, BEVOR upsert läuft.
+      // Wenn der User ein Child entfernt hat, ist es nicht mehr in
+      // `fields.children` — die alte Edge `target → child` muss aber explizit
+      // weg, weil `upsertQuestInGraph` structure-Edges generell nicht anrührt
+      // (Multi-Parent-Schutz). Andere Parents auf dasselbe Kind bleiben unberührt.
+      const newSubtreeIds = collectSubtreeIds(updatedContainer);
+      const prunedGraph = pruneStaleParentEdgesForContainer(graph, targetId, newSubtreeIds);
+      next = upsertQuestInGraph(prunedGraph, updatedContainer, []);
     } else {
+      // Create-Pfad: neuer Top-Level-Quest. Kein Container, sondern komplett neues Node.
+      const children = draftNodesToQuestNodes(cleanDrafts, nid);
       const quest = {
         id: nid,
         parentId: null,
@@ -529,10 +497,24 @@ export default function RpgQuestGraphEditor({
         description: description.trim(),
         children,
         rewards,
-        orderInLayer: Number.isFinite(Number(orderInLayer)) ? Number(orderInLayer) : 0,
-        ...(qmSaved ? { questmakerPrompt: qmSaved } : {}),
+        ...containerOverlay,
       };
       next = upsertQuestInGraph(graph, quest, []);
+    }
+
+    // Phase 3: Tree-Pick-Edges idempotent anhängen, mit Cycle-Check. Wenn ein
+    // Pick einen Zyklus erzeugen würde, brechen wir mit Inline-Fehler ab —
+    // der Graph-State wird nicht angefasst (Editor bleibt offen).
+    if (treePickEdges.length > 0) {
+      const pickResult = applyTreePickEdges(next, treePickEdges);
+      if (!pickResult.ok) {
+        const conf = pickResult.conflict;
+        setSubmitError(
+          `Verlinken nicht möglich: „${conf.childId}” als Sub-Quest unter „${conf.parentId}” würde einen Kreis im Quest-Baum erzeugen.`
+        );
+        return;
+      }
+      next = pickResult.graph;
     }
     const catalogIds = new Set(Object.keys(itemCatalog));
     /** @type {Map<string, { id: string; category: string; title: string; description: string }>} */
@@ -573,12 +555,12 @@ export default function RpgQuestGraphEditor({
     if (editContainerQuestId && editContainerQuestId !== questId) {
       const container = graph.nodes.find((q) => q.id === editContainerQuestId);
       if (!container) {
-        setSubmitError('Container-Node für diese Bearbeitung wurde nicht gefunden.');
+        setSubmitError('Container-Quest für diese Bearbeitung wurde nicht gefunden.');
         return;
       }
       const out = removeNodeRecursive(container.children || [], String(editTargetNodeId || questId).trim());
       if (!out.removed) {
-        setSubmitError('Die ausgewählte Child-Node wurde nicht gefunden.');
+        setSubmitError('Die ausgewählte Sub-Quest wurde nicht gefunden.');
         return;
       }
       const removedIdSet = new Set(out.removedIds.map((id) => String(id || '').trim()).filter(Boolean));
@@ -816,7 +798,7 @@ export default function RpgQuestGraphEditor({
               ) : null}
               <h3 class="rpg-graph-editor__qm-title">{title.trim() || '(ohne Titel)'}</h3>
               {description.trim() ? <p class="rpg-graph-editor__qm-desc">{description}</p> : null}
-              <p class="rpg-graph-editor__label">Nodes & Rewards</p>
+              <p class="rpg-graph-editor__label">Quests & Belohnungen</p>
               <RpgQuestNodesView
                 node={previewQuest}
                 nodeDone={{}}
@@ -828,17 +810,6 @@ export default function RpgQuestGraphEditor({
                 itemCatalog={itemCatalog}
               />
             </div>
-
-            <label class="rpg-graph-editor__field">
-              <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
-              <input
-                class="rpg-graph-editor__input"
-                type="number"
-                node={1}
-                value={orderInLayer}
-                onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
-              />
-            </label>
 
             {submitError && (
               <p class="rpg-graph-editor__warning" role="alert">{submitError}</p>
@@ -934,20 +905,12 @@ export default function RpgQuestGraphEditor({
               nodes={nodeDrafts}
               onNodesChange={setNodeDrafts}
               treePickParentKey={treePickParentKey}
+              treePickNodeIds={treePickNodeIds}
               onToggleTreePick={onToggleTreePick ? handleToggleTreePick : undefined}
+              itemCatalog={itemCatalog}
             />
-            <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} />
+            <RpgQuestRewardsBuilder rows={rewardRows} onRowsChange={setRewardRows} itemCatalog={itemCatalog} />
 
-            <label class="rpg-graph-editor__field">
-              <span class="rpg-graph-editor__label">Reihenfolge in der Ebene (kleiner = weiter links)</span>
-              <input
-                class="rpg-graph-editor__input"
-                type="number"
-                node={1}
-                value={orderInLayer}
-                onInput={(ev) => setOrderInLayer(Number(ev.currentTarget.value))}
-              />
-            </label>
             {submitError && (
               <p class="rpg-graph-editor__warning" role="alert">{submitError}</p>
             )}

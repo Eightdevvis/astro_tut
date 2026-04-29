@@ -21,9 +21,14 @@ description: Math-Minigames — Leitlinien, Pfade, Rand-Disclaimer (Detail-Memor
 | Minigames-Übersicht | `src/pages/minigames/index.astro` |
 | Fraktale-Sandbox | `src/components/FraktaleSandbox.jsx` |
 | Seite Fraktale | `src/pages/minigames/fraktale-sandbox.astro` |
-| Flüssigkeits-Deko (Mana-Kugel + Herz, Three.js) | `src/components/LiquidVessels.jsx` |
-| Seite Mana &amp; Leben | `src/pages/minigames/liquid-vessels.astro` |
-| Rechte/Freigabe | `minigames_access` in `src/lib/permissions.js`; Sichtbarkeit in `src/components/Nav2.astro` + `src/pages/index.astro`; Seitenzugriff via Redirect in `src/pages/minigames/*.astro` |
+| Flüssigkeits-Komponente (RPG-intern) | `src/components/LiquidVessels.jsx` (in `RpgQuestTree` verwendet, **kein eigenes Minigame mehr**) |
+| Rechte/Freigabe | **Aktuell:** alle Minigame-Pages, `Nav2.astro`, `index.astro`, API-Endpoints (`user.js`, `login.js`, `register.js`) prüfen `super_access` statt `minigames_access` — Architektur-Umbau läuft. Permission `minigames_access` bleibt in `KNOWN_PERMISSIONS` für Reaktivierung. |
+
+## Status (04/2026): Architektur-Umbau
+
+- "Mana &amp; Leben" als Minigame entfernt — `LiquidVessels` ist nur noch RPG-Komponente.
+- Minigames vorerst nur für Superuser sichtbar.
+- Geplante Architektur: hierarchisches Konzept-Atom-System mit Vokabel-Brücke (Spielname ↔ Mathe-Begriff). Ziel: Konzepte intuitiv, am Ende **echte Mathe-Uni-Sprache** verstehbar.
 
 ## Rand (`clampWorld`) und Simulation
 

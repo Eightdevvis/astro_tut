@@ -11,7 +11,7 @@
 - Konsistenztests liegen in `tests/rpg-consistency.test.js`.
 - Vitals-Tests liegen in `tests/rpg-vitals.test.js` (21 Tests).
 - Qualitätslauf für zentrale RPG-Invarianten: `npm run test:quality` (`tests/rpg-consistency.test.js`, `tests/rpg-tree-panel-state.test.js`).
-- **Aktueller Stand:** 29 pass, 2 fail (pre-existierend in `rpg-tree-selection.js` / `rpg-tree-panel-state.js` durch uncommittete Aenderungen).
+- **Aktueller Stand (2026-04-28 nach Pass 4):** 223 pass, 0 fail. Pass 4 hat +4 Tests fuer Tiefe-3 Roundtrip-Konsistenz und Reward-Boundary-Cases hinzugefuegt.
 
 ## Abgedeckte Invarianten
 
@@ -19,8 +19,13 @@
 - Node-Referenzen: `dependsOn` darf nur auf existierende Node-IDs innerhalb derselben Quest zeigen.
 - Node-ID-Eindeutigkeit: keine doppelten Node-IDs in einer Quest.
 - Subtree-Guarding: Detail-Subtrees dürfen Freischaltchecks nicht gegen pseudo-IDs (`quest::node`) ausführen.
-- Migration-Kanon: `migrateRpgGraphToV2` liefert kanonisch `{ nodes, edges }` (kein `quests`-Alias).
+- **Render-Konsistenz**: `buildRewardDisplayList` ist tiefenagnostisch — Root- und Sub-Node-Aufrufe liefern strukturell identisch geformte Outputs (gleiche Felder, kein `source`-Switch). `questLeafProgressRatio(quest, nodeDone, scopeQuestId?)` funktioniert fuer beliebige Tiefen identisch. `deriveRpgTreeSelectionView` spooft keine IDs mehr — der View-Node behaelt seine echte ID, der Lookup-Scope wird via separatem `scopeQuestId` getragen.
+- Migration-Kanon: `migrateRpgGraphToV2` liefert kanonisch `{ nodes, edges }` (kein `quests`-Alias). Idempotent (zweiter Aufruf veraendert nichts), getestet seit Pass 3. Wird sowohl im GET-Fallback als auch im PUT-Body in `pages/api/rpg/quests.js` aufgerufen.
 - Vitals-Reconciliation: Idempotenz, Clamping (0..50), Node-Rewards als `rewards[]` Array (done/not-done), Quest-Rewards (complete/incomplete), Text-Rewards werden ignoriert, korrekte Heart/Mana-Routing, Legacy-`appliedRewardIds`-Migration.
+- Cycle-/Dedup-Schutz: `breakGraphCycles` + `deduplicateGraphRoots` in `rpg-quest-nodes.js` werden im Tree-`applyGraph` aufgerufen, bevor ein eingehender Graph in den State geht. Verhindert Render-Stack-Overflow bei zyklischen Graphen.
+- **Editor-Save-Konsistenz** (Pass 3+4): `applyNodeFieldsUpdate` in `rpg-graph-editor-ops.js` ist der EINE Pfad fuer Root-Edit und Child-Edit. `containerOverlay` (orderInLayer, questmakerPrompt) landet immer am Container, nie am Sub-Node. `rewards: []` ueberschreibt alte Rewards (kein delete, sondern explizites leeres Array — getestet via Spread-Verhalten in `upsertQuestInGraph`).
+- **Tiefe-3 Roundtrip** (Pass 4): `questNodesToDrafts` -> `draftNodesToQuestNodes` -> JSON serialize/deserialize -> `normalizeQuestNodesTree` erhaelt alle Reward-Typen (text/item/points/achievement) und Felder ueber 3 Tiefen. IDs werden vom Editor neu generiert aus Titeln (designgewollt via `makeUniqueNodeIdFromLabel`). `parentId` zeigt nach Roundtrip auf den korrekten Tree-Parent.
+- **Boundary**: invalide Reward-Eintraege (null, fehlende Pflichtfelder, unbekannter type) werden in `buildRewardDisplayList` gefiltert. Nodes ohne Title bleiben verarbeitbar.
 
 ## Nächste Test-Ausbaustufen
 

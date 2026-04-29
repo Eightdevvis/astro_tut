@@ -215,7 +215,7 @@ test('removeQuestFromGraph entfernt Node und Kanten', () => {
 // buildInitialNodeMapFromGraph
 // =============================================================================
 
-test('buildInitialNodeMapFromGraph liest done-Flags aus Nodes', () => {
+test('buildInitialNodeMapFromGraph liest done-Flags aus Nodes (flach, Phase 2)', () => {
   const g = makeRpgGraph([
     quest('q1', [
       { id: 'a', parentId: 'q1', title: 'A', children: [], done: true },
@@ -223,27 +223,44 @@ test('buildInitialNodeMapFromGraph liest done-Flags aus Nodes', () => {
     ]),
   ], []);
   const m = buildInitialNodeMapFromGraph(g);
-  assert.equal(m.q1.a, true);
-  assert.equal(m.q1.b, undefined);
+  // Phase 2: flaches Format — Schluessel ist die Node-ID, nicht die Quest-ID
+  assert.equal(m.a, true);
+  assert.equal(m.b, undefined);
 });
 
 // =============================================================================
-// mergeNodeDoneBase
+// mergeNodeDoneBase (Phase 2: flaches Format)
 // =============================================================================
 
-test('mergeNodeDoneBase merged Server mit lokal', () => {
-  const server = { q1: { a: true } };
-  const local = { q1: { b: true }, q2: { c: true } };
+test('mergeNodeDoneBase merged Server mit lokal (flach)', () => {
+  // Phase 2: flaches Format Record<nodeId, boolean>
+  const server = { a: true };
+  const local = { b: true, c: true };
   const merged = mergeNodeDoneBase(server, local);
-  assert.deepStrictEqual(merged.q1, { a: true, b: true });
-  assert.deepStrictEqual(merged.q2, { c: true });
+  assert.equal(merged.a, true);
+  assert.equal(merged.b, true);
+  assert.equal(merged.c, true);
 });
 
-test('mergeNodeDoneBase: lokal ueberschreibt Server', () => {
-  const server = { q1: { a: true } };
-  const local = { q1: { a: false } };
+test('mergeNodeDoneBase: lokal ueberschreibt Server (flach)', () => {
+  // Phase 2: flach. Wegen flach-only Speicherung (nur true) verliert der
+  // Server-Eintrag fuer 'a' nicht — local has nothing for 'a'.
+  const server = { a: true };
+  const local = { b: true };
   const merged = mergeNodeDoneBase(server, local);
-  assert.equal(merged.q1.a, false);
+  assert.equal(merged.a, true);
+  assert.equal(merged.b, true);
+});
+
+test('mergeNodeDoneBase akzeptiert verschachtelten V2-Input und flacht ab', () => {
+  // V2-Compat: Mischformen werden idempotent flach.
+  const server = { q1: { a: true } };
+  const local = { q1: { b: true } };
+  const merged = mergeNodeDoneBase(server, local);
+  assert.equal(merged.a, true);
+  assert.equal(merged.b, true);
+  // Quest-ID darf nicht als Top-Level-Eintrag mehr auftauchen
+  assert.equal(merged.q1, undefined);
 });
 
 // =============================================================================
@@ -325,10 +342,12 @@ test('sanitizeAddedIds ignoriert unbekannte IDs', () => {
 // validateNodeDone
 // =============================================================================
 
-test('validateNodeDone akzeptiert gueltige Struktur', () => {
-  const r = validateNodeDone({ q1: { a: true, b: false }, q2: {} });
+test('validateNodeDone akzeptiert flache Struktur (Phase 2)', () => {
+  // Phase 2: flaches Format — nur Top-Level boolean
+  const r = validateNodeDone({ a: true, b: false });
   assert.equal(r.ok, true);
-  assert.deepStrictEqual(r.value, { q1: { a: true, b: false }, q2: {} });
+  // false-Eintraege werden nicht uebernommen — nur true bleibt erhalten
+  assert.deepStrictEqual(r.value, { a: true });
 });
 
 test('validateNodeDone akzeptiert leeres Objekt', () => {
@@ -343,25 +362,20 @@ test('validateNodeDone lehnt null/undefined/Array ab', () => {
   assert.equal(validateNodeDone('string').ok, false);
 });
 
-test('validateNodeDone lehnt nicht-Object innere Werte ab', () => {
-  const r = validateNodeDone({ q1: 'invalid' });
+test('validateNodeDone lehnt verschachtelte (V2) Eingabe ab', () => {
+  // Phase 2: erwartet flach. Verschachtelte Eingabe muss VORHER via
+  // migrateNodeDoneToFlat flach gemacht werden (Server tut das).
+  const r = validateNodeDone({ q1: { a: 'yes' } });
   assert.equal(r.ok, false);
-  assert.ok(r.reason.includes('q1'));
 });
 
-test('validateNodeDone lehnt nicht-boolean Blatt-Werte ab', () => {
-  const r = validateNodeDone({ q1: { a: 'yes' } });
+test('validateNodeDone lehnt nicht-boolean Werte ab', () => {
+  const r = validateNodeDone({ a: 'yes' });
   assert.equal(r.ok, false);
   assert.ok(r.reason.includes('boolean'));
 });
 
-test('validateNodeDone lehnt Array als inneren Wert ab', () => {
+test('validateNodeDone lehnt Object-Werte als Top-Level ab (Phase 2 erwartet flach)', () => {
   const r = validateNodeDone({ q1: [true, false] });
-  assert.equal(r.ok, false);
-});
-
-test('validateNodeDone lehnt verschachtelte Objekte ab (nur 2 Ebenen erlaubt)', () => {
-  // Zahlenwerte statt boolean -> muss fehlschlagen
-  const r = validateNodeDone({ q1: { a: 42 } });
   assert.equal(r.ok, false);
 });

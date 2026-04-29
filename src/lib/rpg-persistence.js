@@ -28,7 +28,15 @@ export function saveAddedIds(ids) {
   localStorage.setItem(ADDED_KEY, JSON.stringify(arr));
 }
 
-/** @returns {Record<string, Record<string, boolean>>} */
+/**
+ * Liest nodeDone aus localStorage und migriert in das flache Phase-2-Format.
+ *
+ * Akzeptiert sowohl das alte verschachtelte Format
+ * (`Record<questId, Record<nodeId, boolean>>`) als auch das neue flache
+ * (`Record<nodeId, boolean>`). Output ist immer flach.
+ *
+ * @returns {Record<string, boolean>}
+ */
 export function loadNodeDone() {
   if (typeof localStorage === 'undefined') return {};
   const raw = parseJson(
@@ -36,19 +44,23 @@ export function loadNodeDone() {
     {}
   );
   if (!raw || typeof raw !== 'object') return {};
-  /** @type {Record<string, Record<string, boolean>>} */
+  /** @type {Record<string, boolean>} */
   const out = {};
-  for (const [qid, nodeMap] of Object.entries(raw)) {
-    if (!nodeMap || typeof nodeMap !== 'object') continue;
-    out[qid] = {};
-    for (const [sid, done] of Object.entries(nodeMap)) {
-      if (done === true) out[qid][sid] = true;
+  for (const [k, v] of Object.entries(raw)) {
+    if (v === true) {
+      // Bereits flach
+      out[k] = true;
+    } else if (v && typeof v === 'object') {
+      // V2-verschachtelt: untere Ebene flach uebernehmen (Union-Semantik)
+      for (const [innerK, innerV] of Object.entries(v)) {
+        if (innerV === true) out[innerK] = true;
+      }
     }
   }
   return out;
 }
 
-/** @param {Record<string, Record<string, boolean>>} nodeDone */
+/** @param {Record<string, boolean>} nodeDone */
 export function saveNodeDone(nodeDone) {
   if (typeof localStorage === 'undefined') return;
   localStorage.setItem(NODE_DONE_KEY, JSON.stringify(nodeDone));

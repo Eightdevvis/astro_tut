@@ -13,6 +13,9 @@ import {
   nodeIsLeaf,
   isNodeCompleteInQuest,
   isLockNode,
+  findNodeWithAncestors,
+  breakGraphCycles,
+  deduplicateGraphRoots,
 } from '../lib/rpg-quest-nodes.js';
 import {
   reconcileRpgVitals,
@@ -57,7 +60,7 @@ const PANEL_RESERVE_MOBILE = 200;
 
 // Drei visuelle Richtungen (Themes): Astrolab (dark gold), Codex (parchment), Orrery (blueprint)
 const DIRECTIONS = ['astrolab', 'codex', 'orrery'];
-export default function RpgQuestTree({ isSuperuser = false }) {
+export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false }) {
   // Questmaker-Item-Batching: sammelt Items die beim naechsten Persist mitgeschickt werden
   const questmakerBatchRef = useRef(
     /** @type {{ id: string; category: string; title: string; description: string }[]} */ ([])
@@ -92,13 +95,16 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     superNotesOpen, setSuperNotesOpen,
     openSuperNotes, saveSuperNotes,
     superNotesValue, setSuperNotesValue,
+    superNotesHistory,
     superNotesLoading, superNotesSaving, superNotesError,
-  } = useTreeSuperNotes({ isSuperuser });
+  } = useTreeSuperNotes({ canUseNotes });
   const [editorMode, setEditorMode] = useState(/** @type {'create' | 'edit'} */ ('create'));
   const [editorNodeId, setEditorNodeId] = useState(/** @type {string | null} */ (null));
   const [editorFocusNodeId, setEditorFocusNodeId] = useState(/** @type {string | null} */ (null));
   const [treePickParentKey, setTreePickParentKey] = useState(/** @type {string | null} */ (null));
   const [treePickNodeIds, setTreePickNodeIds] = useState(() => new Set());
+  const [treePickCycleWarning, setTreePickCycleWarning] = useState(false);
+  const cycleWarnTimerRef = useRef(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   /** @type {'manual' | 'questmaker' | undefined} */
   const [editorCreateEntry, setEditorCreateEntry] = useState(undefined);
   /** @type {'choose' | 'form' | 'ai' | undefined} */
@@ -151,10 +157,12 @@ export default function RpgQuestTree({ isSuperuser = false }) {
 
   const panelReserve = compact ? PANEL_RESERVE_MOBILE : PANEL_RESERVE_DESKTOP;
 
-  const nodeR = useCallback(() => (compact ? 26 : 24), [compact]);
+  const nodeR = useCallback(() => (compact ? 19 : 17), [compact]);
 
   const applyGraph = useCallback((next, opts) => {
-    setGraph(next);
+    // Zyklen und Duplikate sofort entfernen bevor der Graph in den State geht —
+    // sonst würde ein Zirkelschluss (Node X → ... → X) den Render-Stack sprengen.
+    setGraph(deduplicateGraphRoots(breakGraphCycles(next)));
     markDirty();
     const extra = opts?.questmakerItems;
     if (Array.isArray(extra) && extra.length > 0) {
@@ -234,14 +242,41 @@ export default function RpgQuestTree({ isSuperuser = false }) {
   const treePickActive = editorOpen && !!treePickParentKey;
   const treePickIdList = useMemo(() => [...treePickNodeIds], [treePickNodeIds]);
 
+  // Nodes die einen Zirkelschluss erzeugen würden: die editierte Node selbst + alle ihre Vorfahren.
+  // Wenn der User eine davon im Pick-Modus anklickt → Warnung statt Auswahl.
+  const blockedPickIds = useMemo(() => {
+    if (!treePickActive || !editorNodeId) return new Set();
+    // editorNodeId kann "questId" oder "questId::nodeId" sein
+    const editId = editorNodeId.includes('::') ? editorNodeId.split('::')[1] : editorNodeId;
+    const found = findNodeWithAncestors(graph, editId);
+    const blocked = new Set([editId]);
+    if (found) {
+      // Alle Vorfahren auf dem Pfad vom Root bis zur editierten Node blockieren
+      for (const ancestor of found.ancestors) {
+        if (ancestor?.id) blocked.add(ancestor.id);
+      }
+      blocked.add(found.rootQuestId);
+    }
+    return blocked;
+  }, [treePickActive, editorNodeId, graph]);
+
+  const showCycleWarning = useCallback(() => {
+    setTreePickCycleWarning(true);
+    if (cycleWarnTimerRef.current) clearTimeout(cycleWarnTimerRef.current);
+    cycleWarnTimerRef.current = setTimeout(() => setTreePickCycleWarning(false), 3000);
+  }, []);
+
   const onToggleNode = useCallback(
+    // Phase 2: questId wird vom Aufrufer zwar noch uebergeben (Tree-Layout
+    // braucht ihn fuer Selektion), aber nodeDone ist flach pro Node-ID.
     (questId, nodeId) => {
       markDirty();
       setNodeDone((prev) => {
-        const next = {
-          ...prev,
-          [questId]: { ...prev[questId], [nodeId]: !prev[questId]?.[nodeId] },
-        };
+        // Flach: toggle das einzelne Node-Flag global.
+        const wasOn = prev[nodeId] === true;
+        const next = { ...prev };
+        if (wasOn) delete next[nodeId];
+        else next[nodeId] = true;
         setVitals((old) => reconcileRpgVitals(graph, next, old).state);
         return next;
       });
@@ -249,15 +284,27 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     [graph]
   );
 
+  // Cleanup verwaister nodeDone-Eintraege: in Phase 2 entfernen wir Flags fuer
+  // Node-IDs, die nicht (mehr) im Graph existieren — egal ob als Root oder Sub-Node.
   useEffect(() => {
-    const ids = new Set((graph.nodes || []).map((q) => q.id));
+    /** @type {Set<string>} */
+    const allNodeIds = new Set();
+    for (const q of graph.nodes || []) {
+      allNodeIds.add(q.id);
+      const stack = [...(q.children || [])];
+      while (stack.length) {
+        const n = stack.pop();
+        if (n?.id) allNodeIds.add(n.id);
+        if (Array.isArray(n?.children) && n.children.length) stack.push(...n.children);
+      }
+    }
     setNodeDone((prev) => {
       let changed = false;
       /** @type {typeof prev} */
       const next = { ...prev };
-      for (const qid of Object.keys(next)) {
-        if (!ids.has(qid)) {
-          delete next[qid];
+      for (const nid of Object.keys(next)) {
+        if (!allNodeIds.has(nid)) {
+          delete next[nid];
           changed = true;
         }
       }
@@ -308,10 +355,13 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     setAdded((prev) => {
       const next = new Set();
       for (const id of prev) {
-        const q = m.get(id);
-        if (!q) continue;
-        if (isNodeCompleted(q, nodeDone)) continue;
-        if (!isNodeUnlocked(id, graph, nodeDone, m)) continue;
+        // Child-Nodes über findNodeWithAncestors suchen, Root-Quest für Lock/Completion-Check holen
+        const found = findNodeWithAncestors(graph, id);
+        if (!found) continue;
+        const rootQuest = m.get(found.rootQuestId);
+        if (!rootQuest) continue;
+        if (isNodeCompleted(rootQuest, nodeDone)) continue;
+        if (!isNodeUnlocked(found.rootQuestId, graph, nodeDone, m)) continue;
         next.add(id);
       }
       if (next.size === prev.size && [...next].every((id) => prev.has(id))) return prev;
@@ -364,6 +414,7 @@ export default function RpgQuestTree({ isSuperuser = false }) {
       return;
     }
     if (treePickActive) {
+      if (blockedPickIds.has(qid)) { showCycleWarning(); return; }
       setTreePickNodeIds((prev) => {
         const next = new Set(prev);
         if (next.has(qid)) next.delete(qid);
@@ -374,25 +425,27 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     }
     setSelectedNode({ questId: qid, nodeId: null });
     setSelectedId(qid);
-  }, [treePickActive]);
+  }, [treePickActive, blockedPickIds, showCycleWarning]);
 
   const toggleAdded = useCallback(() => {
-    const q = selectedId ? byId.get(selectedId) : null;
+    // Child-Node bevorzugen — wenn ein Sub-Node angeklickt ist, dessen ID tracken statt Root-Quest-ID
+    const effectiveId = selectedNode?.nodeId || selectedId;
+    const q = selectedId ? byId.get(selectedId) : null; // Root-Quest für Unlock/Completion-Checks
     const canToggle = canToggleAddedForSelection({
-      selectedId,
+      selectedId: effectiveId,
       isSelectedKnown: !!q,
       isSelectedUnlocked: selectedId ? isNodeUnlocked(selectedId, graph, nodeDone, byId) : false,
       isSelectedCompleted: q ? isNodeCompleted(q, nodeDone) : false,
     });
-    if (!canToggle || !selectedId) return;
+    if (!canToggle || !effectiveId) return;
     markDirty();
     setAdded((prev) => {
       const next = new Set(prev);
-      if (next.has(selectedId)) next.delete(selectedId);
-      else next.add(selectedId);
+      if (next.has(effectiveId)) next.delete(effectiveId);
+      else next.add(effectiveId);
       return next;
     });
-  }, [byId, graph, selectedId, nodeDone]);
+  }, [byId, graph, selectedId, selectedNode, nodeDone]);
 
   const { selectedQuest, selectedGraphNode, selectedNodeView } =
     deriveRpgTreeSelectionView(byId, selectedId, selectedNode);
@@ -400,7 +453,9 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     ? isNodeUnlocked(selectedQuest.id, graph, nodeDone, byId)
     : false;
   const selectedCompleted = selectedQuest ? isNodeCompleted(selectedQuest, nodeDone) : false;
-  const selectedAdded = selectedQuest ? added.has(selectedQuest.id) : false;
+  // Prüfen ob der konkret ausgewählte Node (Child oder Root) im Hub ist
+  const effectiveSelectedId = selectedNode?.nodeId || selectedQuest?.id;
+  const selectedAdded = effectiveSelectedId ? added.has(effectiveSelectedId) : false;
   const { panelAddLabel, addButtonDisabled, canEditSelected } = deriveRpgTreePanelState({
     selectedNodeContext: selectedQuest,
     selectedUnlocked,
@@ -435,7 +490,7 @@ export default function RpgQuestTree({ isSuperuser = false }) {
         }
         break;
       case 'note':
-        if (isSuperuser) openSuperNotes();
+        if (canUseNotes) openSuperNotes();
         break;
       case 'focus': {
         // Auf aktive Quest zentrieren
@@ -455,7 +510,7 @@ export default function RpgQuestTree({ isSuperuser = false }) {
         window.location.href = '/rpg';
         break;
     }
-  }, [selectedQuest, selectedNode, isSuperuser]);
+  }, [selectedQuest, selectedNode, canUseNotes]);
 
   // Mobil: Dock + Overlay fuer Mana/Heart
   const mobileManaDock =
@@ -533,13 +588,15 @@ export default function RpgQuestTree({ isSuperuser = false }) {
     />
   );
 
-  const superNotesModal = isSuperuser ? (
+  const superNotesModal = canUseNotes ? (
     <RpgTreeSuperNotes
       open={superNotesOpen}
       value={superNotesValue}
+      history={superNotesHistory}
       onInput={setSuperNotesValue}
       onClose={() => setSuperNotesOpen(false)}
       onSave={saveSuperNotes}
+      onRestoreHistory={setSuperNotesValue}
       loading={superNotesLoading}
       saving={superNotesSaving}
       error={superNotesError}
@@ -574,11 +631,11 @@ export default function RpgQuestTree({ isSuperuser = false }) {
   if (!graph.nodes?.length) {
     return (
       <div class={`rpg-tree dir-${direction}`}>
-        <RpgAstrolab activeTool={activeTool} onTool={handleAstrolabTool} isSuperuser={isSuperuser} />
+        <RpgAstrolab activeTool={activeTool} onTool={handleAstrolabTool} canUseNotes={canUseNotes} />
         <header class="rpg-tree__top">
           <p class="rpg-tree__top-title">
             Codex der Quests
-            <em>· Node-Baum</em>
+            <em>· Quest-Baum</em>
           </p>
         </header>
         {superNotesModal}
@@ -586,13 +643,11 @@ export default function RpgQuestTree({ isSuperuser = false }) {
         {mobileManaDock}
         {mobileManaOverlay}
         <p class="rpg-tree__empty">
-          Keine Nodes im Graph. Nutze das + am Astrolab, um eine Quest anzulegen.
+          Keine Quests im Graph. Nutze das + am Astrolab, um eine Quest anzulegen.
         </p>
         {editorOpen && (
-          <aside class="rpg-tree-panel">
-            <div class="rpg-tree-panel__inner rpg-tree-panel__inner--editor">
-              {graphEditor}
-            </div>
+          <aside class="qpanel qpanel--editor" aria-label="Editor">
+            {graphEditor}
           </aside>
         )}
       </div>
@@ -612,14 +667,14 @@ export default function RpgQuestTree({ isSuperuser = false }) {
       <RpgAstrolab
         activeTool={activeTool}
         onTool={handleAstrolabTool}
-        isSuperuser={isSuperuser}
+        canUseNotes={canUseNotes}
       />
 
       {/* Topbar: Titel + Breadcrumb */}
       <header class="rpg-tree__top">
         <p class="rpg-tree__top-title">
           Codex der Quests
-          <em>· Node-Baum</em>
+          <em>· Quest-Baum</em>
         </p>
         <div class="rpg-tree__top-breadcrumb">
           <span>{location?.city || 'Ort'}</span>
@@ -639,6 +694,27 @@ export default function RpgQuestTree({ isSuperuser = false }) {
       {settingsModal}
       {mobileManaDock}
       {mobileManaOverlay}
+
+      {/* Tree-Pick-Banner: sichtbar wenn der Nutzer Nodes fuer den Editor auswaehlt */}
+      {treePickActive && (
+        <div class="rpg-tree__pick-banner" role="status" aria-live="polite">
+          {treePickCycleWarning ? (
+            <>
+              <span class="rpg-tree__pick-banner-icon">⚠</span>
+              <span class="rpg-tree__pick-banner-cycle">Zirkelschluss — diese Node ist ein Vorfahre des bearbeiteten Knotens</span>
+            </>
+          ) : (
+            <>
+              <span class="rpg-tree__pick-banner-icon">⊕</span>
+              Auswahlmodus — klicke Nodes an
+              {treePickNodeIds.size > 0 && (
+                <span class="rpg-tree__pick-banner-count">{treePickNodeIds.size} ausgewählt</span>
+              )}
+              <span class="rpg-tree__pick-banner-hint">dann „Fertig" im Editor</span>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Viewport: Pan/Zoom-Canvas mit dem Quest-Graphen */}
       <div
@@ -676,7 +752,7 @@ export default function RpgQuestTree({ isSuperuser = false }) {
             viewBox={`${nodeTreeOverlay.minX} ${nodeTreeOverlay.minY} ${nodeTreeOverlay.width} ${nodeTreeOverlay.height}`}
             aria-hidden={false}
           >
-            <title>Node-Baum</title>
+            <title>Quest-Baum</title>
             <defs>
               {/* Goldener Kanten-Gradient (fuer Fortschritt) */}
               <linearGradient id="edgeFill" x1="0" y1="0" x2="0" y2="1">
@@ -756,8 +832,8 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                   <line
                     key={`node-edge-${i}`}
                     x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-                    stroke="rgba(200,147,47,0.18)"
-                    stroke-width={1.05}
+                    stroke={edge.isDone ? doneStroke : 'rgba(200,147,47,0.18)'}
+                    stroke-width={edge.isDone ? 2.0 : 1.05}
                     stroke-linecap="round"
                   />
                 );
@@ -776,21 +852,20 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                 const r = nodeR();
                 const label = q.title.length > 20 ? `${q.title.slice(0, 18)}\u2026` : q.title;
                 const isFocus = focusIdFromUrl === q.id;
-                const isSelected = selectedId === q.id;
+                // Nur direkt selected wenn kein Child-Node ausgewählt ist — sonst leuchtet
+                // der Root immer wenn irgendein Kind angeklickt wird
+                const isDirectlySelected = selectedId === q.id && !selectedNode?.nodeId;
                 const timeUrgent = !completed && questHasUrgentTimeBoundLeaves(q, nodeDone);
                 const isActive = unlocked && isAdded && !completed;
 
                 return (
                   <g
                     key={q.id}
-                    class={`${cls}${isSelected ? ' rpg-tree-node--selected' : ''}${treePickActive && treePickNodeIds.has(q.id) ? ' rpg-tree-node--pick-selected' : ''}`}
+                    class={`${cls}${isDirectlySelected ? ' rpg-tree-node--selected' : ''}${treePickActive && treePickNodeIds.has(q.id) ? ' rpg-tree-node--pick-selected' : ''}`}
                     transform={`translate(${p.x},${p.y})`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onGraphNodeClick(q.id)}
                   >
-                    {/* Aktiv-Leuchten (Halo) */}
-                    {isActive && <circle r={r + 14} fill="url(#nodeGlow)" />}
-
                     {/* Knoten-Form (Polygon je nach Kinderzahl) */}
                     {(() => {
                       const path = nodeShapePath(countQuestLeaves(q), r);
@@ -799,9 +874,6 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                       }
                       return <path class="rpg-tree-node__shape" d={path} stroke-width={isFocus ? 2.6 : 1.8} />;
                     })()}
-
-                    {/* Innerer Ring (dekorativ) */}
-                    {r > 20 && <circle r={r - 6} class="rpg-tree-node__inner-ring" />}
 
                     {/* Urgent-Dot (fristgebundene Nodes) */}
                     {timeUrgent ? (
@@ -831,10 +903,11 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                 const cls = nodeNodeClass(n.isDone, n.isLeaf, n.isLock);
                 const label = n.label.length > 20 ? `${n.label.slice(0, 18)}\u2026` : n.label;
                 const shapePath = nodeShapePath(n.leafDescendants, nodeTreeOverlay.nodeRadius);
+                const isNodeSelected = selectedNode?.nodeId === n.nodeId && selectedNode?.questId === n.questId;
                 return (
                   <g
                     key={n.id}
-                    class={`${cls}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}`}
+                    class={`${cls}${isNodeSelected ? ' rpg-tree-node-node--selected' : ''}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}`}
                     transform={`translate(${n.x},${n.y})`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => {
@@ -843,6 +916,7 @@ export default function RpgQuestTree({ isSuperuser = false }) {
                         return;
                       }
                       if (treePickActive) {
+                        if (blockedPickIds.has(n.nodeId)) { showCycleWarning(); return; }
                         setTreePickNodeIds((prev) => {
                           const next = new Set(prev);
                           if (next.has(n.nodeId)) next.delete(n.nodeId);
@@ -892,10 +966,8 @@ export default function RpgQuestTree({ isSuperuser = false }) {
 
       {/* Rechtes Panel: Quest-Details ODER Editor */}
       {editorOpen ? (
-        <aside class="rpg-tree-panel" aria-label="Editor">
-          <div class="rpg-tree-panel__inner rpg-tree-panel__inner--editor">
-            {graphEditor}
-          </div>
+        <aside class="qpanel qpanel--editor" aria-label="Editor">
+          {graphEditor}
         </aside>
       ) : selectedQuest ? (
         <RpgQuestPanel

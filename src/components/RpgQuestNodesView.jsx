@@ -1,8 +1,14 @@
 import { useState } from 'preact/hooks';
 import { canSetNodeDone, buildRewardDisplayList, isLockNode } from '../lib/rpg-quest-nodes.js';
-import { questProgress as nodeProgress } from '../lib/rpg-quest-graph.js';
+import { nodeProgress } from '../lib/rpg-quest-graph.js';
 import { normalizeQuestCityLocation, normalizeNodePlaceLocation } from '../lib/rpg-location.js';
 import { resolveNodeGuardQuest } from '../lib/rpg-graph-validation.js';
+
+// Einheitlicher Tooltip-Text fuer alle Reward-Pills, egal ob der Reward
+// auf dem View-Node selbst oder auf einem Descendant liegt.
+function rewardTooltip(unlocked) {
+  return unlocked ? 'Quest erledigt' : 'Nach Erledigung der Quest';
+}
 
 function RewardCubeIcon() {
   return (
@@ -63,7 +69,7 @@ function RewardManaStarIcon() {
 }
 
 function NodeLockIcon() {
-  return <span class="rpg-node-badge rpg-node-badge--lock" title="Lock-Node">🔒</span>;
+  return <span class="rpg-node-badge rpg-node-badge--lock" title="Gesperrte Quest">🔒</span>;
 }
 
 /**
@@ -81,6 +87,7 @@ function NodeLockIcon() {
  *   showLocationGuidance?: boolean;
  *   doneScopeNodeId?: string;
  *   guardQuest?: import('../lib/rpg-quests-data.js').RpgNode | null;
+ *   showRewards?: boolean;
  * }} props
  */
 export default function RpgQuestNodesView({
@@ -97,6 +104,7 @@ export default function RpgQuestNodesView({
   showLocationGuidance = true,
   doneScopeNodeId = '',
   guardQuest = null,
+  showRewards = true,
 }) {
   const activeNode = node;
   const activeNodeDone = nodeDone || {};
@@ -106,8 +114,23 @@ export default function RpgQuestNodesView({
   const activeDoneScopeNodeId = doneScopeNodeId || activeNode?.id || '';
   const [focusedNodeId, setFocusedNodeId] = useState(/** @type {string | null} */ (null));
   if (!activeNode) return null;
-  const doneFor = activeNodeDone[activeDoneScopeNodeId] || {};
-  const rewardProgressPct = graph ? nodeProgress(activeNode, activeNodeDone, graph) : undefined;
+  // Phase 2: nodeDone ist flach (Record<nodeId, boolean>). Frueher haben wir
+  // hier `nodeDone[scopeId]` ausgepackt — das gibt es nicht mehr.
+  // Fuer Compat mit V2-Eingaben fallen wir auf den verschachtelten Pfad zurueck,
+  // wenn der Top-Level-Wert kein boolean ist.
+  /** @type {Record<string, boolean>} */
+  const doneFor = (() => {
+    if (!activeNodeDone || typeof activeNodeDone !== 'object') return {};
+    // Wenn es Top-Level booleans gibt, ist es flach → komplettes Objekt nutzen.
+    const hasTopLevelBoolean = Object.values(activeNodeDone).some((v) => typeof v === 'boolean');
+    if (hasTopLevelBoolean) return /** @type {any} */ (activeNodeDone);
+    // V2-Compat: nodeDone[scopeId] → Record<nodeId, boolean>
+    return activeNodeDone[activeDoneScopeNodeId] || {};
+  })();
+  // Aggregierten Graph-Progress nur fuer Root-Views verwenden — fuer Sub-Node-Views
+  // ist die scope-ID nicht der Node selbst und nodeProgress kennt sie im Graph nicht.
+  const isRootView = activeDoneScopeNodeId === activeNode.id;
+  const rewardProgressPct = (graph && isRootView) ? nodeProgress(graph, activeNode.id, activeNodeDone) : undefined;
   const questCity = normalizeQuestCityLocation(activeNode.cityLocation);
   const currentCity = normalizeQuestCityLocation(currentLocation?.city);
   const cityMismatch = !!questCity && !!currentCity && questCity !== currentCity;
@@ -147,40 +170,43 @@ export default function RpgQuestNodesView({
           )}
         </ul>
       ) : null}
-      <p class="rpg-section-label">Rewards</p>
-      <div class={rewardsClass}>
-        {buildRewardDisplayList(activeNode, activeNodeDone, rewardProgressPct, itemCatalog).map((row, i) => (
-          <span
-            key={`${row.source}-${i}-${row.kind}-${row.kind === 'points' && row.pointKind ? row.pointKind : ''}-${row.label.slice(0, 24)}`}
-            class={`rpg-reward-pill${row.kind === 'item' ? ' rpg-reward-pill--item' : ''}${
-              row.kind === 'points' ? ' rpg-reward-pill--points' : ''
-            }${row.unlocked ? '' : ' rpg-reward-pill--locked'}`}
-            title={
-              row.source === 'quest' && typeof row.unlockAtPercent === 'number'
-                ? `Ab ${row.unlockAtPercent} % Quest-Fortschritt (inkl. Subgraph)`
-                : row.source === 'node'
-                  ? row.unlocked
-                    ? 'Node erledigt'
-                    : 'Nach Erledigung der Node'
-                  : undefined
-            }
-          >
-            {row.kind === 'item' ? (
-              <>
-                <RewardCubeIcon />
+      {showRewards && <p class="rpg-section-label">Rewards</p>}
+      {showRewards && (
+        <div class={rewardsClass}>
+          {buildRewardDisplayList(activeNode, activeNodeDone, {
+            scopeQuestId: activeDoneScopeNodeId,
+            selfProgressPercent: rewardProgressPct,
+            itemCatalogById: itemCatalog,
+          }).map((row, i) => (
+            <span
+              key={`${row.nodeId}-${i}-${row.kind}-${row.kind === 'points' && row.pointKind ? row.pointKind : ''}-${row.label.slice(0, 24)}`}
+              class={`rpg-reward-pill${row.kind === 'item' ? ' rpg-reward-pill--item' : ''}${
+                row.kind === 'points' ? ' rpg-reward-pill--points' : ''
+              }${row.kind === 'achievement' ? ' rpg-reward-pill--achievement' : ''}${row.unlocked ? '' : ' rpg-reward-pill--locked'}`}
+              title={rewardTooltip(row.unlocked)}
+            >
+              {row.kind === 'item' ? (
+                <>
+                  <RewardCubeIcon />
+                  <span class="rpg-reward-pill__label">{row.label}</span>
+                </>
+              ) : row.kind === 'points' ? (
+                <>
+                  {row.pointKind === 'mana' ? <RewardManaStarIcon /> : <RewardHeartIcon />}
+                  <span class="rpg-reward-pill__label rpg-reward-pill__label--points">{row.label}</span>
+                </>
+              ) : row.kind === 'achievement' ? (
+                <>
+                  <span class="rpg-reward-pill__achievement-icon" aria-hidden="true">🏆</span>
+                  <span class="rpg-reward-pill__label">{row.label}</span>
+                </>
+              ) : (
                 <span class="rpg-reward-pill__label">{row.label}</span>
-              </>
-            ) : row.kind === 'points' ? (
-              <>
-                {row.pointKind === 'mana' ? <RewardManaStarIcon /> : <RewardHeartIcon />}
-                <span class="rpg-reward-pill__label rpg-reward-pill__label--points">{row.label}</span>
-              </>
-            ) : (
-              row.label
-            )}
-          </span>
-        ))}
-      </div>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -189,7 +215,7 @@ export default function RpgQuestNodesView({
  * @param {{
  *   node: import('../lib/rpg-quests-data.js').RpgNode;
  *   guardQuest: import('../lib/rpg-quests-data.js').RpgNode | null;
- *   childNode: Record<string, unknown> & { id: string; label: string; children?: unknown[]; optional?: boolean };
+ *   childNode: Record<string, unknown> & { id: string; title: string; children?: unknown[]; optional?: boolean };
  *   depth: number;
  *   doneFor: Record<string, boolean>;
  *   nodeDone: Record<string, Record<string, boolean>>;
@@ -340,7 +366,7 @@ function NodeBranch({
           </span>
         ) : null}
         {depBlocked ? (
-          <span class="rpg-node-hint" title="Zuerst abhängige Nodes erledigen">
+          <span class="rpg-node-hint" title="Zuerst abhängige Quests erledigen">
             gesperrt
           </span>
         ) : null}

@@ -86,6 +86,17 @@ export function normalizeRewardEntry(raw) {
     return out;
   }
 
+  // Achievement-Reward
+  if (typRaw === 'achievement' || (!typRaw && o.achievementId)) {
+    const achievementId = String(o.achievementId ?? '').trim();
+    if (!achievementId) return null;
+    const dn = typeof o.displayName === 'string' ? o.displayName.trim() : '';
+    /** @type {import('./rpg-quests-data.js').RpgRewardAchievement} */
+    const out = { type: 'achievement', achievementId };
+    if (dn) out.displayName = dn;
+    return out;
+  }
+
   return null;
 }
 
@@ -106,13 +117,15 @@ export function normalizeRewardEntries(raw) {
 }
 
 /**
- * Kurzer Anzeigename fuer Pills (displayName oder itemId als Fallback).
+ * Kurzer Anzeigename fuer Pills (displayName oder ID als Fallback).
  * @param {RpgRewardEntry} e
  */
 function displayLabelForRewardEntry(e) {
   if (e.type === 'text') return e.text;
   if (e.type === 'points') return formatRewardPointsAmount(e.amount);
   const dn = e.displayName?.trim();
+  // item und achievement haben beide displayName + eine ID-Fallback-Eigenschaft
+  if (e.type === 'achievement') return dn || e.achievementId;
   return dn || e.itemId;
 }
 
@@ -124,6 +137,10 @@ function displayLabelForRewardEntry(e) {
 export function rewardEntryDisplayLabel(entry, catalogById) {
   if (entry.type === 'text') return entry.text;
   if (entry.type === 'points') return formatRewardPointsAmount(entry.amount);
+  if (entry.type === 'achievement') {
+    const t = catalogById?.[entry.achievementId]?.title?.trim();
+    return t || displayLabelForRewardEntry(entry);
+  }
   const t = catalogById?.[entry.itemId]?.title?.trim();
   if (t) return t;
   return displayLabelForRewardEntry(entry);
@@ -277,6 +294,9 @@ export function rewardRowToStored(row) {
     o = { type: 'text', text: e.text };
   } else if (e.type === 'points') {
     o = { type: 'points', pointKind: e.pointKind, amount: e.amount };
+  } else if (e.type === 'achievement') {
+    o = { type: 'achievement', achievementId: e.achievementId };
+    if (e.displayName) o.displayName = e.displayName;
   } else {
     o = { type: 'item', itemId: e.itemId };
     if (e.displayName) o.displayName = e.displayName;

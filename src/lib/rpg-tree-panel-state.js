@@ -1,4 +1,14 @@
 /**
+ * Leitet UI-State fuer das Quest-Panel ab.
+ *
+ * `canEditSelected` ist tiefenagnostisch: der Editor unterstuetzt
+ * Root- UND Sub-Node-Edit ueber denselben Pfad (siehe
+ * applyNodeFieldsUpdate in rpg-graph-editor-ops.js). Solange eine
+ * Quest selektiert ist (selectedNodeContext != null), ist Editieren
+ * erlaubt — egal ob die konkrete Auswahl die Root-Quest selbst oder
+ * ein Sub-Node innerhalb dieser Quest ist. Der Aufrufer baut dann
+ * eine Composite-ID `${rootId}::${subId}` fuer den Editor.
+ *
  * @param {{
  *   selectedNodeContext: { id: string } | null;
  *   selectedUnlocked: boolean;

@@ -15,7 +15,8 @@ const sessionUser = Astro.isPrerendered ? null : await getSessionUserFromCookies
 const username = sessionUser?.username || null;
 const showRpgNav = Boolean(username) && (await hasPermission(username, 'rpg_access'));
 const showBlogpostNav = Boolean(username) && (await hasPermission(username, 'blogpost_poster'));
-const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'minigames_access'));
+// Minigames vorerst nur Superuser — Architektur-Umbau laeuft.
+const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'super_access'));
 ---
 
 <nav class:list={['nav2', isHome && 'nav2--home']} aria-label="Hauptnavigation">

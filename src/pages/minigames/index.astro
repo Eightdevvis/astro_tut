@@ -8,7 +8,10 @@ import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
-const canUseMinigames = Boolean(username) && (await hasPermission(username, 'minigames_access'));
+// Vorerst nur Superuser: Architektur-Umbau der Lern-Minigames laeuft.
+// Sobald die Hierarchie (Konzept-Atome -> Mathe-Sprache) steht, wird wieder
+// auf 'minigames_access' umgestellt.
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
@@ -27,9 +30,9 @@ if (!canUseMinigames) {
   <body>
     <Nav2 variant="subpage" />
     <main class="mg-main">
-      <p class="mg-kicker">Mindless Play + High Math</p>
+      <h1 class="mg-title">Spielwiese</h1>
       <p class="mg-lead">
-        Kleine Spiele zum Abschalten — mit echter Mathe im Hintergrund. Fraktale, Flussfelder, und mehr.
+        Zum Anfassen, Drehen, Ausprobieren. Spielen darf sich nach Spielen anfuehlen — und nebenbei klickt im Kopf etwas zusammen.
       </p>
       <ul class="mg-list">
         <li>
@@ -82,27 +85,6 @@ if (!canUseMinigames) {
             </span>
           </a>
         </li>
-        <li>
-          <a class="mg-card" href="/minigames/liquid-vessels">
-            <span class="mg-card-icon" aria-hidden="true">
-              <svg width="40" height="40" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="16" cy="24" r="10" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.9" />
-                <path
-                  d="M32 18c-2-2-5-2-7 0-2-2-5-2-7 0-4 4-4 8-2 12l7 10 7-10c2-4 2-8-2-12z"
-                  stroke="currentColor"
-                  stroke-width="1.4"
-                  fill="none"
-                  stroke-linejoin="round"
-                  opacity="0.9"
-                />
-              </svg>
-            </span>
-            <span class="mg-card-body">
-              <span class="mg-card-title">Mana &amp; Leben</span>
-              <span class="mg-card-desc">RPG-Vitals als WebGL-Showcase: Kugel und Herz, wie im Quest-Baum verwendet.</span>
-            </span>
-          </a>
-        </li>
       </ul>
       <p class="mg-back">
         <a href="/">← Zur Startseite</a>
@@ -130,12 +112,12 @@ if (!canUseMinigames) {
     box-sizing: border-box;
   }
 
-  .mg-kicker {
-    font-size: 0.85rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--site-soft-muted);
-    margin: 0 0 0.5rem;
+  .mg-title {
+    margin: 0 0 0.6rem;
+    font-size: 1.85rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--site-body-text);
   }
 
   .mg-lead {

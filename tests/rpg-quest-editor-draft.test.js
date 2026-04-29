@@ -59,7 +59,8 @@ test('createEmptyRewardRow erzeugt leere Reward-Zeile', () => {
   assert.equal(r.itemId, '');
   assert.equal(r.pointKind, 'heart');
   assert.equal(r.pointsAmount, '');
-  assert.equal(r.unlockAtPercent, '');
+  // unlockAtPercent wurde aus dem System entfernt
+  assert.equal(r.unlockAtPercent, undefined);
   assert.ok(r.key, 'Key muss vorhanden sein');
 });
 
@@ -376,15 +377,17 @@ test('draftRewardRowsToStoredRewards filtert leere Rows', () => {
   assert.equal(stored.length, 0);
 });
 
-test('draftRewardRowsToStoredRewards inkludiert unlockAtPercent', () => {
+test('draftRewardRowsToStoredRewards ohne unlockAtPercent (Feature entfernt)', () => {
+  // unlockAtPercent wurde aus dem System entfernt — wird nicht mehr gespeichert
   const rows = [{
     ...createEmptyRewardRow(),
     kind: 'text',
     text: 'R',
-    unlockAtPercent: '50',
   }];
   const stored = draftRewardRowsToStoredRewards(rows);
-  assert.equal(stored[0].unlockAtPercent, 50);
+  assert.equal(stored[0].unlockAtPercent, undefined);
+  assert.equal(stored[0].type, 'text');
+  assert.equal(stored[0].text, 'R');
 });
 
 // =============================================================================

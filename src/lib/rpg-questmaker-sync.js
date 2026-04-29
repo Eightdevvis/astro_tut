@@ -7,7 +7,6 @@ import {
   walkNodesPreOrder,
   getNodeRewardEntries,
 } from './rpg-quest-nodes.js';
-import { normalizeRewardEntry } from './rpg-quest-rewards.js';
 import { graphNodes } from './rpg-quests-data.js';
 
 /**
@@ -43,19 +42,11 @@ export function collectAllItemIdsFromGraph(graph) {
 export function collectItemRewardRefsFromGraph(graph) {
   /** @type {Map<string, { displayName?: string }>} */
   const refs = new Map();
-  for (const q of graphNodes(graph)) {
-    walkNodesPreOrder(q.children || [], (s) => {
-      for (const r of s.rewards || []) {
-        const e = normalizeRewardEntry(r);
-        if (e?.type === 'item') {
-          const prev = refs.get(e.itemId) || {};
-          refs.set(e.itemId, {
-            displayName: e.displayName || prev.displayName,
-          });
-        }
-      }
-    });
-    for (const e of getNodeRewardEntries(q)) {
+  /** @param {import('./rpg-quests-data.js').RpgNode | Record<string, unknown>} n */
+  const collectFromNode = (n) => {
+    // Einheitlich via getNodeRewardEntries — liest sowohl kanonisches 'rewards' als auch
+    // Legacy-Felder ('questRewards'). Gleicher Pfad fuer Root und Sub-Node, keine Sonder-Logik.
+    for (const e of getNodeRewardEntries(n)) {
       if (e.type === 'item') {
         const prev = refs.get(e.itemId) || {};
         refs.set(e.itemId, {
@@ -63,6 +54,10 @@ export function collectItemRewardRefsFromGraph(graph) {
         });
       }
     }
+  };
+  for (const q of graphNodes(graph)) {
+    collectFromNode(q);
+    walkNodesPreOrder(q.children || [], collectFromNode);
   }
   return refs;
 }
@@ -75,10 +70,12 @@ export function collectItemRewardRefsFromGraph(graph) {
  */
 export function collectItemIdsFromNodesAndQuestRewards(nodes, questRewardEntries) {
   const ids = new Set();
+  // Einheitlich via getNodeRewardEntries — liest sowohl kanonisches 'rewards' als auch
+  // Legacy 'questRewards'. Sub-Nodes und der gegebene questRewardEntries-Parameter
+  // werden gleich behandelt: jede Item-Entry wird gesammelt.
   walkNodesPreOrder(nodes || [], (s) => {
-    for (const r of s.rewards || []) {
-      const e = normalizeRewardEntry(r);
-      if (e?.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
+    for (const e of getNodeRewardEntries(s)) {
+      if (e.type === 'item' && (e.itemId || '').trim()) ids.add(e.itemId.trim());
     }
   });
   if (Array.isArray(questRewardEntries)) {

@@ -423,6 +423,12 @@
   stroke: rgba(200,147,47,0.4);
 }
 
+.rpg-tree-node-node--selected .rpg-tree-node-node__shape {
+  stroke: var(--gold-bright);
+  stroke-width: 2.2;
+  filter: drop-shadow(0 0 10px rgba(255,220,140,0.75));
+}
+
 .rpg-tree-node-node--pick-selected .rpg-tree-node-node__shape {
   stroke: #7dff9f;
   stroke-width: 2;
@@ -530,6 +536,16 @@
   font-family: var(--sans);
 }
 
+/* Editor-Variante: kein eigenes Padding/Rand, embedded Editor fuellt den Container */
+.qpanel--editor {
+  padding: 0;
+  background: transparent;
+}
+.qpanel--editor .rpg-graph-editor--embedded {
+  height: 100%;
+  max-height: 100%;
+}
+
 /* Dekorativer Rand mit Eckverzierungen */
 .qpanel__rim {
   position: absolute;
@@ -586,6 +602,32 @@
   height: 60px;
   filter: drop-shadow(0 0 8px rgba(200,147,47,0.4));
   color: var(--gold);
+  transition: filter 0.3s ease;
+}
+
+/* Leaf selektiert aber noch nicht erledigt: Stern hohl, gedimmt */
+.qpanel__sigil--leaf {
+  filter: drop-shadow(0 0 4px rgba(200,147,47,0.2));
+  opacity: 0.7;
+}
+
+/* Leaf-Sigil ist klickbar */
+.qpanel__sigil--clickable {
+  cursor: pointer;
+}
+.qpanel__sigil--clickable:hover {
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(255,220,120,0.6));
+}
+
+/* Leaf erledigt: Stern ausgefüllt mit Leuchte-Flash */
+@keyframes sigil-done-flash {
+  0%   { filter: drop-shadow(0 0 4px rgba(200,147,47,0.3)); opacity: 0.7; }
+  35%  { filter: drop-shadow(0 0 28px rgba(255,230,100,1)) drop-shadow(0 0 12px rgba(200,147,47,0.9)); opacity: 1; }
+  100% { filter: drop-shadow(0 0 14px rgba(200,147,47,0.65)); opacity: 1; }
+}
+.qpanel__sigil--done {
+  animation: sigil-done-flash 0.7s ease-out forwards;
 }
 
 .qpanel__title-block { flex: 1; min-width: 0; }
@@ -881,6 +923,7 @@
 
 .qpanel .rpg-reward-pill--item { gap: 0.3rem; }
 .qpanel .rpg-reward-pill--points { gap: 0.28rem; }
+.qpanel .rpg-reward-pill--achievement { gap: 0.3rem; }
 
 .qpanel .rpg-reward-pill__points-icon--heart { color: #e8889a; }
 .qpanel .rpg-reward-pill--locked .rpg-reward-pill__points-icon--heart { color: rgba(232,136,154,0.45); }
@@ -1187,6 +1230,41 @@
 .rpg-tree-panel__inner--editor {
   padding: 0;
   overflow: hidden;
+}
+
+/* ── Tree-Pick-Banner (schwebt oben wenn Auswahlmodus aktiv) ─── */
+.rpg-tree__pick-banner {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 1rem 0.45rem 0.75rem;
+  background: rgba(18,14,8,0.92);
+  border: 1px solid rgba(200,147,47,0.6);
+  border-radius: 20px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.55);
+  pointer-events: none;
+}
+.rpg-tree__pick-banner-icon { font-size: 1rem; opacity: 0.85; }
+.rpg-tree__pick-banner-count {
+  background: rgba(200,147,47,0.18);
+  border: 1px solid rgba(200,147,47,0.35);
+  border-radius: 10px;
+  padding: 0.08rem 0.5rem;
+  font-weight: 600;
+}
+.rpg-tree__pick-banner-hint { color: var(--ink-dim); }
+.rpg-tree__pick-banner-cycle {
+  color: #ffb4b4;
+  font-weight: 600;
 }
 
 /* ── Location Strip (unten Mitte) ────────────────────────────── */
@@ -2068,4 +2146,220 @@
   font-size: 1rem;
   padding: 0 0.25rem;
   line-height: 1;
+}
+
+/* ── rpg-tree__btn Modifier ────────────────────────────────────── */
+
+/* Gedaempfte Variante: unveraenderter Hintergrund, dezente Schrift */
+.rpg-tree__btn--muted {
+  background: transparent;
+  color: var(--ink-dim);
+  border-color: var(--line);
+}
+
+.rpg-tree__btn--muted:hover {
+  background: rgba(200,147,47,0.08);
+  color: var(--ink);
+}
+
+/* Primaer-Variante: goldener Akzent, dunkle Schrift */
+.rpg-tree__btn--primary {
+  background: rgba(200,147,47,0.18);
+  color: var(--gold-bright);
+  border-color: var(--line-strong);
+}
+
+.rpg-tree__btn--primary:hover {
+  background: rgba(200,147,47,0.30);
+}
+
+.rpg-tree__btn:disabled,
+.rpg-tree__btn--muted:disabled,
+.rpg-tree__btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── SuperNotes-Modal ──────────────────────────────────────────── */
+
+/* Halbtransparenter Vollbild-Hintergrund, Modal mittig */
+.rpg-tree__super-notes-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+/* Modal-Container */
+.rpg-tree__super-notes {
+  position: relative;
+  width: min(780px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(22,17,10,0.98), rgba(14,11,6,0.98));
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.6),
+    0 28px 80px rgba(0,0,0,0.85),
+    inset 0 1px 0 rgba(251,230,160,0.07);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+/* Kopfzeile: Titel + Schliessen-Button */
+.rpg-tree__super-notes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.1rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.rpg-tree__super-notes-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  color: var(--gold-bright);
+}
+
+/* X-Button oben rechts */
+.rpg-tree__super-notes-close {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rpg-tree__super-notes-close:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold-deep);
+}
+
+/* Textarea nimmt den verbleibenden Platz ein */
+.rpg-tree__super-notes-textarea {
+  flex: 1;
+  min-height: 360px;
+  resize: vertical;
+  margin: 0.85rem 1.1rem;
+  padding: 0.7rem 0.85rem;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  box-sizing: border-box;
+}
+
+.rpg-tree__super-notes-textarea:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 2px rgba(200,147,47,0.12);
+}
+
+.rpg-tree__super-notes-textarea:disabled {
+  opacity: 0.5;
+}
+
+/* Fehlermeldung */
+.rpg-tree__super-notes-error {
+  margin: 0 1.1rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--rpg-danger-fg);
+  flex-shrink: 0;
+}
+
+/* Verlaufsbereich */
+.rpg-tree__super-notes-history {
+  margin: 0 1.1rem 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Toggle-Button "▸ Verlauf (N ältere Versionen)" */
+.rpg-tree__super-notes-history-toggle {
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  font-family: var(--mono);
+  cursor: pointer;
+  padding: 0.25rem 0;
+  letter-spacing: 0.04em;
+}
+
+.rpg-tree__super-notes-history-toggle:hover {
+  color: var(--gold);
+}
+
+/* Liste der alten Versionen */
+.rpg-tree__super-notes-history-list {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* Eine Versions-Zeile */
+.rpg-tree__super-notes-history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.rpg-tree__super-notes-history-date {
+  color: var(--gold-mid);
+  font-family: var(--mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rpg-tree__super-notes-history-preview {
+  color: var(--ink-dim);
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* "Laden"-Button pro Version */
+.rpg-tree__super-notes-history-restore {
+  font-size: 0.68rem;
+  padding: 0.2rem 0.45rem;
+  flex-shrink: 0;
+}
+
+/* Button-Leiste unten rechts */
+.rpg-tree__super-notes-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 0.75rem 1.1rem 0.9rem;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
 }

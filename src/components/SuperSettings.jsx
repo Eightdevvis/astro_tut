@@ -632,7 +632,7 @@ export default function SuperSettings() {
           <code>super_access</code> = Vollzugriff (alle Rechte aus dieser Liste).{' '}
           <code>tester_access</code> markiert User als Tester (Bottom-Bar mit Kamera).{' '}
           <code>rpg_access</code> erlaubt das RPG inkl. Questmaker.{' '}
-          <code>minigames_access</code> schaltet Minigames in Nav/Home und auf den Minigame-Seiten frei.
+          <code>minigames_access</code> ist derzeit ohne Wirkung — Minigames sind voruebergehend nur fuer Superuser sichtbar (Architektur-Umbau).
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={tableStyle}>

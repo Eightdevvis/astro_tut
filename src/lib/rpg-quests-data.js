@@ -6,14 +6,26 @@
  * ausschliesslich aus seiner Position im Baum (parentId, children).
  */
 
-// --- Einheitliche Typen (Single Source of Truth) ---
+// --- Ebene 1: Narrative Struktur (der Baum) ---
+// RpgNode / RpgEdge / RpgGraph — weiter unten definiert.
+
+// --- Ebene 2: Welt-Objekte (was in der narrativen Umgebung eingesetzt wird) ---
 
 /**
- * Reward-Varianten: Text, Item oder Punkte (heart/mana).
+ * Reward-Varianten — was ein Node als Belohnung vergeben kann.
  * @typedef {{ type: 'text'; text: string }} RpgRewardText
  * @typedef {{ type: 'item'; itemId: string; displayName?: string }} RpgRewardItem
+ *   — Referenz auf rpg_questmaker_items (Katalog, DB-backed).
  * @typedef {{ type: 'points'; pointKind: 'heart' | 'mana'; amount: number }} RpgRewardPoints
- * @typedef {RpgRewardText | RpgRewardItem | RpgRewardPoints} RpgRewardEntry
+ *   — Vitals: heart = körperliche Energie, mana = geistige Energie; Betrag kann negativ sein.
+ * @typedef {{ type: 'achievement'; achievementId: string; displayName?: string }} RpgRewardAchievement
+ *   — Referenz auf rpg_achievements (globale Liste, dynamisch wachsend).
+ * @typedef {RpgRewardText | RpgRewardItem | RpgRewardPoints | RpgRewardAchievement} RpgRewardEntry
+ */
+
+/**
+ * Katalogeintrag für ein Achievement (Welt-Objekt, DB-backed in rpg_achievements).
+ * @typedef {{ id: string; title: string; description: string; updatedAt: string }} RpgAchievement
  */
 
 /**
@@ -22,13 +34,20 @@
  * - parentId !== null, children.length > 0 → Gruppe ("Kapitel")
  * - children.length === 0 → Blatt ("Schritt")
  *
+ * Phase 1 (V3): `children` und `parentId` sind in V3-canonical Daten NICHT
+ * vorhanden — die Hierarchie lebt ausschliesslich in `graph.edges` als
+ * structure-Relation. Beide Felder werden nur in der Compat-View
+ * (`denormalizeGraphForCompat`) wieder aufgebaut, damit bestehende Aufrufer
+ * weiter funktionieren. Phase 2 stellt die Aufrufer auf neue Edge-Helper um,
+ * Phase 3+4 entfernen die Compat-Schicht.
+ *
  * @typedef {{
  *   id: string;
- *   parentId: string | null;
+ *   parentId?: string | null;
  *   title: string;
  *   description?: string;
  *   optional?: boolean;
- *   children: RpgNode[];
+ *   children?: RpgNode[];
  *   dependsOn?: string[];
  *   rewards?: RpgRewardEntry[];
  *   timeDueAt?: string;
@@ -44,12 +63,28 @@
 
 /**
  * Kante: Struktur (Parent->Child) oder Abhaengigkeit (Node->Node).
- * @typedef {{ from: string; to: string; relation: 'structure' | 'dependency' }} RpgEdge
+ *
+ * `relation` Werte
+ * ────────────────
+ * - `'structure'` — kanonischer Wert für parent-of-Hierarchie (V2 + V3)
+ * - `'parent_of'` — V3-Alias, wird beim Einlesen auf `'structure'` gemappt
+ * - `'dependency'` — Vorbedingung (Quest A muss vor Quest B fertig sein)
+ *
+ * @typedef {{ from: string; to: string; relation: 'structure' | 'parent_of' | 'dependency' }} RpgEdge
  */
 
 /**
  * Der Quest-Graph: Nodes + Kanten.
  * @typedef {{ nodes: RpgNode[]; edges: RpgEdge[] }} RpgGraph
+ */
+
+/**
+ * Compat-View über einem V3-Graph: Nodes haben zusätzlich `children` (rekursiv
+ * aufgelöst) und `parentId` (erster Parent oder null) — siehe
+ * `denormalizeGraphForCompat`. Multi-Parent-Nodes erscheinen als kopierte
+ * Sub-Trees unter jedem Parent (Phase-1-Kompromiss).
+ *
+ * @typedef {{ nodes: RpgNode[]; edges: RpgEdge[] }} RpgGraphView
  */
 
 // Legacy-Typ fuer altes { main, side } Format
@@ -71,7 +106,12 @@ function normalizeGraphEdge(raw) {
   const to = String(o.to ?? o.toNodeId ?? '').trim();
   if (!from || !to || from === to) return null;
   const relRaw = String(o.relation ?? '').trim().toLowerCase();
-  const relation = relRaw === 'structure' ? 'structure' : 'dependency';
+  // V3-Alias 'parent_of' wird auf den kanonischen Wert 'structure' gemappt,
+  // damit alle bestehenden Filter (e.relation === 'structure') in Phase 1
+  // unverändert weiter funktionieren. Phase 2+ kann den kanonischen Namen
+  // umbenennen, die Datenform bleibt gleich.
+  const isStructure = relRaw === 'structure' || relRaw === 'parent_of';
+  const relation = isStructure ? 'structure' : 'dependency';
   return { from, to, relation };
 }
 
@@ -95,12 +135,14 @@ function collectNodesById(nodes, out) {
  * @param {RpgNode[]} nodes
  * @param {RpgEdge[]} edges
  */
-function collectStructureEdges(nodes, edges) {
+function collectStructureEdges(nodes, edges, visited = new Set()) {
   for (const n of nodes || []) {
-    const pid = typeof n?.parentId === 'string' ? n.parentId.trim() : '';
     const id = typeof n?.id === 'string' ? n.id.trim() : '';
-    if (pid && id) edges.push({ from: pid, to: id, relation: 'structure' });
-    if (Array.isArray(n?.children) && n.children.length > 0) collectStructureEdges(n.children, edges);
+    if (!id || visited.has(id)) continue;
+    visited.add(id);
+    const pid = typeof n?.parentId === 'string' ? n.parentId.trim() : '';
+    if (pid) edges.push({ from: pid, to: id, relation: 'structure' });
+    if (Array.isArray(n?.children) && n.children.length > 0) collectStructureEdges(n.children, edges, visited);
   }
 }
 
@@ -169,29 +211,6 @@ export function graphNodes(graph) {
 }
 
 /**
- * Root-Nodes als Map (id -> Node).
- * @param {RpgGraph | null | undefined} graph
- * @returns {Record<string, RpgNode>}
- */
-export function graphNodesById(graph) {
-  /** @type {Record<string, RpgNode>} */
-  const out = {};
-  if (!graph || typeof graph !== 'object') return out;
-  const g = /** @type {Record<string, unknown>} */ (graph);
-  // Legacy: nodesById direkt auf dem Graph-Objekt
-  if (g.nodesById && typeof g.nodesById === 'object') {
-    for (const [id, n] of Object.entries(/** @type {Record<string, RpgNode>} */ (g.nodesById))) {
-      if (!id || !n || typeof n !== 'object') continue;
-      if (n.parentId !== null) continue;
-      out[id] = n;
-    }
-    return out;
-  }
-  collectNodesById(graphNodes(graph), out);
-  return out;
-}
-
-/**
  * Kanten im kanonischen {from, to, relation} Format.
  * Akzeptiert Legacy-Formate (fromNodeId/toNodeId) und normalisiert.
  * @param {RpgGraph | Record<string, unknown> | null | undefined} graph
@@ -245,87 +264,195 @@ export function makeRpgGraph(nodesOrMap, edges) {
   return { nodes: roots, edges: finalEdges };
 }
 
+// --- V3 Compat-View ---
+
+/**
+ * Prüft, ob eine Edge-Relation eine Parent→Child-Hierarchie-Kante darstellt.
+ * Nach Normalisierung ist intern immer `'structure'`, aber das Eingabe-Format
+ * V3 erlaubt `'parent_of'` als Alias. Konsumenten sollen über diesen Helper
+ * filtern, damit der Wechsel des kanonischen Namens (Phase 2+) zentralisiert
+ * bleibt.
+ *
+ * @param {RpgEdge | null | undefined} edge
+ * @returns {boolean}
+ */
+export function isParentChildRelation(edge) {
+  if (!edge) return false;
+  return edge.relation === 'structure' || edge.relation === 'parent_of';
+}
+
+/**
+ * Baut über einem V3-Graph (flache Nodes, Hierarchie nur in edges) eine
+ * Compat-View, in der jede Node zusätzlich enthält:
+ *   - `children: RpgNode[]` — rekursiv aus structure-Edges aufgelöst
+ *   - `parentId: string | null` — ID des ersten Parents (oder null wenn root)
+ *
+ * Multi-Parent-Behandlung
+ * ───────────────────────
+ * Wenn eine Node mehrere parent_of-Edges einkommend hat, erscheint sie unter
+ * JEDEM Parent als kopierter Sub-Tree (shallow-Copy mit eigenen children).
+ * `parentId` wird auf den ersten Parent in Edge-Reihenfolge gesetzt — das ist
+ * konsistent mit der V2-Sicht aus Sicht des Top-Down-Walks. Diese Duplizierung
+ * ist NICHT-DAG aber für die Phase-1-Compat legitim: bestehende Aufrufer
+ * sehen weiter einen Tree.
+ *
+ * Cycle-Schutz
+ * ────────────
+ * Pro Walk-Pfad wird ein `visited`-Set geführt, sodass Edges, die einen Zyklus
+ * erzeugen würden, beim Aufbau übersprungen werden (verhindert Stack-Overflow).
+ * Echte DAG-Cycle-Erkennung läuft separat über `hasDagCycle`.
+ *
+ * @param {RpgGraph | Record<string, unknown> | null | undefined} graph
+ * @returns {RpgGraphView}
+ */
+export function denormalizeGraphForCompat(graph) {
+  const nodes = graphNodes(graph);
+  const edges = graphEdges(graph);
+
+  /** @type {Map<string, RpgNode>} — flache ID→Node-Map (canonical Form). */
+  const byId = new Map();
+  for (const n of nodes) {
+    if (n && typeof n.id === 'string' && n.id) byId.set(n.id, n);
+  }
+
+  /** @type {Map<string, string[]>} — parent → child-IDs (Reihenfolge wie in edges). */
+  const childIdsByParent = new Map();
+  /** @type {Map<string, string[]>} — child → parent-IDs (für parentId-Wahl). */
+  const parentIdsByChild = new Map();
+  for (const e of edges) {
+    if (!isParentChildRelation(e)) continue;
+    if (!byId.has(e.from) || !byId.has(e.to)) continue;
+    if (!childIdsByParent.has(e.from)) childIdsByParent.set(e.from, []);
+    childIdsByParent.get(e.from).push(e.to);
+    if (!parentIdsByChild.has(e.to)) parentIdsByChild.set(e.to, []);
+    parentIdsByChild.get(e.to).push(e.from);
+  }
+
+  /**
+   * Baut den Compat-Node mit `children`/`parentId`.
+   * @param {string} id
+   * @param {string | null} parentId — vom Caller bestimmt (für Multi-Parent-Kopien)
+   * @param {Set<string>} ancestors — Pfad-Cycle-Guard
+   * @returns {RpgNode | null}
+   */
+  function build(id, parentId, ancestors) {
+    const src = byId.get(id);
+    if (!src) return null;
+    if (ancestors.has(id)) return null; // Cycle — nicht erneut ausrollen
+    const nextAncestors = new Set(ancestors);
+    nextAncestors.add(id);
+    const childIds = childIdsByParent.get(id) || [];
+    /** @type {RpgNode[]} */
+    const children = [];
+    for (const cid of childIds) {
+      const built = build(cid, id, nextAncestors);
+      if (built) children.push(built);
+    }
+    // Shallow-Copy + Compat-Felder. parentId wird vom Caller bestimmt
+    // (= der konkrete Parent-Eintrag in dieser Sub-Tree-Kopie). Bei Roots
+    // (kein Parent-Edge) wird der erste verfügbare Parent verwendet — bei
+    // genuinen Roots ist das null.
+    const resolvedParentId = parentId
+      ?? (parentIdsByChild.get(id)?.[0] ?? null);
+    return {
+      ...src,
+      parentId: resolvedParentId,
+      children,
+    };
+  }
+
+  // Root-Nodes: alle, die KEINE eingehende structure-Edge haben.
+  /** @type {RpgNode[]} */
+  const roots = [];
+  for (const n of nodes) {
+    if (!n || typeof n.id !== 'string' || !n.id) continue;
+    if (parentIdsByChild.has(n.id) && (parentIdsByChild.get(n.id)?.length ?? 0) > 0) {
+      // Hat Parents → kein Root
+      continue;
+    }
+    const built = build(n.id, null, new Set());
+    if (built) roots.push(built);
+  }
+
+  return { nodes: roots, edges };
+}
+
 // --- Konstanten ---
 
 /** Leerer Graph: Initialzustand bis Server-Bootstrap (kein Flash). */
 export const EMPTY_RPG_GRAPH = /** @type {RpgGraph} */ (makeRpgGraph([], []));
 
-/** Sample-Graph fuer Erstbenutzer / Demo. */
-/** @type {RpgGraph} */
-export const SAMPLE_RPG_GRAPH = {
-  nodes: [
-    {
-      id: 'main-architect',
-      parentId: null,
-      title: 'Der rote Faden',
-      description:
-        'Du strukturierst dein Leben um ein langfristiges Ziel: weniger reagieren, mehr bauen. Jeder Schritt ist eine bewusste Entscheidung, nicht ein Zufallstreffer.',
-      children: [
-        { id: 'm1', parentId: 'main-architect', title: 'Klarheit: ein Satz, wof\u00fcr die n\u00e4chsten Jahre da sind', children: [] },
-        { id: 'm2', parentId: 'main-architect', title: 'Umgebung so trimmen, dass sie das Ziel tr\u00e4gt, nicht sabotiert', children: [] },
-        { id: 'm3', parentId: 'main-architect', title: 'Ein Ritual, das w\u00f6chentlich Fortschritt sichtbar macht', children: [] },
-        { id: 'm4', parentId: 'main-architect', title: 'Nein sagen zu einer gro\u00dfen Ablenkung', children: [] },
-      ],
-      rewards: [{ type: 'text', text: '+2 Klarheit' }, { type: 'text', text: 'Titel: Architekt' }, { type: 'text', text: 'Cutscene: Morgenlicht' }],
-    },
-    {
-      id: 'main-bridge',
-      parentId: null,
-      title: 'Br\u00fccke bauen',
-      description:
-        'Zwischen dem, der du warst, und dem, der du werden willst, fehlt eine Br\u00fccke aus konkreten Taten.',
-      children: [
-        { id: 'b1', parentId: 'main-bridge', title: 'Eine ehrliche Bilanz: was bleibt, was fliegt', children: [] },
-        { id: 'b2', parentId: 'main-bridge', title: 'Ein Gespr\u00e4ch, das du seit Monaten vermeidest', children: [] },
-      ],
-      rewards: [{ type: 'item', itemId: 'sample-toolbox', displayName: 'Werkzeugkasten' }],
-    },
-    {
-      id: 'side-read',
-      parentId: null,
-      title: 'Seiten statt Scrollen',
-      description:
-        'Nebenquest: wieder mehr Tiefe statt Dauerfeuer. Ein Buch, ein Stift, keine Ausreden.',
-      children: [
-        { id: 's1', parentId: 'side-read', title: '30 Minuten ohne zweiten Bildschirm', children: [] },
-        { id: 's2', parentId: 'side-read', title: 'Ein Kapitel zu Ende lesen', children: [] },
-        { id: 's3', parentId: 'side-read', title: 'Eine Notiz, die du in einer Woche noch verstehst', children: [] },
-      ],
-      rewards: [{ type: 'text', text: '+XP Lesen' }, { type: 'text', text: 'Cosmetic: Lesezeichen' }],
-    },
-    {
-      id: 'side-walk',
-      parentId: null,
-      title: 'Drau\u00dfen-Level',
-      description: 'Kurz raus, Kopf leeren, K\u00f6rper mitnehmen.',
-      children: [{ id: 'w1', parentId: 'side-walk', title: '20 Minuten ohne Podcast', children: [] }],
-      rewards: [{ type: 'text', text: 'Buff: Sonnenlicht' }],
-    },
-    {
-      id: 'side-cook',
-      parentId: null,
-      title: 'Quest: K\u00fcche',
-      description: 'Etwas kochen, das nicht aus \u201eschnell und m\u00fcde\u201c hei\u00dft.',
-      children: [
-        { id: 'c1', parentId: 'side-cook', title: 'Einkaufsliste ohne Impulskauf', children: [] },
-        { id: 'c2', parentId: 'side-cook', title: 'Gericht zu Ende gebracht', children: [] },
-      ],
-      rewards: [{ type: 'text', text: 'Recipe drop' }],
-    },
-  ],
-  edges: [
-    { from: 'side-read', to: 'main-architect', relation: 'dependency' },
-    { from: 'side-walk', to: 'main-architect', relation: 'dependency' },
-    { from: 'main-architect', to: 'main-bridge', relation: 'dependency' },
-    { from: 'side-cook', to: 'main-bridge', relation: 'dependency' },
-  ],
-};
+// ============================================================================
+// Flat nodeDone (Phase 2)
+//
+// Daten-Modell-Wechsel: nodeDone ist jetzt flach pro Node-ID, NICHT mehr nach
+// Quest gruppiert. Hintergrund: im DAG (Phase 1+) kann eine Node mehrere
+// Parents haben — die alte Verschachtelung `nodeDone[questId][nodeId]` war
+// daran nicht mehr sauber abbildbar (eine Node wäre in mehreren Quest-Maps
+// dupliziert). Phase-2-Entscheidung: Done-Status ist global pro Node-ID.
+//
+// Format:
+//   - Alt (V2): Record<questId, Record<nodeId, boolean>>
+//   - Neu (V3): Record<nodeId, boolean>
+// ============================================================================
 
 /**
- * Legacy-Shape: leere Listen; aktive Daten kommen aus localStorage + Graph.
- * @type {RpgQuestPayloadLegacy}
+ * @typedef {Record<string, boolean>} RpgFlatNodeDone
+ * Flache Map: nodeId → done-Flag.
  */
-export const SAMPLE_RPG_QUESTS = {
-  main: [],
-  side: [],
-};
+
+/**
+ * Migriert einen verschachtelten nodeDone-State (V2) zu flachem Format (V3).
+ *
+ * Regel: ein Node ist done wenn er in IRGENDEINEM Quest done war (Union über
+ * alle Quests). Bei Multi-Parent-Knoten ist das die natürliche Semantik —
+ * derselbe Node soll überall denselben Done-Status zeigen.
+ *
+ * Idempotent: ein bereits flaches Objekt wird unverändert akzeptiert (jedes
+ * top-level boolean-true bleibt erhalten).
+ *
+ * @param {unknown} oldNodeDone — kann V2 (verschachtelt) oder V3 (flach) sein
+ * @returns {RpgFlatNodeDone}
+ */
+export function migrateNodeDoneToFlat(oldNodeDone) {
+  if (!oldNodeDone || typeof oldNodeDone !== 'object' || Array.isArray(oldNodeDone)) return {};
+  /** @type {RpgFlatNodeDone} */
+  const out = {};
+  for (const [k, v] of Object.entries(oldNodeDone)) {
+    if (v === true) {
+      // Bereits flach: top-level boolean
+      out[k] = true;
+      continue;
+    }
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      // V2: zweite Ebene durchgehen, jeden true-Eintrag flach übernehmen
+      for (const [innerK, innerV] of Object.entries(v)) {
+        if (innerV === true) out[innerK] = true;
+      }
+    }
+    // false und alle anderen Werte werden ignoriert (kein expliziter false-Eintrag)
+  }
+  return out;
+}
+
+/**
+ * Validiert das flache nodeDone-Format. Akzeptiert leere Objekte und
+ * `boolean: true`-Werte. Lehnt non-Object und nicht-true-Werte ab.
+ *
+ * @param {unknown} raw
+ * @returns {{ ok: true; value: RpgFlatNodeDone } | { ok: false; reason: string }}
+ */
+export function validateFlatNodeDone(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, reason: 'nodeDone muss ein Objekt sein' };
+  }
+  /** @type {RpgFlatNodeDone} */
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v !== 'boolean') {
+      return { ok: false, reason: `nodeDone["${k}"] muss boolean sein` };
+    }
+    if (v === true) out[k] = true;
+  }
+  return { ok: true, value: out };
+}

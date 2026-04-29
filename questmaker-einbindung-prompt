@@ -1,0 +1,17 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ ich hatte im rpg quest teil einen questmaker gehabt, also eine angebundene ai die das quest erstellen übernommen hat. da das system
+  damals noch voll chaotisch war und ich vieles am umwandeln war hab ich ihn wieder rausnehmen müssen. er sitzt momentan deaktiviert im
+  projekt. jetzt ist das system stabiler. ich möchte ihn wieder einbinden. aber er muss dafür viel nochmal angepasst werden weil er ja
+  noch auf das alte system passt. so sachen wie belohnungen gibt es auch nicht wirklich zu sehr grade, außer lebens oder mana punkte
+  zu sammeln. bitte check es mal durch wie sinnvoll die anbindung jetzt ist, ob noch etwas vorher aufgeräumt werden sollte und was
+  sonst anstehen würde um sie erfolgreich einzubinden. die vorstellung ist, ein modal öffnen zu können, in dem man so ähnlich wie in
+  einer chat ansicht in einem spiel aber ist, also hat man größtenteils ein bild vor sich das den questmaker darstellt und untendrunter
+  einen banner an text. so ist man wie in einem dialogspiel: ai fragt einen was man sucht, spieler sagt zb ich will mit ballet
+  anfangen. ai fragt wo du grade bist, ob du schon erfahrung hast, an welchen tagen du zeit hast zum beispiel. user beantwortet stück
+  für stück, ai muss dann richtige comprehensible quests entwerfen: parentnode "ballett", unternode "der erste eintritt" welche als
+  unternodes dann wiederum hat 1.schnupperstunde hingehen (ai soll aus den daten direkt orte schon recherchiert haben die in frage
+  kommen und in dieser node damit den ort und die zeit detaillieren.), 2. anmeldung (diese node kann erst nach schnupperstunde
+  freigeschaltet werden). dann unter parentnode ballet eine zweite unternode die abhängt von der schwesternode "der erste eintritt",
+  also erst dann gemacht werden kann, die heißt dann zb "streak aufbauen". später allerdings wenn der user nochmal zurückkehrt und
+  schreibt zb "mir wurde angeboten bei einem ballettstück mitzumachen" dann kann die ai automatisch eine neue node an die quest
+  anhängen.

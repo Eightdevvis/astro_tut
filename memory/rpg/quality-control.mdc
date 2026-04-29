@@ -47,8 +47,78 @@
 - **Tests aktualisiert:** Fixtures auf kanonisches Format umgestellt; Migration-Test prueft `{ nodes, edges }` statt `quests`-Alias.
 - **Teststand:** 29 pass, 2 fail (identisch pre-existierend, nicht durch Cleanup verursacht).
 
-## Aktueller Gesamtstand
+### 2026-04-28 (Konsolidierungs-Pass 2)
 
-- **Systemstatus:** Stabil; alle Refactorings verifiziert durch Tests und manuellen Browser-Check.
-- **Testbarkeit:** Deutlich verbessert durch Vitals-Tests; API-HTTP- und UI-Interaktionstests sind naechste Ausbauphase.
-- **Wartbarkeit:** Stark verbessert — Tree ~960 LOC, Editor ~952 LOC, Hub ~253 LOC. Kein duplizierter Bootstrap-Code mehr. Beide grossen Monolithen sind unter 1000 LOC.
+- **Scope:** Tiefenagnostik-Pass 2 — Sub-Node vs. Root-Reward-Quellen vereinheitlicht.
+- **`reconcileRpgVitals` (rpg-vitals.js):** Sub-Node-Pfad nutzt jetzt `getNodeRewardRows(s)` statt direkten Zugriff auf `s.rewards`/`s.reward`. Damit liest der Buchungspfad fuer Sub-Nodes auch Legacy-Felder (`questRewards`) — vorher nur ueber Root-Pfad. Ein Normaliserungs-Bypass (z. B. ueber Session-Cache oder ueber API-Body ohne Re-Migration) konnte einen Sub-Node-points-Reward unterschlagen; das ist jetzt geheilt.
+- **`collectItemRewardRefsFromGraph` + `collectItemIdsFromNodesAndQuestRewards` (rpg-questmaker-sync.js):** beide nutzen jetzt einheitlich `getNodeRewardEntries` fuer Root und Sub-Node. Vorher: Sub-Node las nur `s.rewards` per `normalizeRewardEntry`, Root las `getNodeRewardEntries(q)`. `normalizeRewardEntry`-Import entfernt.
+- **Konsistenz-Tests +6 (Vitals + Questmaker-Sync):** Legacy-questRewards auf Sub-Node, kanonisches rewards auf Sub-Node, Idempotenz, Item-Sammler ueber Tiefe hinweg, Display-Namen-Propagation, Legacy/kanonisch-Mix.
+- **Teststand:** 210 pass, 0 fail (vorher 204).
+
+### 2026-04-28 (Konsolidierungs-Pass 3)
+
+- **Scope:** Editor-Save-Pfad konsolidieren + Migration-Sicherheitsnetz an PUT/Session-Cache + Audit Lock/Optional/Subtypen.
+- **A1/B8 — Editor-Save vereinheitlicht:** Neuer Helper `applyNodeFieldsUpdate(container, targetId, fields, containerOverlay)` in `rpg-graph-editor-ops.js`. Root-Edit (target == container) und Child-Edit (target im Subtree) laufen jetzt durch denselben Code-Pfad — kein doppelter Branch im `handleSubmit` mehr. Container-only-Felder (`orderInLayer`, `questmakerPrompt`) werden via `containerOverlay`-Parameter separat behandelt: bei Sub-Node-Edit landen sie weiterhin am Container, niemals am Sub-Node selbst.
+- **`mapNodeRecursive` privatisiert:** wird nur noch intern in `applyNodeFieldsUpdate` benutzt, nicht mehr exportiert.
+- **Reward-Loeschen-Bug behoben:** Helper setzt `rewards: []` (statt `delete`), damit der `upsertQuestInGraph`-Spread `{...prev, ...node}` alte Rewards bei Root-Edit ueberschreibt. Vorher (alter Code-Pfad) wurde der ganze Quest neu gebaut und das funktionierte zufaellig; im neuen Helper musste das explizit gemacht werden.
+- **A2/B9 — PUT-Schreib-Migration:** `src/pages/api/rpg/quests.js` PUT ruft jetzt `migrateRpgGraphToV2` direkt nach `isValidGraphShape`. Sicherheitsnetz fuer Custom-Importer und Clients mit altem localStorage. Idempotent — kein Effekt wenn Graph bereits V2.
+- **A3 — Session-Cache-Migration:** `loadSessionCachedPayload` (rpg-server-sync.js) ruft nach Validierung `migrateRpgGraphToV2` auf. Schuetzt vor Cross-Version-Tab-Wechsel: alte Tabs koennen Legacy-Cache schreiben, neue Tabs migrieren beim Lesen.
+- **A4 — `canEditSelected` dokumentiert:** Tiefenagnostisch (Sub-Node-Edit funktioniert ueber Composite-ID-Pfad ueber den gleichen Helper) — JSDoc in `rpg-tree-panel-state.js` ergaenzt.
+- **A5 — Preview-Reward-Display:** Bewusst nicht geaendert. Editor-Preview fuer Questmaker-Result rendert mit `nodeDone={}` und `graph={null}` → Rewards sind „locked“. Pragmatisch ein Display-Tweak, kein Subtyp-Problem. Da Questmaker derzeit deaktiviert (`RPG_QUESTMAKER_ENABLED = false`), gibt es keinen Aufrufer und keine Browser-Tests fuer eine Aenderung. Wird wieder relevant sobald Questmaker reaktiviert wird.
+- **A6 — `s.reward` Singular-Audit:** Nur an zwei Stellen gelesen (`normalizeOneNode` als Legacy-Fallback, `migrateNodeToV2Shape` zur Erkennung „isLegacyFlatRow“). Beide hinter Normalisierung, beide werden in V2-Migration zu `s.rewards[]`. Nichts zu fixen.
+- **B12 — Form-Init Audit:** Editor-Form initialisiert fuer Root und Child gleich: `title`/`description`/`rewards`/`children` werden vom Target-Node gelesen, `orderInLayer`/`questmakerPrompt` vom Container. Keine asymmetrischen Felder. Bekannter Gap: `cityLocation`/`placeLocation` sind generell nicht UI-editierbar (nur via KI/DB) — nicht durch B12 verursacht.
+- **B13 — Sub-Children-Builder:** `NodeDraftCard` rendert sich rekursiv via `DraggableNodeList` → `NodeDraftCard`. Tiefenagnostisch — alle Felder editierbar in jeder Tiefe.
+- **B14/B15 — Lock/Optional Subtyp-Audit:** Beides reine Boolean-Flags, kein Render-Subtyp. `isLockNode` und `s.optional` sind Modifikatoren; geteilt verwendet zwischen NodesView, Completion-Logik und Builder-UI. Keine eigenen Datenfelder, keine eigenen Render-Pfade.
+- **B16 — Tote Exports:** Keiner. `mapNodeRecursive` (vorher exported) ist jetzt privat, nachdem `applyNodeFieldsUpdate` der einzige Aufrufer war.
+- **Konsistenz-Tests +9:** `applyNodeFieldsUpdate`-Verhalten (Root-Edit/Child-Edit/containerOverlay/empty-rewards/Field-Preservation/E2E-mit-upsertQuestInGraph), Migration-Idempotenz.
+- **Teststand:** 219 pass, 0 fail (vorher 210).
+
+### 2026-04-28
+
+- **Scope:** Hub-Redesign auf Zauberer-Stil + UX-Naming-Durchzug + Cycle/Dedup-Schutz im Tree.
+- **Hub-Redesign:** Linke Rail entfernt, fixe Topbar mit Pill-Link zum Quest-Baum, Hero-Block mit Gold-Rim + Eck-Markern, Strip-Liste mit Mono-Pct-Pill. Token-System mit Tree vereinheitlicht (Gold/Ink/Serif/Grain). `rpg-quest-hub.css` neu geschrieben. `rpg/index.astro` zieht jetzt Serif-Fonts.
+- **UX-Naming:** "Node" in allen sichtbaren Texten durch "Quest" ersetzt — Hub, Tree-Topbar, Pick-Banner, Empty-States, Panel (aria-labels, Edit-Button, Meta-Liste), NodesView (Tooltips, Lock-Icon-Title), NodesBuilder (Feldlabels, Buttons, Badges), GraphEditor (Fehlertexte, Sektionslabel), Astrolab (Tool-Hint). Code-Variablen bleiben kanonisch `node`/`Node`.
+- **Cycle/Dedup-Schutz:** `applyGraph` im Tree wickelt jetzt jeden eingehenden Graph durch `breakGraphCycles` + `deduplicateGraphRoots` (in `rpg-quest-nodes.js`) — verhindert Render-Stack-Overflow bei zyklischen Graphen aus KI/Import.
+- **Teststand:** 196 pass, 0 fail (unverlangert).
+
+### 2026-04-28 (Konsolidierungs-Pass 4 — final)
+
+- **Scope:** Letzter Konsolidierungs-Pass. Editor-LOC unter Anti-Monolith-Limit, dead-code Sweep, End-to-End Roundtrip-Tests, Memory-Sync.
+- **A1 — Editor-Hook extrahiert:** Neuer Hook `useManualQuestDraftAutosave.js` (~199 LOC) kapselt drei Belange, die vorher inline im Editor lebten: `buildSnapshot()`, `currentSnapshotHasContent()`, plus drei Effekte (180ms-Debounce-Save, pagehide/visibility/beforeunload-Flush, Snapshot-Cache). `RpgQuestGraphEditor.jsx` von 994 → 906 LOC, klar unter 1000 LOC Limit. Verhalten unveraendert.
+- **A2 — Tote Funktionen entfernt:** `rpg-quest-form-helpers.js` von 142 → 40 LOC. Sieben ungenutzte Editor-Text-Modus-Funktionen entfernt: `linesToNodes`, `parseRewards`, `isSimpleFlatNodesForEditor`, `serializeNodesToEditorText`, `parseNodesFromEditorText`, `serializeQuestRewardsToEditorText`, `parseQuestRewardsFromEditorText`. Behalten: `normalizeQuestId` (Editor-Auto-ID) und `labelsToNodes` (Questmaker-API). `rpg-quests-data.js` von 345 → 242 LOC: `graphNodesById`, `SAMPLE_RPG_GRAPH`, `SAMPLE_RPG_QUESTS` waren tote Exports — entfernt.
+- **A3 — Memory-LOC-Drift synchronisiert:** `architecture.mdc` und `refactoring-log.mdc` LOC-Tabellen auf aktuellen Stand gebracht.
+- **B18 — Tiefe-3 Roundtrip-Tests (+4 Tests):** Quest mit Sub-Quest mit Sub-Sub-Quest, jede Tiefe mit allen 4 Reward-Typen (text/item/points/achievement). Verifiziert: questNodesToDrafts → draftNodesToQuestNodes → JSON.stringify/parse → normalizeQuestNodesTree erhaelt alle Felder/Rewards. `buildRewardDisplayList` aggregiert auf jeder Tiefe konsistent (Root: 12 = 4+4+4, Sub: 8 = 4+4, SubSub: 4). Alle Tiefen liefern strukturell identische Output-Forms (gleiche Object-Keys, kein `source`-Feld). Plus zwei Boundary-Tests: invalide Reward-Eintraege werden gefiltert; Node ohne Title bleibt verarbeitbar.
+- **B19 — Boundary-Audit:** Leerer children-Array bleibt Array (nie undefined). Leere Title-Strings werden im Display gehandhabt. `dependsOn` mit ungueltiger ID: blockiert Quest-Completion (defensiv, korrekt) — `validateRpgGraphReferences` faengt es im PUT-Pfad ab. Optional + Lock zusammen: beide reine Boolean-Flags, koexistieren ohne Konflikt (Lock blockiert Sub-Tree-Sichtbarkeit, Optional macht Leaf nicht-pflicht).
+- **B20 — Schemaversion:** Eine `schemaVersion`-Variante (V2). Migration `migrateRpgGraphToV2` ist idempotent und an drei Stellen aufgerufen (GET, PUT, Session-Cache).
+- **B21 — Type-Annotation-Konsistenz:** `RpgNode` typedef in `rpg-quests-data.js` ist vollstaendig; `applyNodeFieldsUpdate`-JSDoc beschreibt fields + containerOverlay-Trennung.
+- **B22 — Test-Kategorie-Abdeckung:** Logik-Tests vollstaendig (223). API-HTTP-Tests bleiben offene Ausbauphase — die PUT-Migration ist via `migrateRpgGraphToV2`-Idempotenz-Test indirekt abgedeckt (gleicher Helper wird im PUT-Pfad aufgerufen).
+- **Teststand:** 223 pass, 0 fail (vorher 219).
+
+### 2026-04-28 (DAG-Phase 3 — Tree-Pick = Edge-Operation)
+
+- **Scope:** Bug-Fix fuer den vom User gemeldeten Tree-Pick-Duplikations-Bug. Tree-Pick promoted ausgewaehlte Graph-Nodes jetzt zu `parent_of`-Edges statt sie zu klonen.
+- **Root-Bug:** Beim Tree-Pick kopierte `graphNodeIdToDraft` einen Draft mit `stableId`. Beim Save erzeugte `draftNodesToQuestNodes` eine neue Node mit label-basierter ID — der Original-Node blieb stehen, daneben entstand ein Duplikat. Bei Root-Picks wurde der Original-Root via `mergedRootIdsRef` aus dem Graph entfernt; bei Child-Picks blieb er beim alten Parent UND wurde ans neue Parent dupliziert. Multi-Parent war so unmoeglich.
+- **Phase-3-Fix:** Tree-Pick laesst Nodes UNVERAENDERT im Graph und fuegt nur Edges hinzu. Pure Helper in `rpg-graph-editor-ops.js`:
+  - `splitDraftsForTreePick(drafts, parentId, existingIds, selfSubtreeIds)` — trennt cleanDrafts (zur normalen Conversion) von treePickEdges (`{parentId, childId}`-Liste).
+  - `applyTreePickEdges(graph, edges)` — idempotent via `addParentChildEdge`, mit Cycle-Check via `hasDagCycle` VOR Apply.
+  - `pruneStaleParentEdgesForContainer(graph, containerId, newSubtreeIds)` — Remove-Child-Cleanup: entfernt nur Edges `from === container.id` deren `to` nicht mehr im Subtree ist; Multi-Parent-Edges anderer Parents bleiben unberuehrt.
+  - `collectAllNodeIds(graph)` / `collectSubtreeIds(rootNode)` — fuer Tree-Pick-Erkennung.
+- **Editor-Save (`RpgQuestGraphEditor::handleSubmit`)**:
+  - `mergedRootIdsRef` ENTFERNT — kein Move-out mehr noetig.
+  - Drafts werden via `splitDraftsForTreePick` gefiltert; nur cleanDrafts gehen an `draftNodesToQuestNodes`.
+  - `pruneStaleParentEdgesForContainer` laeuft VOR `upsertQuestInGraph` (im Edit-Pfad), damit entfernte Childs auch ihre parent_of-Edge verlieren.
+  - `applyTreePickEdges` laeuft NACH `upsertQuestInGraph`. Cycle-Fall → Inline-Fehler `Verlinken nicht möglich: ... würde einen Kreis im Quest-Baum erzeugen.`, Editor bleibt offen.
+- **UI unveraendert:** `handleToggleTreePick` fuegt nach „Fertig" weiterhin Drafts mit `stableId` ein — der User sieht visuell die geplante Verlinkung. Die Drafts werden beim Save zu Edges promotet, die Felder des Drafts werden ignoriert (das echte Editieren passiert weiterhin am Original-Node).
+- **Tests +15:** `tests/rpg-tree-pick-edges.test.js` — Multi-Parent-Edge-Add, Root-Tree-Pick (kein Verschieben), idempotente Edges, Cycle-Prevention, Self-Edge-Schutz, Subtree-Erkennung, Remove-Child-Cleanup mit Multi-Parent-Schutz, Roundtrip Drafts→Edges, Create-Pfad-Pick.
+- **Teststand:** 269 pass, 0 fail (vorher 254).
+
+## Aktueller Gesamtstand (Stand 2026-04-28, Pass 4 final)
+
+- **Systemstatus:** Stabil; alle Refactorings verifiziert durch Tests, manuellen Browser-Check ausstehend (Astro-Build verlangt Node >=18.20.8).
+- **Testbarkeit:** 223 Tests; API-HTTP-Tests + UI-Interaktionstests bleiben offene Ausbauphase.
+- **Wartbarkeit:** Tree ~989, Editor ~906 (war 994), Hub ~321, NodesBuilder ~718. Alle Monolithen unter 1000 LOC. Kein duplizierter Bootstrap-Code. Hub und Tree teilen sich das Zauberer-Token-System.
+- **Reward-System:** Vier kanonische Typen (text/item/points/achievement). `RpgAchievementCombobox` als Editor-UI, `rpg-achievement-catalog-db.js` als Backing.
+- **Editor-Save:** Ein Pfad fuer Root und Child (`applyNodeFieldsUpdate`). Container-only Felder (orderInLayer/questmakerPrompt) werden separat als Overlay angewendet — kein zweiter Code-Pfad mehr.
+- **Manual-Draft-Autosave:** als eigener Hook (`useManualQuestDraftAutosave`) gekapselt — Snapshot-Build, payloadHasContent-Heuristik, Debounce, Flush-Listener.
+- **Migration-Robustheit:** Migration läuft an drei Stellen: GET-Antwort (defensiv), PUT-Eingang (Schreib-Sicherheitsnetz), Session-Cache-Read (Cross-Version-Schutz). Alle Aufrufe idempotent.
+- **Tote-Code-Sweep:** `rpg-quest-form-helpers.js` und `rpg-quests-data.js` aufgeraeumt. Keine bekannten ungenutzten Exports mehr.

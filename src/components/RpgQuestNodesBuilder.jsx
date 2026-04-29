@@ -5,6 +5,7 @@ import {
   reorderDraftNodes,
 } from '../lib/rpg-quest-editor-draft.js';
 import { RPG_ITEM_CATEGORY_IDS } from '../lib/rpg-item-categories.js';
+import RpgQuestRewardsBuilder from './RpgQuestRewardsBuilder.jsx';
 
 /** @type {Record<string, string>} */
 const ITEM_CAT_UI = {
@@ -125,6 +126,7 @@ function IconGrip() {
  *   dependencyMode?: boolean;
  *   onChange: (next: QuestNodeDraft) => void;
  *   onRemove?: () => void;
+ *   itemCatalog?: Record<string, { title?: string; category?: string; description?: string }>;
  * }} props
  */
 function NodeDraftCard({
@@ -133,6 +135,10 @@ function NodeDraftCard({
   dependencyMode = false,
   onChange,
   onRemove,
+  treePickParentKey = null,
+  treePickNodeIds = [],
+  onToggleTreePick,
+  itemCatalog = {},
 }) {
   const update = (/** @type {Partial<QuestNodeDraft>} */ partial) => onChange({ ...draft, ...partial });
 
@@ -156,8 +162,8 @@ function NodeDraftCard({
           <p class="rpg-node-card__preview-title">{titlePreview}</p>
           <div class="rpg-node-card__badges">
             {draft.isLock ? (
-              <span class="rpg-node-card__badge" title="Lock-Node">
-                Lock
+              <span class="rpg-node-card__badge" title="Sperr-Quest">
+                Sperre
               </span>
             ) : null}
             {draft.optional ? (
@@ -170,24 +176,19 @@ function NodeDraftCard({
                 bis {draft.timeDueAt}
               </span>
             ) : null}
-            {draft.rewardOn &&
-            (draft.rewardKind === 'item'
-              ? (draft.itemId || '').trim()
-              : draft.rewardKind === 'points'
-                ? (draft.pointsAmount || '').trim()
-                : (draft.rewardText || '').trim()) ? (
+            {(draft.rewardRows?.length > 0) ? (
               <span class="rpg-node-card__badge" title="Mit Belohnung">
                 Belohnung
               </span>
             ) : null}
             {draft.subnodesOn && draft.children.length > 0 ? (
               <span class="rpg-node-card__badge">
-                {draft.children.length} Child-Node{draft.children.length === 1 ? '' : 's'}
+                {draft.children.length} Sub-Quest{draft.children.length === 1 ? '' : 's'}
               </span>
             ) : null}
           </div>
         </div>
-        <button type="button" class="rpg-node-card__edit-btn" onClick={edit} aria-label="Node bearbeiten" title="Bearbeiten">
+        <button type="button" class="rpg-node-card__edit-btn" onClick={edit} aria-label="Quest bearbeiten" title="Bearbeiten">
           <IconPencil />
         </button>
       </div>
@@ -200,7 +201,7 @@ function NodeDraftCard({
       style={{ '--node-depth': String(depth) }}
     >
       <div class="rpg-node-card__field">
-        <span class="rpg-node-card__field-label">Node-Titel</span>
+        <span class="rpg-node-card__field-label">Quest-Titel</span>
         <input
           type="text"
           class="rpg-graph-editor__input rpg-node-card__title-input"
@@ -219,138 +220,11 @@ function NodeDraftCard({
         />
       </div>
 
-      <label class="rpg-node-card__toggle">
-        <input
-          type="checkbox"
-          checked={draft.rewardOn}
-          onChange={(ev) => {
-            const on = ev.currentTarget.checked;
-            update({
-              rewardOn: on,
-              ...(on
-                ? {}
-                : {
-                    rewardKind: 'text',
-                    rewardText: '',
-                    itemId: '',
-                    itemDisplayName: '',
-                    itemCategory: '',
-                    itemDescription: '',
-                    pointKind: 'heart',
-                    pointsAmount: '',
-                  }),
-            });
-          }}
-        />
-        <span>Belohnung für diesen Node</span>
-      </label>
-      {draft.rewardOn ? (
-        <div class="rpg-node-card__field rpg-node-card__field--indented rpg-node-card__reward-block">
-          <span class="rpg-node-card__field-label">Art</span>
-          <div class="rpg-reward-kind-switch" role="group" aria-label="Belohnungsart">
-            <button
-              type="button"
-              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'text' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
-              onClick={() => update({ rewardKind: 'text' })}
-            >
-              Text
-            </button>
-            <button
-              type="button"
-              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'item' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
-              onClick={() => update({ rewardKind: 'item' })}
-            >
-              Item
-            </button>
-            <button
-              type="button"
-              class={`rpg-reward-kind-switch__btn${draft.rewardKind === 'points' ? ' rpg-reward-kind-switch__btn--on' : ''}`}
-              onClick={() => update({ rewardKind: 'points' })}
-            >
-              Punkte
-            </button>
-          </div>
-          {draft.rewardKind === 'text' ? (
-            <>
-              <span class="rpg-node-card__field-label">Text</span>
-              <input
-                type="text"
-                class="rpg-graph-editor__input"
-                value={draft.rewardText}
-                placeholder="z. B. Fundstück, kleiner Bonus …"
-                onInput={(ev) => update({ rewardText: ev.currentTarget.value })}
-              />
-            </>
-          ) : draft.rewardKind === 'points' ? (
-            <>
-              <span class="rpg-node-card__field-label">Punktart</span>
-              <select
-                class="rpg-graph-editor__input"
-                value={draft.pointKind === 'mana' ? 'mana' : 'heart'}
-                onChange={(ev) =>
-                  update({ pointKind: ev.currentTarget.value === 'mana' ? 'mana' : 'heart' })
-                }
-              >
-                <option value="heart">Herz — körperliche Energie</option>
-                <option value="mana">Mana — geistige Energie</option>
-              </select>
-              <span class="rpg-node-card__field-label">Wert</span>
-              <input
-                type="text"
-                inputmode="numeric"
-                class="rpg-graph-editor__input"
-                value={draft.pointsAmount}
-                placeholder="z. B. 3 oder −2"
-                title="Ganze Zahl; negativ möglich"
-                onInput={(ev) => update({ pointsAmount: ev.currentTarget.value })}
-              />
-            </>
-          ) : (
-            <>
-              <span class="rpg-node-card__field-label">Item-ID</span>
-              <input
-                type="text"
-                class="rpg-graph-editor__input"
-                value={draft.itemId}
-                placeholder="technische Id (Katalog)"
-                onInput={(ev) => update({ itemId: ev.currentTarget.value })}
-              />
-              <span class="rpg-node-card__field-label">Anzeigename</span>
-              <input
-                type="text"
-                class="rpg-graph-editor__input"
-                value={draft.itemDisplayName}
-                placeholder="Name in der Reward-Pill"
-                onInput={(ev) => update({ itemDisplayName: ev.currentTarget.value })}
-              />
-              <span class="rpg-node-card__field-label">Kategorie (Katalog)</span>
-              <select
-                class="rpg-graph-editor__input"
-                value={
-                  draft.itemCategory && RPG_ITEM_CATEGORY_IDS.includes(/** @type {any} */ (draft.itemCategory))
-                    ? draft.itemCategory
-                    : 'sonstiges'
-                }
-                onChange={(ev) => update({ itemCategory: ev.currentTarget.value })}
-              >
-                {RPG_ITEM_CATEGORY_IDS.map((cid) => (
-                  <option key={cid} value={cid}>
-                    {ITEM_CAT_UI[cid] ?? cid}
-                  </option>
-                ))}
-              </select>
-              <span class="rpg-node-card__field-label">Kurzbeschreibung (neue Items)</span>
-              <input
-                type="text"
-                class="rpg-graph-editor__input"
-                value={draft.itemDescription}
-                placeholder="Für den Katalog beim Speichern"
-                onInput={(ev) => update({ itemDescription: ev.currentTarget.value })}
-              />
-            </>
-          )}
-        </div>
-      ) : null}
+      <RpgQuestRewardsBuilder
+        rows={draft.rewardRows ?? []}
+        onRowsChange={(rows) => update({ rewardRows: rows })}
+        itemCatalog={itemCatalog}
+      />
 
       <label class="rpg-node-card__toggle">
         <input
@@ -373,7 +247,7 @@ function NodeDraftCard({
             });
           }}
         />
-        <span>Lock-Node — sperrt Geschwister bis Lock erfüllt ist</span>
+        <span>Sperre — verriegelt Geschwister bis diese Quest erfüllt ist</span>
       </label>
 
       {draft.children.length === 0 ? (
@@ -413,24 +287,41 @@ function NodeDraftCard({
             depth={depth + 1}
             dependencyMode={dependencyMode}
             onNodesChange={(next) => update({ children: next, subnodesOn: next.length > 0 })}
+            treePickParentKey={treePickParentKey}
+            treePickNodeIds={treePickNodeIds}
+            onToggleTreePick={onToggleTreePick}
+            itemCatalog={itemCatalog}
           />
         ) : (
-          <p class="rpg-node-card__order-hint">Keine Children. Dieser Node ist aktuell ein Leaf.</p>
+          <p class="rpg-node-card__order-hint">Keine Sub-Quests. Diese Quest ist aktuell ein Blatt.</p>
         )}
-        <button
-          type="button"
-          class="rpg-node-builder__add-nested"
-          onClick={() =>
-            update({
-              children: [...draft.children, createNodeDraft()],
-              subnodesOn: true,
-              timeLimitOn: false,
-              timeDueAt: '',
-            })
-          }
-        >
-          <IconPlus /> Child-Node hinzufügen
-        </button>
+        <div class="rpg-node-builder__add-row">
+          <button
+            type="button"
+            class="rpg-node-builder__add-nested"
+            onClick={() =>
+              update({
+                children: [...draft.children, createNodeDraft()],
+                subnodesOn: true,
+                timeLimitOn: false,
+                timeDueAt: '',
+              })
+            }
+          >
+            <IconPlus /> Sub-Quest hinzufügen
+          </button>
+          {onToggleTreePick ? (
+            <button
+              type="button"
+              class={`rpg-node-builder__add-nested${treePickParentKey === draft.key ? ' rpg-node-builder__add-nested--active' : ''}`}
+              onClick={() => onToggleTreePick(draft.key)}
+            >
+              {treePickParentKey === draft.key
+                ? `Fertig${treePickNodeIds.length > 0 ? ` (${treePickNodeIds.length})` : ''}`
+                : '+Quest aus Baum'}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div class="rpg-node-card__actions">
@@ -447,7 +338,7 @@ function NodeDraftCard({
           onClick={save}
           disabled={!(draft.title || '').trim()}
         >
-          Node speichern
+          Quest speichern
         </button>
       </div>
     </div>
@@ -460,6 +351,7 @@ function NodeDraftCard({
  *   depth: number;
  *   dependencyMode?: boolean;
  *   onNodesChange: (next: QuestNodeDraft[]) => void;
+ *   itemCatalog?: Record<string, { title?: string; category?: string; description?: string }>;
  * }} props
  */
 function DraggableNodeList({
@@ -467,6 +359,10 @@ function DraggableNodeList({
   depth,
   dependencyMode = false,
   onNodesChange,
+  treePickParentKey = null,
+  treePickNodeIds = [],
+  onToggleTreePick,
+  itemCatalog = {},
 }) {
   const listRef = useRef(/** @type {HTMLUListElement | null} */ (null));
   const [pendingSourceId, setPendingSourceId] = useState(/** @type {string | null} */ (null));
@@ -689,6 +585,10 @@ function DraggableNodeList({
                       }));
                     onNodesChange(pruned);
                   }}
+                  treePickParentKey={treePickParentKey}
+                  treePickNodeIds={treePickNodeIds}
+                  onToggleTreePick={onToggleTreePick}
+                  itemCatalog={itemCatalog}
                 />
               </div>
             </li>
@@ -744,14 +644,18 @@ function DraggableNodeList({
  *   nodes: QuestNodeDraft[];
  *   onNodesChange: (next: QuestNodeDraft[]) => void;
  *   treePickParentKey?: string | null;
+ *   treePickNodeIds?: string[];
  *   onToggleTreePick?: (parentDraftKey: string) => void;
+ *   itemCatalog?: Record<string, { title?: string; category?: string; description?: string }>;
  * }} props
  */
 export function RpgQuestNodesBuilder({
   nodes,
   onNodesChange,
   treePickParentKey = null,
+  treePickNodeIds = [],
   onToggleTreePick,
+  itemCatalog = {},
 }) {
   const [dependencyMode, setDependencyMode] = useState(false);
   const canEditDependencies = useMemo(() => hasAnyLevelWithAtLeastTwoNodes(nodes), [nodes]);
@@ -763,9 +667,9 @@ export function RpgQuestNodesBuilder({
   return (
     <div class="rpg-node-builder">
       <div class="rpg-node-builder__section-head">
-        <span class="rpg-node-builder__section-title">Quest-Nodes</span>
+        <span class="rpg-node-builder__section-title">Quest-Struktur</span>
         <p class="rpg-node-builder__section-intro">
-          Baue den Baum direkt: Ein Node ohne Children ist automatisch ein Leaf.
+          Baue den Baum direkt: Eine Quest ohne Sub-Quests ist automatisch ein Blatt.
         </p>
         {canEditDependencies ? (
           <button
@@ -783,6 +687,10 @@ export function RpgQuestNodesBuilder({
         depth={0}
         dependencyMode={dependencyMode}
         onNodesChange={onNodesChange}
+        treePickParentKey={treePickParentKey}
+        treePickNodeIds={treePickNodeIds}
+        onToggleTreePick={onToggleTreePick}
+        itemCatalog={itemCatalog}
       />
       <div class="rpg-node-builder__add-row">
         <button
@@ -791,15 +699,17 @@ export function RpgQuestNodesBuilder({
           onClick={() => onNodesChange([...nodes, createNodeDraft()])}
         >
           <IconPlus />
-          +Neue Node
+          +Neue Quest
         </button>
         {onToggleTreePick ? (
           <button
             type="button"
-            class={`rpg-node-builder__add-root${treePickParentKey ? ' rpg-node-builder__add-nested--active' : ''}`}
+            class={`rpg-node-builder__add-root${treePickParentKey === '__root__' ? ' rpg-node-builder__add-nested--active' : ''}`}
             onClick={() => onToggleTreePick('__root__')}
           >
-            {treePickParentKey ? 'Fertig' : '+Node aus Tree'}
+            {treePickParentKey === '__root__'
+              ? `Fertig${treePickNodeIds.length > 0 ? ` (${treePickNodeIds.length})` : ''}`
+              : '+Node aus Tree'}
           </button>
         ) : null}
       </div>

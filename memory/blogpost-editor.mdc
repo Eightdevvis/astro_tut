@@ -8,4 +8,8 @@
 - Persistenz: neue Tabelle `blog_posts` in `src/lib/db.js` inkl. Index auf `(username, created_at DESC, id DESC)`.
 - API Speichern: `POST /api/posts/add` in `src/pages/api/posts/add.js` (Auth + Permission + Validierung).
 - API Laden: `GET /api/posts/mine` in `src/pages/api/posts/mine.js` (nur eigene Posts).
-- Unterhalb des Editors: Kachelgrid vergangener eigener Posts; Bereich wird erst nach Scroll sichtbar (`.past-posts.show`).
+- Unterhalb des Editors: Kachelgrid vergangener eigener Posts ist immer verfuegbar; vertikaler Abstand via CSS-Variable `--past-posts-offset` statt fester Hardcode-Position.
+- Vergangene Posts im Modal: Bearbeiten (laedt `content_html` in den Editor, Speichern via `PATCH /api/posts/:id`) und Loeschen (`DELETE /api/posts/:id`).
+- Neue API: `src/pages/api/posts/[id].js` fuer Update/Delete eigener Posts (Auth + Permission + Owner-Check ueber `username` in SQL-Where).
+- Oeffentliche Detailroute fuer DB-Posts: `src/pages/posts/db/[id].astro` rendert Editor-Posts im bestehenden `MarkdownPostLayout`-Look.
+- Startseite (`src/pages/index.astro`) verlinkt den neuesten DB-Post jetzt auf `/posts/db/:id` statt nicht-klickbarer Karte.

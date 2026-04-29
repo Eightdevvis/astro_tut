@@ -12,7 +12,6 @@ import {
   normalizeRewardEntries,
   normalizeRewardRows,
   rewardRowToStored,
-  resolveRewardRowsWithUnlocks,
   rewardEntryDisplayLabel,
   stringsToTextRewards,
 } from './rpg-quest-rewards.js';
@@ -144,12 +143,61 @@ export function flatLegacyNodesToNormalized(flat) {
  * @param {string} id
  * @returns {RpgNode | null}
  */
-export function findNodeById(nodes, id) {
+export function findNodeById(nodes, id, _visited = new Set()) {
   for (const s of nodes) {
+    if (!s?.id || _visited.has(s.id)) continue;
     if (s.id === id) return s;
+    _visited.add(s.id);
     if (s.children?.length) {
-      const f = findNodeById(s.children, id);
+      const f = findNodeById(s.children, id, _visited);
       if (f) return f;
+    }
+  }
+  return null;
+}
+
+/**
+ * Sucht einen Node im gesamten Graph und gibt ihn mit Root-Quest-Kontext zurück.
+ *
+ * Phase-2-Hinweis: Diese Funktion ist jetzt nur noch ein Compat-Wrapper für
+ * alte Aufrufer, die das `rootQuestId`/`ancestors`-Format brauchten. Neuer
+ * Code sollte stattdessen `findNodeAncestors(graph, nodeId)` aus
+ * `rpg-quest-graph.js` verwenden — das liefert die echten DAG-Vorfahren
+ * (Multi-Parent-aware) statt eines einzigen Root-Pfads.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} nodeId
+ * @returns {{ node: RpgNode; rootQuestId: string; ancestors: RpgNode[] } | null}
+ */
+export function findNodeWithAncestors(graph, nodeId) {
+  // Erst in Children suchen — tiefere Position gewinnt, weil sie mehr Kontext liefert.
+  // Das behandelt auch den Fall wo ein Node (Merge-Artifact) gleichzeitig Root und Child ist:
+  // dann bevorzugen wir die Child-Position mit den richtigen Ancestors.
+  for (const root of graph.nodes || []) {
+    const result = _walkForAncestors(root.children || [], nodeId, [root]);
+    if (result) return { node: result.node, rootQuestId: root.id, ancestors: result.ancestors };
+  }
+  // Fallback: Node ist genuiner Root ohne Parent
+  for (const root of graph.nodes || []) {
+    if (root.id === nodeId) return { node: root, rootQuestId: root.id, ancestors: [] };
+  }
+  return null;
+}
+
+/**
+ * @param {RpgNode[]} children
+ * @param {string} nodeId
+ * @param {RpgNode[]} ancestors
+ * @returns {{ node: RpgNode; ancestors: RpgNode[] } | null}
+ */
+function _walkForAncestors(children, nodeId, ancestors, _visited = new Set()) {
+  for (const child of children) {
+    if (!child?.id || _visited.has(child.id)) continue;
+    if (child.id === nodeId) return { node: child, ancestors };
+    _visited.add(child.id);
+    if (child.children?.length) {
+      const r = _walkForAncestors(child.children, nodeId, [...ancestors, child], _visited);
+      if (r) return r;
     }
   }
   return null;
@@ -204,11 +252,46 @@ export function buildNodeIdMap(nodes) {
 // --- Completion-Logik ---
 
 /**
- * Prueft ob ein Node (und seine Dependencies) innerhalb eines Root-Kontextes erledigt ist.
- * Handles: Gruppen (nicht-Blaetter), optionale Blaetter, dependsOn, Locks, Zyklen.
- * @param {RpgNode} quest — der Root-Node (Kontext fuer nodeDone-Lookup)
+ * Liest done-Flag aus dem flachen nodeDone-Format (Phase 2).
+ *
+ * Akzeptiert sowohl flach (`Record<nodeId, boolean>`) als auch verschachtelt
+ * (`Record<questId, Record<nodeId, boolean>>`) als Eingabe — das verschachtelte
+ * Format wird als "in IRGENDEINEM Quest done" interpretiert (Union-Semantik,
+ * passend zum Multi-Parent-Modell). Damit funktioniert dieselbe Funktion
+ * waehrend der Migrationsperiode mit beiden Eingangsformaten.
+ *
  * @param {string} nodeId
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone
+ * @returns {boolean}
+ */
+function readFlatDone(nodeId, nodeDone) {
+  if (!nodeDone || typeof nodeDone !== 'object') return false;
+  const direct = /** @type {any} */ (nodeDone)[nodeId];
+  if (direct === true) return true;
+  if (direct === false || direct === undefined) {
+    // Fallback: alte verschachtelte Form? Pruefe alle Quest-Maps auf nodeId.
+    for (const v of Object.values(nodeDone)) {
+      if (v && typeof v === 'object' && /** @type {any} */ (v)[nodeId] === true) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Prueft ob ein Node (und seine Dependencies) erledigt ist.
+ * Handles: Gruppen (nicht-Blaetter), optionale Blaetter, dependsOn, Locks, Zyklen.
+ *
+ * Phase 2: nodeDone ist FLACH (Record<nodeId, boolean>). Alte verschachtelte
+ * Form wird per Compat erkannt (siehe readFlatDone).
+ *
+ * Der `quest`-Parameter wird nur fuer Tree-Traversal genutzt (findNodeById in
+ * `quest.children`) — er ist NICHT mehr der Lookup-Key. Aufrufer koennen also
+ * weiterhin den View-Wurzel-Node uebergeben (Root-Quest, Sub-Node-Wrapper, ...).
+ *
+ * @param {RpgNode} quest — Wurzel-Node fuer Tree-Traversal (NICHT mehr Lookup-Key)
+ * @param {string} nodeId
+ * @param {Record<string, unknown>} nodeDone — flach (V3) oder verschachtelt (V2-Compat)
  * @param {Set<string>} [visiting] — Zyklen-Erkennung
  */
 export function isNodeCompleteInQuest(quest, nodeId, nodeDone, visiting) {
@@ -220,7 +303,8 @@ export function isNodeCompleteInQuest(quest, nodeId, nodeDone, visiting) {
     return false;
   }
   const nodes = quest.children || [];
-  const node = findNodeById(nodes, nodeId);
+  // Erlaube auch dass quest selbst der gesuchte Node ist (z.B. fuer Sub-Node-Wrapper)
+  const node = quest.id === nodeId ? quest : findNodeById(nodes, nodeId);
   if (!node) {
     warnNodeAnomalyOnce(`isNodeCompleteInQuest.missingNode.${quest.id}.${nodeId}`, 'Completion check for missing node id', {
       questId: quest.id,
@@ -228,7 +312,6 @@ export function isNodeCompleteInQuest(quest, nodeId, nodeDone, visiting) {
     });
     return false;
   }
-  const qm = nodeDone[quest.id] || {};
 
   // Gruppen-Node: alle nicht-optionalen, nicht-lock Kinder muessen erledigt sein
   if (!nodeIsLeaf(node)) {
@@ -264,20 +347,7 @@ export function isNodeCompleteInQuest(quest, nodeId, nodeDone, visiting) {
   const vis = visiting ?? new Set();
   if (vis.has(nodeId)) return false;
 
-  if (node.optional) {
-    if (!qm[node.id]) return false;
-    vis.add(nodeId);
-    for (const d of node.dependsOn || []) {
-      if (!isNodeCompleteInQuest(quest, d, nodeDone, vis)) {
-        vis.delete(nodeId);
-        return false;
-      }
-    }
-    vis.delete(nodeId);
-    return true;
-  }
-
-  if (!qm[node.id]) return false;
+  if (!readFlatDone(node.id, nodeDone)) return false;
   vis.add(nodeId);
   for (const d of node.dependsOn || []) {
     if (!isNodeCompleteInQuest(quest, d, nodeDone, vis)) {
@@ -292,9 +362,12 @@ export function isNodeCompleteInQuest(quest, nodeId, nodeDone, visiting) {
 /**
  * Prueft ob ein Blatt-Node auf done/undone gesetzt werden darf.
  * Beruecksichtigt: Locks, Dependencies, Blatt-Eigenschaft.
- * @param {RpgNode} quest
+ *
+ * Phase 2: nodeDone ist FLACH (Record<nodeId, boolean>).
+ *
+ * @param {RpgNode} quest — Wurzel-Node fuer Tree-Traversal
  * @param {string} nodeId
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone — flach (V3) oder verschachtelt (V2-Compat)
  * @param {boolean} wantOn
  */
 export function canSetNodeDone(quest, nodeId, nodeDone, wantOn) {
@@ -338,7 +411,7 @@ export function canSetNodeDone(quest, nodeId, nodeDone, wantOn) {
  * Zaehlt erledigte / gesamt nicht-optionale Blaetter (rekursiv).
  * @param {RpgNode} quest
  * @param {RpgNode[]} nodes
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone — flach
  */
 function countLeafProgressQuest(quest, nodes, nodeDone) {
   let total = 0;
@@ -359,29 +432,45 @@ function countLeafProgressQuest(quest, nodes, nodeDone) {
 }
 
 /**
- * Fortschritt als {total, done, percent} fuer einen Root-Node.
- * @param {RpgNode} quest
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * Fortschritt als {total, done, percent} fuer einen beliebigen Node.
+ *
+ * Phase 2: nodeDone ist flach. Der `scopeQuestId`-Parameter wird ignoriert
+ * (Backward-Kompatibilitaet) — der Lookup ist immer global pro nodeId.
+ *
+ * @param {RpgNode} quest — beliebiger Node (Root oder Sub-Node)
+ * @param {Record<string, unknown>} nodeDone — flach (V3) oder verschachtelt (V2-Compat)
+ * @param {string} [_scopeQuestId] — ignoriert (nur fuer alte API-Kompatibilitaet)
  */
-export function questLeafProgressRatio(quest, nodeDone) {
+export function questLeafProgressRatio(quest, nodeDone, _scopeQuestId) {
+  if (!quest || typeof quest !== 'object') return { total: 0, done: 0, percent: 100 };
   const { total, done } = countLeafProgressQuest(quest, quest.children || [], nodeDone);
   if (total === 0) return { total: 0, done: 0, percent: 100 };
   return { total, done, percent: Math.round((done / total) * 100) };
 }
 
 /**
+ * Alias fuer `questLeafProgressRatio` — Phase 2 Naming-Cleanup.
+ * @param {RpgNode} node
+ * @param {Record<string, unknown>} nodeDone
+ */
+export function leafProgressRatio(node, nodeDone) {
+  return questLeafProgressRatio(node, nodeDone);
+}
+
+/**
  * Fortschritt als Prozentzahl (0-100).
  * @param {RpgNode} quest
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone
+ * @param {string} [_scopeQuestId]
  */
-export function questProgressFromNodes(quest, nodeDone) {
+export function questProgressFromNodes(quest, nodeDone, _scopeQuestId) {
   return questLeafProgressRatio(quest, nodeDone).percent;
 }
 
 /**
  * Prueft ob alle nicht-optionalen Blaetter erledigt sind.
  * @param {RpgNode} quest
- * @param {Record<string, Record<string, boolean>>} nodeDone
+ * @param {Record<string, unknown>} nodeDone
  */
 export function isQuestCompletedFromNodes(quest, nodeDone) {
   const { total, percent } = questLeafProgressRatio(quest, nodeDone);
@@ -457,57 +546,83 @@ export function questHasUrgentTimeBoundLeaves(quest, nodeDone, nowMs = Date.now(
 // --- Reward-Display (kombiniert Node-Logik mit Reward-Modul) ---
 
 /**
- * Sammelt alle Rewards (Child-Node-Rewards + Root-Rewards) mit Unlock-Status.
- * @param {RpgNode} quest — Root-Node
- * @param {Record<string, Record<string, boolean>>} nodeDone
- * @param {number} [progressPercentOverride] — z.B. aus questProgress(..., graph)
- * @param {Record<string, { title?: string }> | undefined} [itemCatalogById]
+ * Sammelt alle Rewards des Nodes UND seiner Sub-Nodes mit Unlock-Status.
+ *
+ * Kein Subtypen-Switch (Root vs. Child): jeder Reward, egal ob auf
+ * `node` selbst oder auf einem Descendant, wird identisch berechnet —
+ * unlocked == "der Node, dem dieser Reward gehört, ist komplett".
+ *
+ * Phase 2: nodeDone ist flach (Record<nodeId, boolean>). `opts.scopeQuestId`
+ * existiert nur noch fuer Backward-Kompatibilitaet und wird ignoriert.
+ *
+ * `opts.selfProgressPercent` erlaubt einen aggregierten Progress (z.B. aus
+ * Graph-Dependencies) als Override für die Self-Unlock-Berechnung. Wenn nicht
+ * angegeben, wird der lokale Progress des Nodes berechnet.
+ *
+ * @param {RpgNode} node — beliebiger View-Node (Root, Gruppe oder Blatt)
+ * @param {Record<string, unknown>} nodeDone — flach (V3) oder verschachtelt (V2-Compat)
+ * @param {{
+ *   scopeQuestId?: string;
+ *   selfProgressPercent?: number;
+ *   itemCatalogById?: Record<string, { title?: string }>;
+ * }} [opts]
+ * @returns {{
+ *   label: string;
+ *   kind: 'text' | 'item' | 'points' | 'achievement';
+ *   pointKind?: 'heart' | 'mana';
+ *   amount?: number;
+ *   unlocked: boolean;
+ *   itemId?: string;
+ *   achievementId?: string;
+ *   nodeId: string;
+ * }[]}
  */
-export function buildRewardDisplayList(quest, nodeDone, progressPercentOverride, itemCatalogById) {
-  const pct =
-    typeof progressPercentOverride === 'number' && Number.isFinite(progressPercentOverride)
-      ? progressPercentOverride
-      : questLeafProgressRatio(quest, nodeDone).percent;
+export function buildRewardDisplayList(node, nodeDone, opts) {
+  if (!node || typeof node !== 'object') return [];
+  const itemCatalogById = opts?.itemCatalogById;
 
-  /** @type {{ label: string; kind: 'text' | 'item' | 'points'; pointKind?: 'heart' | 'mana'; amount?: number; unlocked: boolean; source: 'node' | 'quest'; itemId?: string; unlockAtPercent?: number }[]} */
+  /** @type {{ label: string; kind: 'text' | 'item' | 'points' | 'achievement'; pointKind?: 'heart' | 'mana'; amount?: number; unlocked: boolean; itemId?: string; achievementId?: string; nodeId: string }[]} */
   const rows = [];
 
-  // Child-Node-Rewards: freigeschaltet wenn der jeweilige Node erledigt ist
-  walkNodesPreOrder(quest.children || [], (s) => {
-    for (const rawEntry of s.rewards || []) {
-      const entry = normalizeRewardEntry(rawEntry);
-      if (!entry) continue;
-      const unlocked = isNodeCompleteInQuest(quest, s.id, nodeDone);
-      const label = rewardEntryDisplayLabel(entry, itemCatalogById);
-      const kind = entry.type === 'item' ? 'item' : entry.type === 'points' ? 'points' : 'text';
-      rows.push({
-        label,
-        kind,
-        unlocked,
-        source: 'node',
-        ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
-        ...(entry.type === 'points' ? { pointKind: entry.pointKind, amount: entry.amount } : {}),
-      });
-    }
-  });
-
-  // Root-Node-Rewards: freigeschaltet bei Fortschritts-Prozent
-  const qr = resolveRewardRowsWithUnlocks(quest.id, getNodeRewardRows(quest));
-  for (const r of qr) {
-    const unlocked = pct >= r.unlockAtPercent;
-    const entry = r.entry;
+  /** @param {RpgRewardEntry} entry @param {boolean} unlocked @param {string} originNodeId */
+  const pushRow = (entry, unlocked, originNodeId) => {
     const label = rewardEntryDisplayLabel(entry, itemCatalogById);
-    const kind = entry.type === 'item' ? 'item' : entry.type === 'points' ? 'points' : 'text';
+    const kind =
+      entry.type === 'item' ? 'item' :
+      entry.type === 'points' ? 'points' :
+      entry.type === 'achievement' ? 'achievement' : 'text';
     rows.push({
       label,
       kind,
       unlocked,
-      source: 'quest',
-      unlockAtPercent: r.unlockAtPercent,
+      nodeId: originNodeId,
       ...(entry.type === 'item' ? { itemId: entry.itemId } : {}),
+      ...(entry.type === 'achievement' ? { achievementId: entry.achievementId } : {}),
       ...(entry.type === 'points' ? { pointKind: entry.pointKind, amount: entry.amount } : {}),
     });
+  };
+
+  // Eigene Rewards des Nodes — unlocked wenn dieser Node selbst komplett ist.
+  const pct = typeof opts?.selfProgressPercent === 'number' && Number.isFinite(opts.selfProgressPercent)
+    ? opts.selfProgressPercent
+    : questLeafProgressRatio(node, nodeDone).percent;
+  const selfUnlocked = pct >= 100;
+  for (const r of getNodeRewardRows(node)) {
+    pushRow(r.entry, selfUnlocked, node.id);
   }
+
+  // Sub-Node-Rewards (rekursiv, alle Tiefen) — unlocked wenn der jeweilige
+  // Sub-Node komplett ist. Identische Logik wie oben.
+  walkNodesPreOrder(node.children || [], (s) => {
+    if (!s || !s.rewards || s.rewards.length === 0) return;
+    const unlocked = isNodeCompleteInQuest(node, s.id, nodeDone);
+    for (const rawEntry of s.rewards) {
+      const entry = normalizeRewardEntry(rawEntry);
+      if (!entry) continue;
+      pushRow(entry, unlocked, s.id);
+    }
+  });
+
   return rows;
 }
 
@@ -607,5 +722,82 @@ export function migrateNodeToV2Shape(q) {
  */
 export function migrateRpgGraphToV2(graph) {
   const nodes = graphNodes(graph).map((q) => migrateNodeToV2Shape(q));
-  return makeRpgGraph(nodes, graphEdges(graph));
+  // Erst Zyklen brechen, dann Duplikate entfernen
+  return deduplicateGraphRoots(breakGraphCycles(makeRpgGraph(nodes, graphEdges(graph))));
+}
+
+/**
+ * Entfernt Zyklen aus dem Baum.
+ * Traversiert jeden Subtree mit einem Ancestor-Set — sobald eine Node-ID
+ * bereits auf dem aktuellen Pfad liegt, wird der Child-Eintrag entfernt.
+ * Verhindert Endlosrekursion in Layout, Rendering und allen Tree-Traversals.
+ * @param {import('./rpg-quests-data.js').RpgGraph} graph
+ * @returns {import('./rpg-quests-data.js').RpgGraph}
+ */
+export function breakGraphCycles(graph) {
+  let changed = false;
+  const nodes = (graph.nodes || []).map((root) => {
+    const result = _breakCyclesInNode(root, new Set());
+    if (result !== root) changed = true;
+    return result;
+  });
+  return changed ? makeRpgGraph(nodes, graphEdges(graph)) : graph;
+}
+
+/**
+ * @param {RpgNode} node
+ * @param {Set<string>} ancestorIds — IDs aller Vorfahren auf dem aktuellen Pfad
+ * @returns {RpgNode}
+ */
+function _breakCyclesInNode(node, ancestorIds) {
+  if (!node?.id) return node;
+  const nextAncestors = new Set(ancestorIds);
+  nextAncestors.add(node.id);
+  if (!Array.isArray(node.children) || node.children.length === 0) return node;
+  let childChanged = false;
+  const nextChildren = [];
+  for (const child of node.children) {
+    // Kind überspringen wenn seine ID bereits auf dem Pfad liegt (= Zyklus)
+    if (child?.id && nextAncestors.has(child.id)) {
+      childChanged = true;
+      continue;
+    }
+    const fixed = _breakCyclesInNode(child, nextAncestors);
+    if (fixed !== child) childChanged = true;
+    nextChildren.push(fixed);
+  }
+  return childChanged ? { ...node, children: nextChildren } : node;
+}
+
+/**
+ * Sammelt alle Child-IDs im Baum rekursiv (mit Cycle-Guard).
+ * @param {RpgNode[]} children
+ * @param {Set<string>} out
+ * @param {Set<string>} [visited]
+ */
+function _collectChildIds(children, out, visited = new Set()) {
+  for (const child of children) {
+    if (!child?.id || visited.has(child.id)) continue;
+    visited.add(child.id);
+    out.add(child.id);
+    if (child.children?.length) _collectChildIds(child.children, out, visited);
+  }
+}
+
+/**
+ * Entfernt Root-Nodes deren IDs bereits als Child-Nodes im Baum existieren.
+ * Invariante: jede Node-ID darf nur einmal im Graph vorkommen.
+ * Passiert als Cleanup nach unvollständigen Merge-Operationen.
+ * @param {import('./rpg-quests-data.js').RpgGraph} graph
+ * @returns {import('./rpg-quests-data.js').RpgGraph}
+ */
+export function deduplicateGraphRoots(graph) {
+  const childIds = new Set();
+  for (const root of graph.nodes || []) {
+    _collectChildIds(root.children || [], childIds);
+  }
+  if (childIds.size === 0) return graph;
+  const filteredRoots = (graph.nodes || []).filter((q) => !childIds.has(q.id));
+  if (filteredRoots.length === (graph.nodes || []).length) return graph;
+  return makeRpgGraph(filteredRoots, graphEdges(graph));
 }

@@ -7,6 +7,7 @@ import {
   saveRpgState,
 } from '../../../lib/rpg-state-db.js';
 import { isValidGraphShape } from '../../../lib/rpg-quest-graph.js';
+import { migrateNodeDoneToFlat } from '../../../lib/rpg-quests-data.js';
 import {
   RPG_PAYLOAD_SCHEMA_VERSION,
   coerceRpgPayloadSchemaVersion,
@@ -64,10 +65,8 @@ export async function POST({ request, cookies }) {
     ...payload,
     graph: { nodes: (payload.graph.nodes || payload.graph.quests || []), edges: (payload.graph.edges || []) },
     addedIds: Array.isArray(payload.addedIds) ? payload.addedIds.filter((x) => typeof x === 'string') : [],
-    nodeDone:
-      payload.nodeDone && typeof payload.nodeDone === 'object' && !Array.isArray(payload.nodeDone)
-        ? payload.nodeDone
-        : {},
+    // Phase 2: Backup-Payload kann V2-verschachtelt sein. Beim Restore flach machen.
+    nodeDone: migrateNodeDoneToFlat(payload.nodeDone),
     vitals: normalizeRpgVitalsState(payload.vitals),
     location: normalizeRpgLocationState(payload.location),
     locationCatalog: normalizeRpgLocationCatalog(payload.locationCatalog),

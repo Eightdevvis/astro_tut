@@ -21,16 +21,22 @@ Antwort enthaelt `graph`, `addedIds`, `nodeDone`, `vitals`, `location`, `locatio
 
 ### `schemaVersion` (Pflicht ab Speicherung)
 
-- Sinn: Payload-Format eindeutig versionieren.
+- Sinn: Payload-Format eindeutig versionieren. Aktuell **V3** (DAG-Foundation).
 - Bei Strukturwechsel: `RPG_PAYLOAD_SCHEMA_VERSION` erhoehen und Migration einbauen.
 - GET liefert immer `schemaVersion`.
 - PUT setzt `schemaVersion` auf `max(aktueller Code, gespeicherte Version)`.
+
+#### Schema-Versionen
+- **V1** (Legacy): `graph.quests`/`nodesById`, Nodes mit `label`/`reward`/`questRewards`.
+- **V2**: `graph.nodes` kanonisch, Nodes mit `title`/`rewards[]`, nested `children`, `parentId` (Tree, max ein Parent).
+- **V3** (Phase 1, 2026-04-28): **DAG-Foundation**. Nodes flach in `graph.nodes` (kein nested `children`, kein `parentId` im persistierten Format); Hierarchie ausschliesslich in `graph.edges` als `relation: 'parent_of'` (Alias `'structure'`, Edge-Normalizer mappt beide). Multi-Parent moeglich. Compat-View ueber `denormalizeGraphForCompat` baut `children`/`parentId` zur Laufzeit auf — alle bestehenden Aufrufer funktionieren weiter. Migration: `migrateRpgGraphToV3` (chained V1→V2→V3, idempotent). Persistierte Form via `stripGraphCompatFields`.
 
 ### PUT `/api/rpg/quests`
 
 - `{ "resetToDefault": true }`: loescht gespeicherten State; naechstes GET liefert Sample-Graph.
 - `{ "graph", "addedIds", "nodeDone" }`: Client-Snapshot; serverseitig Merge mit vorhandenem JSON.
 - Optional `questmakerItems`: neue, vollstaendige Katalog-Eintraege fuer bislang unbekannte referenzierte `itemId`s; ohne passende Eintraege antwortet der Server mit `400` (`missing`).
+- Schreib-Migration: PUT ruft direkt nach `isValidGraphShape` `migrateRpgGraphToV3(migrateRpgGraphToV2(body.graph))` auf den eingehenden Graph (Sicherheitsnetz fuer Legacy-Clients und Custom-Importer). Beide Migrationen sind idempotent — kein Effekt wenn Graph bereits V3. Vor dem Persistieren wird `stripGraphCompatFields` aufgerufen, sodass die DB-Form V3-canonical (flach, ohne `children`/`parentId`) bleibt.
 
 ### POST `/api/rpg/quests-normalize-payload`
 
@@ -50,6 +56,17 @@ Antwort enthaelt `graph`, `addedIds`, `nodeDone`, `vitals`, `location`, `locatio
 
 - `GET`: liefert fuer den eingeloggten RPG-User die neuesten Backup-Metadaten (`id`, `kind`, `created_at`, `payload_bytes`).
 - `POST`: `{ "backupId": <id> }` stellt dieses Backup fuer den eingeloggten User wieder her (vor Restore greift erneut die Doppelsicherung).
+
+### API `/api/rpg/achievements`
+
+- Ressource: `rpg_achievements` (DB, dynamisch wachsend).
+- Wird vom `RpgAchievementCombobox` (Editor) konsumiert; Achievements sind der vierte Reward-Typ neben text/item/points.
+- Normalisierung/Backing: `src/lib/rpg-achievement-catalog-db.js`.
+
+### API `/api/rpg/super-notes`
+
+- Superuser-only. Liefert/speichert die Tree-internen Notizen, die ueber das Astrolab-`note`-Tool aufrufbar sind.
+- UI: `RpgTreeSuperNotes.jsx` (Hook + Modal-Komponente).
 
 ## Graph- und Unlock-Regeln
 
@@ -71,6 +88,28 @@ Antwort enthaelt `graph`, `addedIds`, `nodeDone`, `vitals`, `location`, `locatio
 - Alte Keys (`rpg-quest-graph-custom`, `rpg-quest-added-ids`, `rpg-node-done`) werden nach erfolgreicher Migration entfernt.
 - Modul: `src/lib/rpg-persistence.js`.
 - Zusaetzlich Session-Bootstrap-Cache in `sessionStorage` (`rpg-bootstrap-v1`) fuer schnellen Initialzustand pro Tab.
+- `loadSessionCachedPayload` (rpg-server-sync.js) ruft nach Schema-Validierung `migrateRpgGraphToV3(migrateRpgGraphToV2(...))` auf — Cross-Version-Schutz: wenn ein parallel offener Tab den Cache mit alterer Schema-Version geschrieben hat, wird er beim Lesen auf V3 migriert.
+
+## Migration-Eintrittspunkte (Stand 2026-04-28, V3)
+
+Migrationskette `migrateRpgGraphToV3(migrateRpgGraphToV2(...))` wird an vier Stellen aufgerufen — alle idempotent:
+
+1. **GET-Antwort** (`src/pages/api/rpg/quests.js`): defensiv, falls die DB-Persistenz aus alter Codebasis stammt.
+2. **PUT-Eingang** (`src/pages/api/rpg/quests.js`): Schreib-Sicherheitsnetz fuer Legacy-Clients und Custom-Importer; danach `stripGraphCompatFields` fuer V3-canonical Persistenz.
+3. **Session-Cache-Read** (`src/lib/rpg-server-sync.js::loadSessionCachedPayload`): Cross-Version-Schutz fuer parallele Tabs.
+4. **`pickRpgPayloadFromResponse`** (`rpg-server-sync.js`): Read-Side-Defense-in-Depth fuer State-Hydration.
+
+### V3-DAG-Helper (Phase 1)
+
+Pure Edge-basierte Operationen in `src/lib/rpg-quest-graph.js`:
+- `getChildIds(graph, nodeId)`, `getParentIds(graph, nodeId)` — direkte Nachbarn via parent_of-Edges
+- `getChildNodes(graph, nodeId)`, `getParentNodes(graph, nodeId)` — voll aufgeloest
+- `getRootNodeIds(graph)` — Nodes ohne eingehende parent_of-Edge
+- `addParentChildEdge(graph, p, c)` — idempotent, Self-Edge-safe
+- `removeParentChildEdge(graph, p, c)` — entfernt eine konkrete Edge
+- `hasDagCycle(graph)` — DFS mit Visiting/Done-Set, erkennt direkte und indirekte Zyklen
+
+Phase 2 stellt die Tree-Aufrufer (`node.children`, `node.parentId`) auf diese Helper um, Phase 3+4 entfernen die Compat-View komplett.
 
 ## Datenintegritaet und Ausbau
 
@@ -81,15 +120,16 @@ Antwort enthaelt `graph`, `addedIds`, `nodeDone`, `vitals`, `location`, `locatio
 - Persist-Fehler zeigen `console.warn` mit Status/Fehlerbody.
 - Grenzen: kein Versions-/Locking fuer parallele Tabs; `resetToDefault` loescht weiterhin gespeicherten State.
 
-## Code-Pfade
+## Code-Pfade (Stand 2026-04-28)
 
 | Teil | Pfade |
 |------|-------|
-| API | `src/pages/api/rpg/quests.js`, `src/pages/api/rpg/quests-normalize-payload`, `src/pages/api/rpg/quests-import.js`, `src/pages/api/rpg/locations.js` |
+| API | `src/pages/api/rpg/quests.js`, `quests-generate.js`, `quests-import.js`, `quests-backups.js`, `quests-normalize-payload.js`, `questmaker-items.js`, `achievements.js`, `locations.js`, `super-notes.js` (insg. **9 Endpoints**) |
 | Schema | `src/lib/rpg-payload-schema.js` |
 | Server-DB | `src/lib/rpg-state-db.js` |
 | Location-Katalog | `src/lib/rpg-location-catalog-db.js`, `src/lib/rpg-location.js` |
 | Questmaker-Katalog-Sync | `src/lib/rpg-questmaker-sync.js`, `src/lib/rpg-questmaker-catalog-db.js` |
+| Achievement-Katalog | `src/lib/rpg-achievement-catalog-db.js` |
 | Client-Sync | `src/lib/rpg-server-sync.js` |
 | DB-Grundlagen | `memory/database.mdc` |
 

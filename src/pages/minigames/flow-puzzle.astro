@@ -9,7 +9,8 @@ import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
-const canUseMinigames = Boolean(username) && (await hasPermission(username, 'minigames_access'));
+// Vorerst nur Superuser (siehe minigames/index.astro fuer Begruendung).
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
@@ -28,7 +29,7 @@ if (!canUseMinigames) {
   <body>
     <Nav2 variant="subpage" />
     <header class="fp-page-head">
-      <p class="fp-page-kicker"><a href="/minigames">le mathematicos rainbow</a></p>
+      <p class="fp-page-kicker"><a href="/minigames">← Spielwiese</a></p>
       <p class="fp-page-lead">
         Eine Ebene voller kleiner Richtungen — als würde eine unsichtbare Strömung überall anzeigen, wohin sich etwas als Nächstes
         bewegen würde. Du setzt einen Startpunkt; beim Abspielen wandert ein Punkt diesen Richtungen folgend. Dazu kommen eine

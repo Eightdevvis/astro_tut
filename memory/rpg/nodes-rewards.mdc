@@ -39,13 +39,35 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb d
 - Solange ein Lock-Child eines Parents nicht fertig ist, sind alle nicht-Lock-Sibling-Leafs des Parents beim Toggeln gesperrt.
 - Lock-Node selbst wird normal ueber `children` + `dependsOn` abgeschlossen.
 
-## 4. Rewards — zwei Quellen, eine Anzeige-Liste
+## 4. Rewards — eine Pipeline, tiefenagnostisch (04/2026)
 
-### Reward-Eintraege (`RewardEntry`)
+`buildRewardDisplayList(node, nodeDone, opts?)` ist EIN Render-Pfad fuer ALLE Tiefen — Root-Quest, Sub-Node, Leaf — gleicher Code, gleiche Output-Form. Keine Subtypen, kein `source: 'node' | 'quest'`-Switch mehr.
 
-- `{ "type": "text", "text": "..." }`
-- `{ "type": "item", "itemId": "...", "displayName"?: "..." }`
-- `{ "type": "points", "pointKind": "heart" | "mana", "amount": <int> }` (auch negative Werte moeglich)
+- Eigene Rewards des `node` → unlocked wenn der Node selbst komplett ist.
+- Sub-Node-Rewards (rekursiv via `walkNodesPreOrder`) → unlocked wenn der jeweilige Sub-Node komplett ist.
+- `opts.scopeQuestId` legt den Lookup-Key in `nodeDone` fest (Root-Quest-ID); Default = `node.id` (Root-Fall).
+- `opts.selfProgressPercent` (optional) erlaubt Override fuer den Self-Unlock — z.B. aggregierter Graph-Progress aus `questProgress(..., graph)`. Wird nur bei Root-View ausgewertet.
+- Output-Felder pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. `nodeId` zeigt die Position im Baum, ist aber NICHT verhaltensrelevant.
+- Tooltip vereinheitlicht: `'Quest erledigt'` / `'Nach Erledigung der Quest'` — fuer JEDEN Reward, egal ob Root- oder Sub-Node-Origin.
+
+`questLeafProgressRatio(quest, nodeDone, scopeQuestId?)` ist genauso tiefenagnostisch — der optionale `scopeQuestId` ueberschreibt den Lookup-Key.
+
+`deriveRpgTreeSelectionView` gibt jetzt `{ selectedQuest, selectedGraphNode, selectedNodeView, scopeQuestId }` zurueck. Der View-Node behaelt SEINE eigene ID — kein ID-Spoofing mehr. Aufrufer reichen `scopeQuestId` an die Reward-/Progress-Funktionen weiter.
+
+## 4. Rewards — Datenmodell
+
+### Reward-Eintraege (`RewardEntry`) — Ebene 2: Welt-Objekte
+
+Kanonische Typen in `rpg-quests-data.js`:
+
+- `{ "type": "text", "text": "..." }` — Freitext
+- `{ "type": "item", "itemId": "...", "displayName"?: "..." }` — Ref. auf `rpg_questmaker_items` (DB)
+- `{ "type": "points", "pointKind": "heart" | "mana", "amount": <int> }` — Vitals (negativ möglich)
+- `{ "type": "achievement", "achievementId": "...", "displayName"?: "..." }` — Ref. auf `rpg_achievements` (DB, dynamisch wachsend)
+
+Katalog-Typen (DB-backed):
+- `QuestmakerCatalogRow` — `rpg_questmaker_items`, Kategorien in `rpg-item-categories.js`
+- `RpgAchievement` — `rpg_achievements`, kein Kategorien-Enum, title-basierter Slug als ID
 
 Globale Kontostaende (Baum-Gefaesse): Persistentes `vitals`-Konto in `rpg_user_state.payload` mit `{ heart, mana, appliedNodeRewardIds[] }`, Startwerte `heart=25`, `mana=25` bei Max 50, einmalige Buchung pro Node-Reward-ID (`node:<questId>:<nodeId>`), Werte clamp 0...50, Reconciliation via `reconcileRpgVitals`.
 Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls einmalig gebucht (`quest:<questId>:reward:<index>`).
@@ -121,14 +143,16 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 
 | Rolle | Dateien |
 |-------|---------|
-| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-nodes.js` |
+| Logik (Fortschritt, dependsOn, Migration, Rewards-Liste) | `src/lib/rpg-quest-nodes.js` (inkl. `breakGraphCycles`, `deduplicateGraphRoots`) |
 | Graph-Hooks | `src/lib/rpg-quest-graph.js` |
+| Graph-Validierung | `src/lib/rpg-graph-validation.js` |
 | Formular / Editor-Parsing | `src/lib/rpg-quest-form-helpers.js` |
 | Schema-Version / Migration | `src/lib/rpg-payload-schema.js`, `src/pages/api/rpg/quests.js` |
 | DB-Bulk-Normalisierung | `POST /api/rpg/quests-normalize-payload`, `rpg-state-db.js`, `SuperSettings.jsx` |
-| Bootstrap | `src/lib/rpg-server-sync.js` |
+| Bootstrap | `src/lib/rpg-server-sync.js`, `src/lib/useRpgBootstrap.js` |
 | UI | `RpgQuestNodesView.jsx`, `RpgQuestHub.jsx`, `RpgQuestTree.jsx`, `rpg-quest-hub.css`, `rpg-quest-tree.css` |
-| Editor | `src/components/RpgQuestGraphEditor.jsx` |
+| Editor | `src/components/RpgQuestGraphEditor.jsx`, `src/components/RpgQuestNodesBuilder.jsx`, `src/components/RpgQuestRewardsBuilder.jsx` |
+| Achievement-Reward (Editor + DB) | `src/components/RpgAchievementCombobox.jsx`, `src/lib/rpg-achievement-catalog-db.js`, `src/pages/api/rpg/achievements.js` |
 | KI | `src/pages/api/rpg/quests-generate.js` |
 
 ## Siehe auch

@@ -1,30 +1,29 @@
 /**
- * RpgTreeSuperNotes — Superuser-Notizen-Modal im Quest-Baum.
+ * RpgTreeSuperNotes — Private Notizen-Modal im Quest-Baum.
  *
- * Kapselt den kompletten Super-Notes-Lifecycle:
- * - State (open, value, loading, saving, error)
+ * Kapselt den kompletten Notes-Lifecycle:
+ * - State (open, value, history, loading, saving, error)
  * - Body-Overflow-Lock bei offenem Modal
  * - Fetch/PUT gegen /api/rpg/super-notes
- * - Modal-JSX mit Textarea + Save/Close
+ * - Modal-JSX mit Textarea + Verlaufsbereich (letzte 5 Saves)
  *
- * Die Komponente wird nur gerendert wenn isSuperuser=true.
+ * Die Komponente wird nur gerendert wenn canUseNotes=true.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 
-export function useTreeSuperNotes({ isSuperuser }) {
+export function useTreeSuperNotes({ canUseNotes }) {
   const [superNotesOpen, setSuperNotesOpen] = useState(false);
   const [superNotesValue, setSuperNotesValue] = useState('');
+  // History: Array von {note, savedAt} — neuester Eintrag zuerst
+  const [superNotesHistory, setSuperNotesHistory] = useState([]);
   const [superNotesLoading, setSuperNotesLoading] = useState(false);
   const [superNotesSaving, setSuperNotesSaving] = useState(false);
   const [superNotesError, setSuperNotesError] = useState('');
-  // AbortController-Ref: bricht laufende Fetches ab bei Close/Unmount
   const abortRef = useRef(/** @type {AbortController | null} */ (null));
 
-  // Laufende Fetches bei Unmount abbrechen (verhindert State-Updates auf ungemountet)
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Body-Overflow blockieren solange das Modal offen ist
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (!superNotesOpen) return;
@@ -35,10 +34,8 @@ export function useTreeSuperNotes({ isSuperuser }) {
     };
   }, [superNotesOpen]);
 
-  // Notizen vom Server laden und Modal oeffnen
   const openSuperNotes = useCallback(async () => {
-    if (!isSuperuser) return;
-    // Vorherigen Fetch abbrechen falls noch laufend
+    if (!canUseNotes) return;
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -57,18 +54,17 @@ export function useTreeSuperNotes({ isSuperuser }) {
       }
       const data = await res.json();
       setSuperNotesValue(typeof data?.note === 'string' ? data.note : '');
+      setSuperNotesHistory(Array.isArray(data?.history) ? data.history : []);
     } catch (err) {
       if (err?.name === 'AbortError') return;
       setSuperNotesError('Notizen konnten nicht geladen werden.');
     } finally {
       setSuperNotesLoading(false);
     }
-  }, [isSuperuser]);
+  }, [canUseNotes]);
 
-  // Notizen an den Server senden
   const saveSuperNotes = useCallback(async () => {
-    if (!isSuperuser) return;
-    // Vorherigen Fetch abbrechen (z.B. wenn Load noch laeuft)
+    if (!canUseNotes) return;
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -88,6 +84,7 @@ export function useTreeSuperNotes({ isSuperuser }) {
       }
       const data = await res.json();
       setSuperNotesValue(typeof data?.note === 'string' ? data.note : superNotesValue);
+      setSuperNotesHistory(Array.isArray(data?.history) ? data.history : []);
       setSuperNotesOpen(false);
     } catch (err) {
       if (err?.name === 'AbortError') return;
@@ -95,7 +92,7 @@ export function useTreeSuperNotes({ isSuperuser }) {
     } finally {
       setSuperNotesSaving(false);
     }
-  }, [isSuperuser, superNotesValue]);
+  }, [canUseNotes, superNotesValue]);
 
   return {
     superNotesOpen,
@@ -104,32 +101,57 @@ export function useTreeSuperNotes({ isSuperuser }) {
     saveSuperNotes,
     superNotesValue,
     setSuperNotesValue,
+    superNotesHistory,
     superNotesLoading,
     superNotesSaving,
     superNotesError,
   };
 }
 
+/** Formatiert einen ISO-Zeitstempel leserlich, z.B. "28.04. 14:32" */
+function fmtDate(iso) {
+  if (!iso || iso === 'migriert') return 'migriert';
+  try {
+    const d = new Date(iso);
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = String(d.getMonth() + 1).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${day}.${mon}. ${h}:${m}`;
+  } catch {
+    return iso;
+  }
+}
+
 /**
- * Modal-Komponente fuer die Superuser-Notizen.
+ * Modal-Komponente fuer die privaten Notizen.
+ * history: [{note, savedAt}, ...] — neuester Eintrag zuerst
  */
 export default function RpgTreeSuperNotes({
   open,
   value,
+  history,
   onInput,
   onClose,
   onSave,
+  onRestoreHistory,
   loading,
   saving,
   error,
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   if (!open) return null;
+
+  // Ältere Einträge = alles ab Index 1 (Index 0 ist der aktuelle Stand)
+  const pastVersions = Array.isArray(history) ? history.slice(1) : [];
+
   return (
     <div
       class="rpg-tree__super-notes-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="Private Superuser-Notizen"
+      aria-label="Private Notizen"
       onClick={() => !saving && onClose()}
     >
       <div class="rpg-tree__super-notes" onClick={(e) => e.stopPropagation()}>
@@ -145,14 +167,50 @@ export default function RpgTreeSuperNotes({
             ×
           </button>
         </div>
+
         <textarea
           class="rpg-tree__super-notes-textarea"
           value={value}
           onInput={(e) => onInput(e.currentTarget.value)}
-          placeholder="Nur für dich als Superuser..."
+          placeholder="Deine privaten Notizen..."
           disabled={loading || saving}
         />
+
         {error ? <p class="rpg-tree__super-notes-error">{error}</p> : null}
+
+        {/* Verlaufsbereich — nur wenn aeltere Versionen vorhanden */}
+        {pastVersions.length > 0 && (
+          <div class="rpg-tree__super-notes-history">
+            <button
+              type="button"
+              class="rpg-tree__super-notes-history-toggle"
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              {historyOpen ? '▾' : '▸'} Verlauf ({pastVersions.length} ältere Version{pastVersions.length !== 1 ? 'en' : ''})
+            </button>
+            {historyOpen && (
+              <ul class="rpg-tree__super-notes-history-list">
+                {pastVersions.map((entry, i) => (
+                  <li key={i} class="rpg-tree__super-notes-history-item">
+                    <span class="rpg-tree__super-notes-history-date">{fmtDate(entry.savedAt)}</span>
+                    <span class="rpg-tree__super-notes-history-preview">
+                      {entry.note?.slice(0, 60)}{entry.note?.length > 60 ? '…' : ''}
+                    </span>
+                    <button
+                      type="button"
+                      class="rpg-tree__btn rpg-tree__btn--muted rpg-tree__super-notes-history-restore"
+                      onClick={() => onRestoreHistory(entry.note)}
+                      disabled={saving}
+                    >
+                      Laden
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div class="rpg-tree__super-notes-actions">
           <button
             type="button"

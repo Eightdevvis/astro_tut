@@ -7,6 +7,8 @@
  */
 
 import { questNodesToDrafts } from './rpg-quest-editor-draft.js';
+import { addParentChildEdge, hasDagCycle } from './rpg-quest-graph.js';
+import { graphNodes } from './rpg-quests-data.js';
 
 // ============================================================
 // ID-Generierung
@@ -91,12 +93,14 @@ export function resolveEditTarget(graph, entityId) {
 
 /**
  * Wendet eine Mapping-Funktion auf eine bestimmte Node im Baum an (rekursiv).
+ * Privat — nur intern fuer applyNodeFieldsUpdate verwendet. Aufrufer sollen
+ * den High-Level-Helper applyNodeFieldsUpdate nutzen statt direkt.
  * @param {import('./rpg-quests-data.js').RpgNode[]} nodes
  * @param {string} targetId
  * @param {(node: any) => any} mapFn
  * @returns {import('./rpg-quests-data.js').RpgNode[]}
  */
-export function mapNodeRecursive(nodes, targetId, mapFn) {
+function mapNodeRecursive(nodes, targetId, mapFn) {
   return (nodes || []).map((node) => {
     if (!node || typeof node !== 'object') return node;
     if (node.id === targetId) return mapFn(node);
@@ -105,6 +109,85 @@ export function mapNodeRecursive(nodes, targetId, mapFn) {
     }
     return node;
   });
+}
+
+/**
+ * Wendet Node-Felder (title/description/rewards/children) auf den Target-Node
+ * innerhalb eines Container-Quests an — egal ob Target == Container (Root-Edit)
+ * oder ein verschachtelter Child (Sub-Node-Edit).
+ *
+ * Konsolidierungs-Invariante: EIN Pfad fuer Root- und Child-Edit. Der
+ * Aufrufer muss nicht mehr unterscheiden — nur den richtigen targetId
+ * uebergeben (= containerId fuer Root, Child-ID fuer Sub).
+ *
+ * Container-spezifische Felder (orderInLayer, questmakerPrompt) werden
+ * separat via `containerOverlay` auf den finalen Container gelegt — nicht
+ * auf den Target-Node, weil sie nur am Container-Quest leben.
+ *
+ * @param {import('./rpg-quests-data.js').RpgNode} container — der Container-Quest (Root des Subtrees)
+ * @param {string} targetId — ID des zu aendernden Nodes (== container.id fuer Root-Edit)
+ * @param {{ title: string; description: string; rewards: import('./rpg-quests-data.js').RpgRewardEntry[]; children: import('./rpg-quests-data.js').RpgNode[] }} fields — kanonische Node-Felder
+ * @param {Record<string, unknown>} [containerOverlay] — Container-only Updates (orderInLayer, questmakerPrompt)
+ * @returns {import('./rpg-quests-data.js').RpgNode}
+ */
+export function applyNodeFieldsUpdate(container, targetId, fields, containerOverlay) {
+  if (!container || typeof container !== 'object') {
+    throw new Error('applyNodeFieldsUpdate: container required');
+  }
+  const tid = String(targetId || '').trim();
+  if (!tid) throw new Error('applyNodeFieldsUpdate: targetId required');
+
+  /**
+   * Erzeugt das aktualisierte Node-Objekt mit kanonischen Feldern.
+   * Geteilt zwischen Root- und Child-Pfad — keine Bifurkation.
+   *
+   * `rewards` wird IMMER gesetzt (auch leeres Array), damit der
+   * upsertQuestInGraph-Merge im Aufrufer die alten Rewards beim
+   * Spread `{...prev, ...node}` ueberschreibt. Ein `delete` wuerde
+   * im Root-Fall (Container-Edit) dazu fuehren, dass alte Rewards
+   * unbeabsichtigt erhalten bleiben.
+   *
+   * Andere kanonische Node-Felder (cityLocation, placeLocation,
+   * dependsOn, optional, isLock, timeDueAt, orderLinked, parentId)
+   * werden NICHT angefasst — der Editor editiert sie nicht, also
+   * bleiben sie via `...node` Spread erhalten.
+   *
+   * Legacy-Feld 'questRewards' wird entfernt, weil wir kanonisch
+   * 'rewards' schreiben (Symmetrie zu upsertQuestInGraph).
+   *
+   * @param {import('./rpg-quests-data.js').RpgNode} node
+   */
+  const buildUpdated = (node) => {
+    const next = {
+      ...node,
+      title: fields.title || tid,
+      description: fields.description || '',
+      children: Array.isArray(fields.children) ? fields.children : [],
+      rewards: Array.isArray(fields.rewards) ? fields.rewards : [],
+    };
+    // Legacy-Feld nicht weiter mitschleppen — wir schreiben kanonisch
+    if ('questRewards' in next) delete /** @type {any} */ (next).questRewards;
+    return next;
+  };
+
+  let updatedContainer;
+  if (container.id === tid) {
+    // Root-Edit: Target IST der Container — Felder direkt auf den Container anwenden
+    updatedContainer = buildUpdated(container);
+  } else {
+    // Child-Edit: Target liegt im Subtree — children rekursiv durchsuchen
+    const updatedChildren = mapNodeRecursive(container.children || [], tid, (node) =>
+      buildUpdated(node)
+    );
+    updatedContainer = { ...container, children: updatedChildren };
+  }
+
+  // Container-only Overlay (orderInLayer, questmakerPrompt) am Ende anwenden,
+  // weil diese Felder nur am Container-Quest leben — nie am Sub-Node.
+  if (containerOverlay && typeof containerOverlay === 'object') {
+    updatedContainer = { ...updatedContainer, ...containerOverlay };
+  }
+  return updatedContainer;
 }
 
 /**
@@ -236,6 +319,238 @@ export function graphNodeIdToDraft(graph, nodeId) {
     : resolved.targetNode;
   const out = questNodesToDrafts([entity]);
   return out[0] || null;
+}
+
+/**
+ * Aktualisiert einen Draft (beliebige Tiefe) anhand seines Keys rekursiv.
+ * Benoetigt weil ein NodeDraftCard auch tief verschachtelt sein kann.
+ * @param {import('./rpg-quest-editor-draft.js').QuestNodeDraft[]} drafts
+ * @param {string} key
+ * @param {(d: import('./rpg-quest-editor-draft.js').QuestNodeDraft) => import('./rpg-quest-editor-draft.js').QuestNodeDraft} updater
+ * @returns {import('./rpg-quest-editor-draft.js').QuestNodeDraft[]}
+ */
+export function updateDraftByKeyRecursive(drafts, key, updater) {
+  return (drafts || []).map((d) => {
+    if (d.key === key) return updater(d);
+    if (d.children?.length) return { ...d, children: updateDraftByKeyRecursive(d.children, key, updater) };
+    return d;
+  });
+}
+
+// ============================================================
+// Tree-Pick → Edge-Operationen (Phase 3)
+//
+// Hintergrund: der ursprüngliche Bug war, dass beim Tree-Pick eine Draft-Kopie
+// einer existierenden Graph-Node gemacht wurde. Beim Save erzeugte
+// `draftNodesToQuestNodes` daraus eine **neue Node** mit eigener (label-basierter)
+// ID — der Original-Node blieb stehen, daneben entstand ein Duplikat.
+//
+// Phase-3-Lösung: ein Tree-Pick wird beim Save NICHT mehr in einen Node
+// umgewandelt. Statt dessen wird **nur eine `parent_of`-Edge** hinzugefügt:
+// der Original-Node bleibt da, wo er ist (kein Move), bekommt einfach einen
+// zusätzlichen Parent. Multi-Parent ist im V3-DAG legitim.
+//
+// Die Erkennung „Tree-Pick vs. echter neuer Draft" läuft über `stableId`:
+//   - Draft mit `stableId === <existierende Graph-Node-ID>` UND die ID ist
+//     NICHT Teil des aktuell editierten Subtrees → das ist ein Tree-Pick.
+//   - Alle anderen Drafts sind echte neue/edited Sub-Quests.
+// ============================================================
+
+/**
+ * Sammelt alle existierenden Node-IDs in einem Graph (rekursiv durch
+ * nested `children`, falls Compat-View — und natürlich auch Top-Level).
+ *
+ * Wird gebraucht, um in den Editor-Drafts „existierender Node vs. neuer Node"
+ * zu unterscheiden: nur Drafts mit `stableId` aus dieser Menge können
+ * Tree-Picks sein.
+ *
+ * @param {import('./rpg-quests-data.js').RpgGraph | null | undefined} graph
+ * @returns {Set<string>}
+ */
+export function collectAllNodeIds(graph) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  /** @param {any} n */
+  function walk(n) {
+    if (!n || typeof n !== 'object') return;
+    if (typeof n.id === 'string' && n.id) out.add(n.id);
+    if (Array.isArray(n.children)) {
+      for (const c of n.children) walk(c);
+    }
+  }
+  for (const root of graphNodes(graph)) walk(root);
+  return out;
+}
+
+/**
+ * Sammelt die IDs aller Nodes IM Subtree eines bestimmten Roots (inkl. Root).
+ * Nutzt nested `children` (Compat-View). Wird verwendet, um beim Tree-Pick-
+ * Erkennen Selbstbezüge auszuschließen — ein Draft, der den eigenen Subtree
+ * beschreibt, ist KEIN Tree-Pick, sondern der normale Bearbeitungs-Inhalt.
+ *
+ * @param {import('./rpg-quests-data.js').RpgNode | null | undefined} rootNode
+ * @returns {Set<string>}
+ */
+export function collectSubtreeIds(rootNode) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  /** @param {any} n */
+  function walk(n) {
+    if (!n || typeof n !== 'object') return;
+    if (typeof n.id === 'string' && n.id) out.add(n.id);
+    if (Array.isArray(n.children)) {
+      for (const c of n.children) walk(c);
+    }
+  }
+  walk(rootNode);
+  return out;
+}
+
+/**
+ * Ein splittbarer Draft mit zugehörigen Tree-Pick-Children-IDs.
+ * @typedef {{
+ *   key: string;
+ *   stableId?: string;
+ *   children?: any[];
+ *   [k: string]: any;
+ * }} SplittableDraft
+ */
+
+/**
+ * Splittet einen Draft-Baum rekursiv in:
+ *  - `cleanDrafts`: Drafts ohne Tree-Pick-Verweise (zur normalen
+ *    `draftNodesToQuestNodes`-Verarbeitung).
+ *  - `treePickEdges`: Liste von `{ parentStableId, childId }` — wo
+ *    parentStableId der echte Parent-Node-im-Graph ist (nicht der Draft-Key).
+ *
+ * Algorithmus pro Draft:
+ *  1. Wenn der Draft `stableId` hat und diese in `existingIds` ist UND nicht
+ *     in `selfSubtreeIds` (= eigener Edit-Container) → **Tree-Pick-Draft**.
+ *     → wird NICHT in `cleanDrafts` aufgenommen, dafür eine Edge zum
+ *       (logischen) Parent-Draft erzeugt.
+ *  2. Sonst: rekursiv durchgehen. Eigene Children werden via `walk` weiter
+ *     gesplittet. Der Tree-Pick-Parent ist `stableId || key`-Auflösung.
+ *
+ * Wichtig: für die Top-Level-Drafts (Children des Container-Quests) ist
+ * `parentStableIdOfContainer` der Parent (= Container-Node-ID).
+ *
+ * @param {SplittableDraft[]} drafts
+ * @param {string} parentStableIdOfContainer — Node-ID des aktuell editierten Containers/Targets
+ * @param {Set<string>} existingIds — alle Node-IDs im aktuellen Graph
+ * @param {Set<string>} selfSubtreeIds — IDs im aktuell editierten Subtree (Selbstbezüge ausschließen)
+ * @returns {{ cleanDrafts: SplittableDraft[]; treePickEdges: Array<{ parentId: string; childId: string }> }}
+ */
+export function splitDraftsForTreePick(
+  drafts,
+  parentStableIdOfContainer,
+  existingIds,
+  selfSubtreeIds
+) {
+  /** @type {SplittableDraft[]} */
+  const cleanDrafts = [];
+  /** @type {Array<{ parentId: string; childId: string }>} */
+  const treePickEdges = [];
+
+  /**
+   * @param {SplittableDraft[]} list — die Geschwister
+   * @param {string} parentId — der reale Node-ID des Parents im Graph (für Edges)
+   * @returns {SplittableDraft[]} bereinigte Liste
+   */
+  function walk(list, parentId) {
+    const out = [];
+    for (const d of list || []) {
+      if (!d || typeof d !== 'object') continue;
+      const sid = typeof d.stableId === 'string' ? d.stableId.trim() : '';
+      // Tree-Pick: existierender Node im Graph, NICHT Teil des eigenen Subtrees
+      if (sid && existingIds.has(sid) && !selfSubtreeIds.has(sid)) {
+        if (parentId && parentId !== sid) {
+          treePickEdges.push({ parentId, childId: sid });
+        }
+        // Tree-Pick wird NICHT geklont, NICHT rekursiv weitergesplittet —
+        // die Children des Originals sind ja längst über eigene Edges verbunden.
+        continue;
+      }
+      // Normaler Draft: rekursiv kuratieren. Children-Parent ist die eigene
+      // stableId (falls vorhanden) — sonst der Draft-Key. Beim Speichern
+      // bekommt der Draft eine label-basierte neue ID; beim Tree-Pick auf
+      // dessen Kinder kommt aber sowieso nur ein Edge raus, das später
+      // korrigiert werden müsste. Deshalb: nur Drafts mit echtem stableId
+      // erlauben Tree-Pick-Edges direkt; bei „neue Drafts" wird die
+      // parent-Beziehung über `draftNodesToQuestNodes` (children-Array)
+      // ohnehin korrekt gesetzt.
+      const childParent = sid || parentId;
+      const cleanedChildren = walk(d.children || [], childParent);
+      out.push({ ...d, children: cleanedChildren });
+    }
+    return out;
+  }
+
+  const cleaned = walk(drafts || [], parentStableIdOfContainer);
+  cleanDrafts.push(...cleaned);
+
+  return { cleanDrafts, treePickEdges };
+}
+
+/**
+ * Entfernt alle `parent_of`-Edges, deren `from` der Container ist UND deren
+ * `to` NICHT im (neuen) Subtree des Containers liegt. So spiegelt sich ein
+ * UI-Remove auf der Edge-Ebene: ein Child, das aus dem Builder entfernt wurde,
+ * verliert die Edge zum Container.
+ *
+ * Multi-Parent-Schutz: Edges anderer Parents auf dasselbe Child bleiben
+ * unberührt — nur der Container-eigene Anschluss wird gelöst.
+ *
+ * Diese Funktion ist NICHT idempotent gegenüber den Drafts — sie entfernt
+ * exakt die Edges, die beim aktuellen Save als „nicht mehr da" gemeldet
+ * werden. Aufrufer sollte `newSubtreeIds` nach dem `applyNodeFieldsUpdate`
+ * berechnen (d.h. aus den `cleanDrafts` + dem Container).
+ *
+ * @param {import('./rpg-quests-data.js').RpgGraph} graph
+ * @param {string} containerId — Container-Quest-ID des aktuellen Edits
+ * @param {Set<string>} newSubtreeIds — alle Node-IDs im NEUEN Subtree (inkl. Container selbst)
+ * @returns {import('./rpg-quests-data.js').RpgGraph}
+ */
+export function pruneStaleParentEdgesForContainer(graph, containerId, newSubtreeIds) {
+  if (!graph || !containerId) return graph;
+  const cid = String(containerId).trim();
+  if (!cid) return graph;
+  const oldEdges = Array.isArray(graph.edges) ? graph.edges : [];
+  const filtered = oldEdges.filter((e) => {
+    if (!e) return false;
+    const isStruct = e.relation === 'structure' || e.relation === 'parent_of';
+    if (!isStruct) return true; // dependency etc. unverändert
+    if (e.from !== cid) return true; // Edge gehört anderem Parent
+    return newSubtreeIds.has(e.to); // Container-eigene Edge: nur behalten wenn `to` noch da
+  });
+  if (filtered.length === oldEdges.length) return graph;
+  return { ...graph, edges: filtered };
+}
+
+/**
+ * Wendet eine Liste von Tree-Pick-Edges idempotent auf einen Graph an
+ * und prüft auf Zyklen. Bei Cycle: Graph unverändert, ok=false.
+ *
+ * Einsatz: nach `upsertQuestInGraph` im Editor-Save, bevor `onApply` läuft.
+ * Reine Edge-Operation — nodes werden NICHT verändert.
+ *
+ * @param {import('./rpg-quests-data.js').RpgGraph} graph
+ * @param {Array<{ parentId: string; childId: string }>} edges
+ * @returns {{ ok: true; graph: import('./rpg-quests-data.js').RpgGraph } | { ok: false; reason: 'cycle'; conflict: { parentId: string; childId: string } }}
+ */
+export function applyTreePickEdges(graph, edges) {
+  let next = graph;
+  for (const e of edges || []) {
+    const parentId = String(e?.parentId || '').trim();
+    const childId = String(e?.childId || '').trim();
+    if (!parentId || !childId || parentId === childId) continue;
+    const candidate = addParentChildEdge(next, parentId, childId);
+    // Erst Cycle prüfen, BEVOR wir die Edge übernehmen.
+    if (hasDagCycle(candidate)) {
+      return { ok: false, reason: 'cycle', conflict: { parentId, childId } };
+    }
+    next = candidate;
+  }
+  return { ok: true, graph: next };
 }
 
 // ============================================================

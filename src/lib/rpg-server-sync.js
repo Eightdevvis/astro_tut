@@ -4,7 +4,7 @@ import {
   loadNodeDone,
   clearAllRpgLocalStorage,
 } from './rpg-persistence.js';
-import { EMPTY_RPG_GRAPH } from './rpg-quests-data.js';
+import { EMPTY_RPG_GRAPH, migrateNodeDoneToFlat } from './rpg-quests-data.js';
 import { graphNodes, makeRpgGraph, graphEdges } from './rpg-quests-data.js';
 import {
   isValidGraphShape,
@@ -12,6 +12,7 @@ import {
   buildInitialNodeMapFromGraph,
 } from './rpg-quest-graph.js';
 import { migrateRpgGraphToV2 } from './rpg-quest-nodes.js';
+import { migrateRpgGraphToV3 } from './rpg-payload-schema.js';
 import { questmakerCatalogToDisplayMap } from './rpg-questmaker-sync.js';
 import { normalizeRpgVitalsState } from './rpg-vitals.js';
 import { normalizeRpgLocationState, normalizeRpgLocationCatalog } from './rpg-location.js';
@@ -44,10 +45,16 @@ export function loadSessionCachedPayload() {
       });
       return null;
     }
+    // Cross-Version-Schutz: wenn ein parallel offener Tab den Cache mit einer
+    // alteren Schema-Version geschrieben hat, hier idempotent auf V3 migrieren
+    // (chained V1→V2→V3). Sonst koennten Legacy-Felder (label, questRewards,
+    // reward) bis ins UI durchschlagen oder Phase-1-Aufrufer waeren mit
+    // V2-Tree-Format konfrontiert.
+    const graph = migrateRpgGraphToV3(migrateRpgGraphToV2(parsed.graph));
     const addedIds = Array.isArray(parsed.addedIds) ? parsed.addedIds : [];
-    const nodeDoneRaw = parsed.nodeDone;
-    const nodeDone =
-      nodeDoneRaw && typeof nodeDoneRaw === 'object' ? nodeDoneRaw : {};
+    // Phase 2: Cache koennte V2-verschachtelt sein (parallele Tabs, alte Versionen).
+    // Idempotent flach machen.
+    const nodeDone = migrateNodeDoneToFlat(parsed.nodeDone);
     const itemCatalog =
       parsed.itemCatalog && typeof parsed.itemCatalog === 'object' && !Array.isArray(parsed.itemCatalog)
         ? parsed.itemCatalog
@@ -56,7 +63,7 @@ export function loadSessionCachedPayload() {
     const location = normalizeRpgLocationState(parsed.location);
     const locationCatalog = normalizeRpgLocationCatalog(parsed.locationCatalog);
     const locations = Array.isArray(parsed.locations) ? parsed.locations : [];
-    return { graph: parsed.graph, addedIds, nodeDone, itemCatalog, vitals, location, locationCatalog, locations };
+    return { graph, addedIds, nodeDone, itemCatalog, vitals, location, locationCatalog, locations };
   } catch {
     return null;
   }
@@ -66,9 +73,9 @@ export function loadSessionCachedPayload() {
 export function saveSessionCachedPayload(payload) {
   if (typeof sessionStorage === 'undefined') return;
   try {
-    const nodeDoneRaw = payload.nodeDone;
-    const nodeDone =
-      nodeDoneRaw && typeof nodeDoneRaw === 'object' ? nodeDoneRaw : {};
+    // Cache speichert ausschliesslich das flache Format (Phase 2). Wenn ein
+    // Aufrufer trotzdem verschachtelt reicht, hier idempotent flach machen.
+    const nodeDone = migrateNodeDoneToFlat(payload.nodeDone);
     sessionStorage.setItem(
       RPG_SESSION_CACHE_KEY,
       JSON.stringify({
@@ -123,9 +130,8 @@ export async function persistRpgState(payload) {
     });
     return { ok: false, error: 'invalid_graph' };
   }
-  const nodeDoneRaw = payload.nodeDone;
-  const nodeDone =
-    nodeDoneRaw && typeof nodeDoneRaw === 'object' ? nodeDoneRaw : {};
+  // Phase 2: nodeDone wird vor dem PUT idempotent flach gemacht.
+  const nodeDone = migrateNodeDoneToFlat(payload.nodeDone);
   const res = await fetch('/api/rpg/quests', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -222,12 +228,16 @@ export function pickRpgPayloadFromResponse(data) {
       graphType: typeof data?.graph,
     });
   }
-  const graph = migrateRpgGraphToV2(
-    makeRpgGraph(graphNodes(raw), graphEdges(raw))
+  // V1 → V2 → V3 Migration: stellt sicher, dass im UI immer V3+Compat-Form
+  // ankommt — auch wenn der Server (z.B. nach Rollback) noch ältere Daten
+  // liefert. migrateRpgGraphToV3 ist idempotent.
+  const graph = migrateRpgGraphToV3(
+    migrateRpgGraphToV2(makeRpgGraph(graphNodes(raw), graphEdges(raw)))
   );
   const addedIds = Array.isArray(data?.addedIds) ? data.addedIds : [];
-  const nodeDoneRaw = data?.nodeDone;
-  const nodeDone = nodeDoneRaw && typeof nodeDoneRaw === 'object' ? nodeDoneRaw : {};
+  // Phase 2: Server liefert nun flach, aber idempotent migrieren faengt
+  // alte Caches/Backups ab.
+  const nodeDone = migrateNodeDoneToFlat(data?.nodeDone);
   const vitals = normalizeRpgVitalsState(data?.vitals);
   const location = normalizeRpgLocationState(data?.location);
   const locationCatalog = normalizeRpgLocationCatalog(data?.locationCatalog);

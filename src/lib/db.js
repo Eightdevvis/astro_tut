@@ -138,6 +138,13 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS rpg_achievements (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS rpg_locations (
     id          TEXT PRIMARY KEY,
     kind        TEXT NOT NULL,
@@ -191,6 +198,23 @@ const SCHEMA_DDL = `
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_graffiti_page_created ON graffiti_strokes (page_path, created_at DESC, id DESC);
+
+  -- Tile-basierte Graffiti-Architektur (Phase 2):
+  -- Pro Page wird der Canvas in 512x512-Kacheln unterteilt. Jede Kachel ist ein
+  -- gerendertes PNG. Der Client malt, render lokal die betroffenen Kacheln neu
+  -- und uploadet sie. Erase = einfaches destination-out im Client, dann Tile-Upload.
+  -- version dient zur optimistic-concurrency: wenn ein anderer User zwischendurch
+  -- denselben Tile editiert hat, lehnt der Server den Upload ab (409).
+  CREATE TABLE IF NOT EXISTS graffiti_tiles (
+    page_path  TEXT NOT NULL,
+    tile_x     INTEGER NOT NULL,
+    tile_y     INTEGER NOT NULL,
+    png_blob   BLOB NOT NULL,
+    version    INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (page_path, tile_x, tile_y)
+  );
+  CREATE INDEX IF NOT EXISTS idx_graffiti_tiles_page_updated ON graffiti_tiles (page_path, updated_at DESC);
 
   CREATE TABLE IF NOT EXISTS user_feeds (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,

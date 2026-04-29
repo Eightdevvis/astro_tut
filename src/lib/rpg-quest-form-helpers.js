@@ -1,36 +1,22 @@
-import {
-  normalizeQuestNodesTree,
-  flatLegacyNodesToNormalized,
-} from './rpg-quest-nodes.js';
-import {
-  stringsToTextRewards,
-  normalizeRewardEntries,
-} from './rpg-quest-rewards.js';
-
-/** @typedef {import('./rpg-quests-data.js').RpgNode} RpgNode */
-/** @typedef {import('./rpg-quests-data.js').RpgRewardEntry} RpgRewardEntry */
+/**
+ * rpg-quest-form-helpers.js — Hilfsfunktionen fuer Quest-Formulare und API-Generierung.
+ *
+ * Hinweis (Pass 4 Cleanup, 2026-04-28): Dieser Modul war historisch ein Bauchladen
+ * an Editor-Text-Modus-Helpern (linesToNodes, parseNodesFromEditorText,
+ * serializeQuestRewardsToEditorText etc.). Mit der Umstellung des Editors auf
+ * den Draft-basierten Builder (`RpgQuestNodesBuilder`) wurden diese Funktionen
+ * obsolet. Sie sind in Pass 4 entfernt worden — die hier verbliebenen zwei
+ * Funktionen sind die einzigen, die noch Verwender haben:
+ *
+ * - `normalizeQuestId` — vom Editor (Auto-ID aus Titel) verwendet
+ * - `labelsToNodes`    — von der Questmaker-API (`quests-generate.js`) verwendet
+ *   um KI-erzeugte Stringliste in einfache Nodes zu konvertieren.
+ */
 
 /**
- * Text-Zeilen zu einfachen Node-Objekten (fuer den Editor).
- * @param {string} text
+ * Normalisiert eine Quest-ID (kleinbuchstaben, Bindestriche statt Spaces, max 48 Zeichen).
+ * @param {string} raw
  */
-export function linesToNodes(text) {
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((title, i) => ({ id: `s-${i}`, title }));
-}
-
-/** @param {string} text */
-export function parseRewards(text) {
-  return text
-    .split(/\n|,/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/** @param {string} raw */
 export function normalizeQuestId(raw) {
   let x = raw.trim().toLowerCase().replace(/\s+/g, '-');
   x = x.replace(/[^a-z0-9-_]/g, '');
@@ -51,92 +37,4 @@ export function labelsToNodes(titles) {
     out.push({ id: `s-${out.length}`, title });
   }
   return out;
-}
-
-/**
- * Prueft ob Nodes einfach genug sind fuer den Textfeld-Editor (keine Verschachtelung, keine Features).
- * @param {RpgNode[] | undefined} nodes
- */
-export function isSimpleFlatNodesForEditor(nodes) {
-  if (!Array.isArray(nodes) || nodes.length === 0) return true;
-  return nodes.every(
-    (s) =>
-      !s?.children?.length &&
-      !s?.optional &&
-      !(s?.rewards?.length) &&
-      !s?.timeDueAt &&
-      (!s?.dependsOn || s.dependsOn.length === 0)
-  );
-}
-
-/**
- * Serialisiert Nodes fuer den Editor (Textfeld oder JSON).
- * @param {RpgNode[]} nodes
- */
-export function serializeNodesToEditorText(nodes) {
-  if (!Array.isArray(nodes) || nodes.length === 0) return '';
-  if (isSimpleFlatNodesForEditor(nodes)) {
-    return nodes.map((s) => s.title).join('\n');
-  }
-  return JSON.stringify(nodes, null, 2);
-}
-
-/**
- * Parst Nodes aus dem Editor-Textfeld.
- * @param {string} text
- * @returns {RpgNode[]}
- */
-export function parseNodesFromEditorText(text) {
-  const t = text.trim();
-  if (t.startsWith('[')) {
-    let parsed;
-    try {
-      parsed = JSON.parse(t);
-    } catch {
-      throw new Error('Schritte: Ungültiges JSON — Syntax prüfen.');
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error('Schritte: JSON muss ein Array sein.');
-    }
-    return normalizeQuestNodesTree(parsed);
-  }
-  const flat = linesToNodes(text);
-  if (flat.length === 0) return [];
-  return flatLegacyNodesToNormalized(flat);
-}
-
-/**
- * Serialisiert Rewards eines Nodes fuer den Editor.
- * @param {RpgNode | Record<string, any>} node
- */
-export function serializeQuestRewardsToEditorText(node) {
-  const n = /** @type {any} */ (node);
-  // Neues Format bevorzugt
-  if (Array.isArray(n.rewards) && n.rewards.length > 0) {
-    return JSON.stringify(n.rewards, null, 2);
-  }
-  // Legacy: questRewards[]
-  if (Array.isArray(n.questRewards) && n.questRewards.length > 0) {
-    return JSON.stringify(n.questRewards, null, 2);
-  }
-  return '';
-}
-
-/**
- * Parst Rewards aus dem Editor-Textfeld.
- * @param {string} text
- * @returns {RpgRewardEntry[]}
- */
-export function parseQuestRewardsFromEditorText(text) {
-  const t = text.trim();
-  if (!t.startsWith('[')) {
-    return stringsToTextRewards(parseRewards(t));
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(t);
-  } catch {
-    throw new Error('Belohnungen: Ungültiges JSON — Syntax prüfen.');
-  }
-  return normalizeRewardEntries(parsed);
 }

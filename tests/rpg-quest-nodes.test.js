@@ -486,27 +486,86 @@ test('getNodeRewardEntries extrahiert nur Entries ohne Unlock-Info', () => {
 // buildRewardDisplayList
 // =============================================================================
 
-test('buildRewardDisplayList aggregiert Child- und Quest-Rewards', () => {
+test('buildRewardDisplayList aggregiert Self- und Sub-Node-Rewards', () => {
   const q = quest('q1', [
     leaf('a', { rewards: [{ type: 'text', text: 'Child-Reward' }] }),
   ], {
     rewards: [{ type: 'text', text: 'Quest-Reward' }],
   });
   const rows = buildRewardDisplayList(q, { q1: {} });
-  // Mindestens ein Child-Reward und ein Quest-Reward
-  const childRows = rows.filter((r) => r.source === 'node');
-  const questRows = rows.filter((r) => r.source === 'quest');
-  assert.ok(childRows.length >= 1, 'Mindestens ein Child-Reward');
-  assert.ok(questRows.length >= 1, 'Mindestens ein Quest-Reward');
+  // Beide Rewards sind enthalten — getrennt erkennbar via nodeId
+  const selfRows = rows.filter((r) => r.nodeId === 'q1');
+  const subRows = rows.filter((r) => r.nodeId === 'a');
+  assert.ok(selfRows.length >= 1, 'Self-Reward (Root) muss enthalten sein');
+  assert.ok(subRows.length >= 1, 'Sub-Node-Reward muss enthalten sein');
 });
 
-test('buildRewardDisplayList setzt unlocked korrekt fuer Child-Rewards', () => {
+test('buildRewardDisplayList setzt unlocked korrekt fuer Sub-Node-Rewards', () => {
   const q = quest('q1', [
     leaf('a', { rewards: [{ type: 'text', text: 'R' }] }),
   ]);
   const unlocked = buildRewardDisplayList(q, { q1: { a: true } });
   assert.equal(unlocked[0].unlocked, true);
+  assert.equal(unlocked[0].nodeId, 'a');
 
   const locked = buildRewardDisplayList(q, { q1: {} });
   assert.equal(locked[0].unlocked, false);
+});
+
+test('buildRewardDisplayList ist tiefenagnostisch: Root und Sub-Node liefern strukturell konsistente Outputs', () => {
+  // Root mit zwei Sub-Nodes, jeder mit eigenen Rewards
+  const sub = {
+    id: 'sub',
+    parentId: 'q1',
+    title: 'Sub',
+    children: [
+      { id: 'sub-leaf', parentId: 'sub', title: 'Sub-Leaf', children: [], rewards: [{ type: 'text', text: 'Deep' }] },
+    ],
+    rewards: [{ type: 'text', text: 'Sub-Self' }],
+  };
+  const q = quest('q1', [sub], { rewards: [{ type: 'text', text: 'Root-Self' }] });
+
+  // Root-View: Root-Self + Sub-Self + Deep
+  const rootRows = buildRewardDisplayList(q, { q1: {} });
+  assert.equal(rootRows.length, 3, 'Root-View liefert alle drei Rewards');
+  // Reihenfolge: erst self (Root), dann via walkNodesPreOrder die Descendants (sub, sub-leaf)
+  assert.equal(rootRows[0].nodeId, 'q1');
+  assert.equal(rootRows[0].unlocked, false); // Root nicht komplett
+
+  // Sub-View: Sub-Self + Deep, KEIN Root-Self
+  const subRows = buildRewardDisplayList(sub, { q1: {} }, {
+    scopeQuestId: 'q1',
+  });
+  assert.equal(subRows.length, 2, 'Sub-View liefert nur eigene + descendants');
+  assert.equal(subRows[0].nodeId, 'sub');
+  // Strukturelle Konsistenz: jeder Eintrag hat label, kind, unlocked, nodeId
+  for (const row of [...rootRows, ...subRows]) {
+    assert.equal(typeof row.label, 'string');
+    assert.equal(typeof row.kind, 'string');
+    assert.equal(typeof row.unlocked, 'boolean');
+    assert.equal(typeof row.nodeId, 'string');
+    // KEIN source-Feld mehr — das war die Halluzination
+    assert.equal(row.source, undefined);
+  }
+});
+
+test('buildRewardDisplayList: Self-Reward eines Sub-Nodes wird unlocked wenn der Sub-Node selbst komplett ist', () => {
+  const sub = {
+    id: 'sub',
+    parentId: 'q1',
+    title: 'Sub',
+    children: [
+      { id: 'l1', parentId: 'sub', title: 'L1', children: [] },
+    ],
+    rewards: [{ type: 'text', text: 'Sub-Self' }],
+  };
+  const q = quest('q1', [sub]);
+
+  // Sub nicht komplett → Self-Reward locked
+  const locked = buildRewardDisplayList(sub, { q1: {} }, { scopeQuestId: 'q1' });
+  assert.equal(locked[0].unlocked, false);
+
+  // Sub komplett (l1 done) → Self-Reward unlocked
+  const unlocked = buildRewardDisplayList(sub, { q1: { l1: true } }, { scopeQuestId: 'q1' });
+  assert.equal(unlocked[0].unlocked, true);
 });

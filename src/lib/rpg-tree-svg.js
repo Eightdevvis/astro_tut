@@ -354,7 +354,7 @@ export function nodeClass(quest, unlocked, added, completed) {
 
 /**
  * @typedef {{ id: string; nodeId: string; questId: string; label: string; x: number; y: number; isLeaf: boolean; isDone: boolean; isLock: boolean; leafDescendants: number; depth: number }} NodeTreeEntry
- * @typedef {{ fromX: number; fromY: number; toX: number; toY: number }} NodeTreeEdge
+ * @typedef {{ fromX: number; fromY: number; toX: number; toY: number; isDone: boolean }} NodeTreeEdge
  */
 
 /**
@@ -387,7 +387,7 @@ export function computeNodeTreeOverlay(opts) {
 
   const childGapX = compact ? 88 : 102;
   const childGapY = compact ? 84 : 96;
-  const nodeRadius = compact ? 17 : 15;
+  const nodeRadius = compact ? 19 : 17; // gleiche Größe wie Root-Nodes (nodeR())
 
   /** @type {NodeTreeEntry[]} */
   const nodeNodes = [];
@@ -403,16 +403,19 @@ export function computeNodeTreeOverlay(opts) {
    * @param {number} parentY
    * @param {number} depth
    */
-  function placeChildren(children, questId, parentX, parentY, depth) {
+  function placeChildren(children, questId, parentX, parentY, depth, visitedIds = new Set()) {
     if (!children?.length) return;
-    const weights = children.map((ch) => Math.max(1, leafCount(ch)));
-    const totalWeight = weights.reduce((a, b) => a + b, 0) || children.length;
+    // Cycle-Guard: Nodes die wir auf diesem Pfad schon gesehen haben überspringen
+    const safeChildren = children.filter((ch) => ch?.id && !visitedIds.has(ch.id));
+    if (!safeChildren.length) return;
+    const weights = safeChildren.map((ch) => Math.max(1, leafCount(ch)));
+    const totalWeight = weights.reduce((a, b) => a + b, 0) || safeChildren.length;
     const baseRadius =
       Math.max(childGapX, childGapY) * (0.66 + Math.min(0.9, Math.log2(totalWeight + 1) * 0.24)) +
       depth * (compact ? 4 : 5);
     const ringAngles = distributeWeightedAngles(weights, 12, 168);
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
+    for (let i = 0; i < safeChildren.length; i++) {
+      const child = safeChildren[i];
       const a = (ringAngles[i] * Math.PI) / 180;
       const w = weights[i];
       const radialBoost = Math.min(82, Math.log2(w + 1) * (compact ? 10 : 14));
@@ -433,8 +436,10 @@ export function computeNodeTreeOverlay(opts) {
         leafDescendants: leafDescendants(child),
         depth,
       });
-      nodeEdges.push({ fromX: parentX, fromY: parentY, toX: x, toY: y });
-      placeChildren(child.children || [], questId, x, y, depth + 1);
+      nodeEdges.push({ fromX: parentX, fromY: parentY, toX: x, toY: y, isDone: leaf && isDone(questId, child.id) });
+      const nextVisited = new Set(visitedIds);
+      nextVisited.add(child.id);
+      placeChildren(child.children || [], questId, x, y, depth + 1, nextVisited);
     }
   }
 
