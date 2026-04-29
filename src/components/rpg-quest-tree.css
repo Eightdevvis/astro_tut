@@ -1635,8 +1635,23 @@
     border: none;
   }
 
+  /*
+   * Detail-Mobile: Panel full-height, aber Topbar mit Hamburger bleibt sichtbar.
+   * (Sonst: Topbar war display:none → kein Zugriff auf Werkzeuge nach Node-Tap.)
+   */
+  .rpg-tree--detail-mobile {
+    --rpg-tree-mobile-topbar-stack-h: calc(
+      0.5rem + env(safe-area-inset-top, 0px) + 44px + 0.5rem
+    );
+  }
+
   .rpg-tree--detail-mobile .rpg-tree__top {
-    display: none;
+    z-index: 40;
+  }
+
+  .rpg-tree--detail-mobile .qpanel {
+    top: var(--rpg-tree-mobile-topbar-stack-h);
+    padding-top: 0;
   }
 
   .rpg-tree--detail-mobile .rpg-tree__viewport {
