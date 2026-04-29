@@ -25,6 +25,7 @@
 - Cycle-/Dedup-Schutz: `breakGraphCycles` + `deduplicateGraphRoots` in `rpg-quest-nodes.js` werden im Tree-`applyGraph` aufgerufen, bevor ein eingehender Graph in den State geht. Verhindert Render-Stack-Overflow bei zyklischen Graphen.
 - **Editor-Save-Konsistenz** (Pass 3+4): `applyNodeFieldsUpdate` in `rpg-graph-editor-ops.js` ist der EINE Pfad fuer Root-Edit und Child-Edit. `containerOverlay` (orderInLayer, questmakerPrompt) landet immer am Container, nie am Sub-Node. `rewards: []` ueberschreibt alte Rewards (kein delete, sondern explizites leeres Array — getestet via Spread-Verhalten in `upsertQuestInGraph`).
 - **Tiefe-3 Roundtrip** (Pass 4): `questNodesToDrafts` -> `draftNodesToQuestNodes` -> JSON serialize/deserialize -> `normalizeQuestNodesTree` erhaelt alle Reward-Typen (text/item/points/achievement) und Felder ueber 3 Tiefen. IDs werden vom Editor neu generiert aus Titeln (designgewollt via `makeUniqueNodeIdFromLabel`). `parentId` zeigt nach Roundtrip auf den korrekten Tree-Parent.
+- **Duplicate-Title-ID-Generation**: Bei mehreren gleich benannten Draft-Nodes erzeugt `draftNodesToQuestNodes` stabile, kollisionsfreie IDs per Suffix (`slug`, `slug-2`, `slug-3`), sodass Titelgleichheit nie zu ID-Kollisionen fuehrt.
 - **Boundary**: invalide Reward-Eintraege (null, fehlende Pflichtfelder, unbekannter type) werden in `buildRewardDisplayList` gefiltert. Nodes ohne Title bleiben verarbeitbar.
 
 ## Nächste Test-Ausbaustufen
@@ -32,3 +33,14 @@
 - API-Tests für `PUT /api/rpg/quests` (HTTP-level, Error-Codes + Bodies).
 - UI-Interaktionstest für Node-Toggles im Subtree-Panel.
 - Property-Tests für zufällige Baumformen (locks/optional/dependsOn) gegen Unlock-Logik.
+
+## Szenario-Matrix (manuell, priorisiert)
+
+- **P0 — Multi-Parent Kern:** `1 -> (2,3)` anlegen, danach `11 -> 1` verlinken; Erwartung: `1` behaelt `2/3`, kein separater Kinder-Tree.
+- **P0 — Remove bei Multi-Parent:** Link `11 -> 1` wieder loesen; Erwartung: `1` bleibt mit `2/3` unter dem urspruenglichen Parent erhalten.
+- **P0 — Cycle-Guard:** Vorfahre als Child verlinken (`A -> ... -> C`, dann `C -> A`) muss blocken ohne State-Aenderung.
+- **P0 — Persistenz-Roundtrip:** Nach jedem P0-Fall speichern, Seite neu laden, Struktur unveraendert.
+- **P1 — Shared Leaf/Subtree:** Leaf und ganzer Subtree unter zweiten Parent haengen; Erwartung: keine Duplikat-IDs, beide Parent-Pfade gueltig.
+- **P1 — Reorder + Save:** Geschwister-Reihenfolge aendern, speichern, reload; Erwartung: Reihenfolge stabil.
+- **P1 — Remove Subtree:** Ast entfernen; Erwartung: keine dangling dependsOn/structure-Referenzen.
+- **P2 — Stress:** 100+ Nodes, mehrere Multi-Parents, mehrfaches Save/Reload ohne Drift.

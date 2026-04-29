@@ -6,6 +6,7 @@ import {
   isQuestUnlocked as isNodeUnlocked,
   isQuestCompleted as isNodeCompleted,
   questProgress as nodeProgress,
+  removeParentChildEdge,
 } from '../lib/rpg-quest-graph.js';
 import { computeLayeredLayout } from '../lib/rpg-graph-layout.js';
 import {
@@ -344,7 +345,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const dependencyEdges = useMemo(() => graphEdges(graph).filter((e) => e.relation !== 'structure'), [graph]);
   const nodeTreeOverlay = useMemo(() => {
     const qMap = new Map((graph.nodes || []).map((q) => [q.id, q]));
-    return computeNodeTreeOverlay({
+    const overlay = computeNodeTreeOverlay({
       graphNodes: graph.nodes || [],
       treePositions,
       compact,
@@ -357,6 +358,36 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
       leafCount: countLeavesInNodeSubtree,
       leafDescendants: countLeafDescendants,
     });
+    /** @type {Record<string, number>} */
+    const byNodeId = {};
+    for (const n of overlay.nodeNodes || []) {
+      const id = String(n?.nodeId || '').trim();
+      if (!id) continue;
+      byNodeId[id] = (byNodeId[id] || 0) + 1;
+    }
+    const duplicatedNodeIds = Object.entries(byNodeId)
+      .filter(([, c]) => c > 1)
+      .map(([id, count]) => ({ id, count }));
+    /** @type {Record<string, string[]>} */
+    const parentIdsByNode = {};
+    for (const e of graph.edges || []) {
+      if (!e || e.relation !== 'structure') continue;
+      const from = String(e.from || '').trim();
+      const to = String(e.to || '').trim();
+      if (!from || !to) continue;
+      if (!parentIdsByNode[to]) parentIdsByNode[to] = [];
+      if (!parentIdsByNode[to].includes(from)) parentIdsByNode[to].push(from);
+    }
+    const duplicatedWithParents = duplicatedNodeIds.map(({ id, count }) => ({
+      id,
+      count,
+      parents: parentIdsByNode[id] || [],
+      questOccurrences: (overlay.nodeNodes || [])
+        .filter((n) => String(n?.nodeId || '') === id)
+        .map((n) => String(n?.questId || ''))
+        .filter(Boolean),
+    }));
+    return overlay;
   }, [compact, graph.nodes, layout.height, layout.width, nodeDone, treePositions, nodeR]);
 
   useEffect(() => {
@@ -499,6 +530,8 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
           openEditNode(editorEntityId, 'form', selectedNode?.nodeId || null);
         }
         break;
+      case 'cut':
+        break;
       case 'note':
         if (canUseNotes) openSuperNotes();
         break;
@@ -526,6 +559,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
     const tools = [
       { id: 'add', label: 'Quest hinzufügen' },
       { id: 'edit', label: 'Quest bearbeiten', disabled: !selectedQuest },
+      { id: 'cut', label: 'Schere' },
       { id: 'focus', label: 'Fokus' },
       { id: 'settings', label: 'Alchemie-Labor' },
       { id: 'hub', label: 'Sammlung' },
@@ -682,7 +716,15 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
     'rpg-tree',
     `dir-${direction}`,
     compact && selectedId && !treePickActive ? 'rpg-tree--detail-mobile' : '',
+    activeTool === 'cut' ? 'rpg-tree--tool-cut' : '',
   ].filter(Boolean).join(' ');
+
+  const handleCutEdge = useCallback((fromNodeId, toNodeId) => {
+    if (activeTool !== 'cut') return;
+    const next = removeParentChildEdge(graph, fromNodeId, toNodeId);
+    if (next === graph) return;
+    applyGraph(next);
+  }, [activeTool, graph, applyGraph]);
 
   return (
     <div class={rootTreeClass}>
@@ -897,13 +939,29 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                   nodeR(), nodeTreeOverlay.nodeRadius
                 );
                 return (
-                  <line
-                    key={`node-edge-${i}`}
-                    x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-                    stroke={edge.isDone ? doneStroke : 'rgba(200,147,47,0.18)'}
-                    stroke-width={edge.isDone ? 2.0 : 1.05}
-                    stroke-linecap="round"
-                  />
+                  <g key={`node-edge-${edge.fromNodeId}-${edge.toNodeId}-${i}`}>
+                    <line
+                      class={activeTool === 'cut' ? 'rpg-tree-node-edge rpg-tree-node-edge--cuttable' : 'rpg-tree-node-edge'}
+                      x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                      stroke={edge.isDone ? doneStroke : 'rgba(200,147,47,0.18)'}
+                      stroke-width={edge.isDone ? 2.0 : 1.05}
+                      stroke-linecap="round"
+                    />
+                    {activeTool === 'cut' ? (
+                      <line
+                        class="rpg-tree-node-edge-hit"
+                        x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                        stroke="transparent"
+                        stroke-width={14}
+                        stroke-linecap="round"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCutEdge(edge.fromNodeId, edge.toNodeId);
+                        }}
+                      />
+                    ) : null}
+                  </g>
                 );
               })}
             </g>

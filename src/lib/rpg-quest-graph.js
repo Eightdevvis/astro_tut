@@ -450,15 +450,16 @@ export function getRootNodeIds(graph) {
  */
 export function addParentChildEdge(graph, parentId, childId) {
   if (!parentId || !childId || parentId === childId) return graph;
-  const edges = graphEdges(graph);
+  // Zuerst vorhandene nested children in structure-Edges spiegeln, damit beim
+  // anschliessenden Rebuild keine bestehenden Subtrees verloren gehen.
+  const seeded = ensureStructureEdgesFromNodes(graph);
+  const edges = graphEdges(seeded);
   for (const e of edges) {
     if (isParentChildRelation(e) && e.from === parentId && e.to === childId) {
       return graph; // bereits da
     }
   }
-  // buildFlatNodeMap sammelt sowohl Top-Level- als auch nested Nodes,
-  // damit Compat-View-Inputs nicht versehentlich Kinder verlieren.
-  const nodesById = Object.fromEntries(buildFlatNodeMap(graph));
+  const nodesById = Object.fromEntries(buildFlatNodeMap(seeded));
   return ensureStructureEdgesFromNodes(
     makeRpgGraph(nodesById, [...edges, { from: parentId, to: childId, relation: 'structure' }])
   );
@@ -481,7 +482,11 @@ export function removeParentChildEdge(graph, parentId, childId) {
   });
   if (filtered.length === edges.length) return graph; // nichts zu tun
   const nodesById = Object.fromEntries(buildFlatNodeMap(graph));
-  return ensureStructureEdgesFromNodes(makeRpgGraph(nodesById, filtered));
+  const removedKey = `${parentId}->${childId}`;
+  return ensureStructureEdgesFromNodes(
+    makeRpgGraph(nodesById, filtered),
+    new Set([removedKey])
+  );
 }
 
 /**
@@ -491,9 +496,10 @@ export function removeParentChildEdge(graph, parentId, childId) {
  * versehentlich als eigene Roots materialisieren.
  *
  * @param {RpgGraph} graph
+ * @param {Set<string>} [excludedStructureKeys]
  * @returns {RpgGraph}
  */
-function ensureStructureEdgesFromNodes(graph) {
+function ensureStructureEdgesFromNodes(graph, excludedStructureKeys) {
   /** @type {Set<string>} */
   const seen = new Set(
     (graphEdges(graph) || [])
@@ -509,6 +515,7 @@ function ensureStructureEdgesFromNodes(graph) {
       for (const c of n.children || []) {
         if (!c || typeof c !== 'object' || !n.id || !c.id || n.id === c.id) continue;
         const k = `${n.id}->${c.id}`;
+        if (excludedStructureKeys?.has(k)) continue;
         if (!seen.has(k)) {
           seen.add(k);
           merged.push({ from: n.id, to: c.id, relation: 'structure' });
@@ -519,7 +526,9 @@ function ensureStructureEdgesFromNodes(graph) {
   }
   walk(graphNodes(graph));
   if (merged.length === graphEdges(graph).length) return graph;
-  return makeRpgGraph(graphNodes(graph), merged);
+  // Wichtig: aus flacher ID-Map rematerialisieren, damit graph.nodes direkt
+  // die aktuelle Root-Struktur aus den Edges widerspiegelt (kein Reload nötig).
+  return makeRpgGraph(Object.fromEntries(buildFlatNodeMap(graph)), merged);
 }
 
 /**

@@ -801,3 +801,4 @@ export function deduplicateGraphRoots(graph) {
   if (filteredRoots.length === (graph.nodes || []).length) return graph;
   return makeRpgGraph(filteredRoots, graphEdges(graph));
 }
+

@@ -151,6 +151,9 @@ export function computeLayeredLayout(graph, opts = {}) {
     opts.collisionIterations ?? Math.min(120, 36 + Math.floor(nodes.length * 2.5));
   const ids = nodes.map((q) => q.id);
   const incoming = buildIncomingMap(graph);
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7d7c9'},body:JSON.stringify({sessionId:'b7d7c9',runId:'shared-layout-pre',hypothesisId:'H3',location:'src/lib/rpg-graph-layout.js:153',message:'computeLayeredLayout input',data:{nodeCount:ids.length,rowGap,colGap,padding,compact,nodeIds:ids},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   /** @type {Map<string, number>} */
   const level = new Map();
@@ -239,5 +242,8 @@ export function computeLayeredLayout(graph, opts = {}) {
   }
   const width = Math.ceil(maxR + padding);
   const height = Math.ceil(maxB + padding);
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7d7c9'},body:JSON.stringify({sessionId:'b7d7c9',runId:'shared-layout-pre',hypothesisId:'H3',location:'src/lib/rpg-graph-layout.js:244',message:'computeLayeredLayout output',data:{maxLevel:maxL,width,height,positions:ids.map((id)=>({id,x:Number(positions[id]?.x||0),y:Number(positions[id]?.y||0),level:Number(level.get(id)??0)}))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   return { positions, width, height, maxLevel: maxL };
 }

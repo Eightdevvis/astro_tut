@@ -169,7 +169,14 @@ export function spreadQuestRootsByClusterRadius(basePositions, quests, compact) 
   const ids = quests.map((q) => q.id).filter((id) => out[id]);
   if (ids.length < 2) return out;
   const radById = new Map(quests.map((q) => [q.id, estimateQuestClusterRadius(q, compact)]));
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7d7c9'},body:JSON.stringify({sessionId:'b7d7c9',runId:'shared-layout-pre',hypothesisId:'H1',location:'src/lib/rpg-tree-svg.js:172',message:'spreadQuestRoots start radii',data:{compact,rootCount:ids.length,radii:ids.map((id)=>({id,radius:Number(radById.get(id)||0),baseX:Number(out[id]?.x||0),baseY:Number(out[id]?.y||0)}))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   const pad = compact ? 34 : 46;
+  const maxRadiusForSpread = compact ? 150 : 210;
+  const pushStrength = 0.2;
+  const maxPushPerPair = compact ? 14 : 22;
+  let pushedPairs = 0;
   for (let it = 0; it < 84; it++) {
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
@@ -178,14 +185,14 @@ export function spreadQuestRootsByClusterRadius(basePositions, quests, compact) 
         const a = out[ia];
         const b = out[ib];
         if (!a || !b) continue;
-        const ra = radById.get(ia) ?? 90;
-        const rb = radById.get(ib) ?? 90;
+        const ra = Math.min(radById.get(ia) ?? 90, maxRadiusForSpread);
+        const rb = Math.min(radById.get(ib) ?? 90, maxRadiusForSpread);
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy) || 0.0001;
         const need = ra + rb + pad;
         if (d >= need) continue;
-        const push = (need - d) * 0.5;
+        const push = Math.min((need - d) * pushStrength, maxPushPerPair);
         const ux = dx / d;
         const uy = dy / d;
         a.x -= ux * push;
@@ -193,9 +200,13 @@ export function spreadQuestRootsByClusterRadius(basePositions, quests, compact) 
         // Layer-Struktur erhalten: vertikales Druecken gedaempft.
         a.y -= uy * push * 0.34;
         b.y += uy * push * 0.34;
+        pushedPairs += 1;
       }
     }
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7d7c9'},body:JSON.stringify({sessionId:'b7d7c9',runId:'shared-layout-pre',hypothesisId:'H5',location:'src/lib/rpg-tree-svg.js:200',message:'spreadQuestRoots result displacement',data:{compact,maxRadiusForSpread,pushStrength,maxPushPerPair,pushedPairs,displacement:ids.map((id)=>({id,dx:Number((out[id]?.x||0)-(basePositions[id]?.x||0)),dy:Number((out[id]?.y||0)-(basePositions[id]?.y||0)),finalX:Number(out[id]?.x||0),finalY:Number(out[id]?.y||0)}))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   return out;
 }
 
@@ -354,7 +365,7 @@ export function nodeClass(quest, unlocked, added, completed) {
 
 /**
  * @typedef {{ id: string; nodeId: string; questId: string; label: string; x: number; y: number; isLeaf: boolean; isDone: boolean; isLock: boolean; leafDescendants: number; depth: number }} NodeTreeEntry
- * @typedef {{ fromX: number; fromY: number; toX: number; toY: number; isDone: boolean }} NodeTreeEdge
+ * @typedef {{ fromNodeId: string; toNodeId: string; fromX: number; fromY: number; toX: number; toY: number; isDone: boolean }} NodeTreeEdge
  */
 
 /**
@@ -393,6 +404,13 @@ export function computeNodeTreeOverlay(opts) {
   const nodeNodes = [];
   /** @type {NodeTreeEdge[]} */
   const nodeEdges = [];
+  /** @type {Map<string, { x: number; y: number; questId: string; isDone: boolean; isLeaf: boolean; isLock: boolean; leafDescendants: number; depth: number; label: string }>} */
+  const placedByNodeId = new Map();
+  /** @type {Set<string>} */
+  const edgeKeySet = new Set();
+  let reusedNodeHits = 0;
+  /** @type {Array<{parentNodeId:string;childId:string;parentX:number;parentY:number;existingX:number;existingY:number;distance:number;existingQuestId:string;questId:string}>} */
+  const reuseSamples = [];
 
   /**
    * Rekursive Platzierung: Children werden in einem Halbkreis unter dem Parent verteilt.
@@ -403,7 +421,7 @@ export function computeNodeTreeOverlay(opts) {
    * @param {number} parentY
    * @param {number} depth
    */
-  function placeChildren(children, questId, parentX, parentY, depth, visitedIds = new Set()) {
+  function placeChildren(children, questId, parentNodeId, parentX, parentY, depth, visitedIds = new Set()) {
     if (!children?.length) return;
     // Cycle-Guard: Nodes die wir auf diesem Pfad schon gesehen haben überspringen
     const safeChildren = children.filter((ch) => ch?.id && !visitedIds.has(ch.id));
@@ -416,6 +434,40 @@ export function computeNodeTreeOverlay(opts) {
     const ringAngles = distributeWeightedAngles(weights, 12, 168);
     for (let i = 0; i < safeChildren.length; i++) {
       const child = safeChildren[i];
+      const childId = String(child?.id || '').trim();
+      if (!childId) continue;
+      const existing = placedByNodeId.get(childId);
+      if (existing) {
+        // DAG-Render-Regel: Node visuell genau einmal, weitere Parents nur als Kante.
+        reusedNodeHits += 1;
+        if (reuseSamples.length < 20) {
+          reuseSamples.push({
+            parentNodeId,
+            childId,
+            parentX,
+            parentY,
+            existingX: existing.x,
+            existingY: existing.y,
+            distance: Math.round(Math.hypot(existing.x - parentX, existing.y - parentY)),
+            existingQuestId: existing.questId,
+            questId,
+          });
+        }
+        const edgeKey = `${parentNodeId}->${childId}`;
+        if (!edgeKeySet.has(edgeKey)) {
+          edgeKeySet.add(edgeKey);
+          nodeEdges.push({
+            fromNodeId: parentNodeId,
+            toNodeId: childId,
+            fromX: parentX,
+            fromY: parentY,
+            toX: existing.x,
+            toY: existing.y,
+            isDone: existing.isLeaf && existing.isDone,
+          });
+        }
+        continue;
+      }
       const a = (ringAngles[i] * Math.PI) / 180;
       const w = weights[i];
       const radialBoost = Math.min(82, Math.log2(w + 1) * (compact ? 10 : 14));
@@ -425,21 +477,44 @@ export function computeNodeTreeOverlay(opts) {
       const leaf = isLeaf(child);
       nodeNodes.push({
         id: `${questId}::${child.id}`,
-        nodeId: child.id,
+        nodeId: childId,
         questId,
-        label: child.title || child.id,
+        label: child.title || childId,
         x,
         y,
         isLeaf: leaf,
-        isDone: leaf ? isDone(questId, child.id) : false,
+        isDone: leaf ? isDone(questId, childId) : false,
         isLock: isLock(child),
         leafDescendants: leafDescendants(child),
         depth,
       });
-      nodeEdges.push({ fromX: parentX, fromY: parentY, toX: x, toY: y, isDone: leaf && isDone(questId, child.id) });
+      placedByNodeId.set(childId, {
+        x,
+        y,
+        questId,
+        isDone: leaf ? isDone(questId, childId) : false,
+        isLeaf: leaf,
+        isLock: isLock(child),
+        leafDescendants: leafDescendants(child),
+        depth,
+        label: child.title || childId,
+      });
       const nextVisited = new Set(visitedIds);
-      nextVisited.add(child.id);
-      placeChildren(child.children || [], questId, x, y, depth + 1, nextVisited);
+      nextVisited.add(childId);
+      const edgeKey = `${parentNodeId}->${childId}`;
+      if (!edgeKeySet.has(edgeKey)) {
+        edgeKeySet.add(edgeKey);
+        nodeEdges.push({
+          fromNodeId: parentNodeId,
+          toNodeId: childId,
+          fromX: parentX,
+          fromY: parentY,
+          toX: x,
+          toY: y,
+          isDone: leaf && isDone(questId, childId),
+        });
+      }
+      placeChildren(child.children || [], questId, child.id, x, y, depth + 1, nextVisited);
     }
   }
 
@@ -447,8 +522,11 @@ export function computeNodeTreeOverlay(opts) {
   for (const q of graphNodes) {
     const p = treePositions[q.id];
     if (!p) continue;
-    placeChildren(q.children || [], q.id, p.x, p.y, 1);
+    placeChildren(q.children || [], q.id, q.id, p.x, p.y, 1);
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7537/ingest/2b5506f3-0571-4260-a646-78a244462768',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b7d7c9'},body:JSON.stringify({sessionId:'b7d7c9',runId:'shared-layout-pre',hypothesisId:'H2',location:'src/lib/rpg-tree-svg.js:514',message:'computeNodeTreeOverlay reuse summary',data:{nodeCount:nodeNodes.length,edgeCount:nodeEdges.length,reusedNodeHits,reuseSamples},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   // Bounding Box: Quest-Roots + alle Children
   let minX = Infinity;
@@ -483,6 +561,7 @@ export function computeNodeTreeOverlay(opts) {
     minY: Math.floor(minY),
     width: Math.ceil(maxX - minX),
     height: Math.ceil(maxY - minY),
+    reusedNodeHits,
   };
 }
 

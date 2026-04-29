@@ -16,7 +16,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeRpgGraph, graphNodes, graphEdges } from '../src/lib/rpg-quests-data.js';
+import { makeRpgGraph, graphNodes, graphEdges, isParentChildRelation } from '../src/lib/rpg-quests-data.js';
 import {
   isValidGraphShape,
   questMap,
@@ -83,6 +83,23 @@ test('questMap baut Map aus Graph-Nodes', () => {
   assert.equal(m.size, 2);
   assert.equal(m.get('q1').id, 'q1');
   assert.equal(m.get('q2').id, 'q2');
+});
+
+test('questMap differenziert Quests mit identischem Titel ueber die ID', () => {
+  const g = makeRpgGraph(
+    [
+      quest('q-alpha', [leaf('a')], { title: 'Zentrale' }),
+      quest('q-beta', [leaf('b')], { title: 'Zentrale' }),
+    ],
+    [depEdge('q-alpha', 'q-beta')]
+  );
+  const m = questMap(g);
+  assert.equal(m.size, 2);
+  assert.equal(m.get('q-alpha').title, 'Zentrale');
+  assert.equal(m.get('q-beta').title, 'Zentrale');
+  // Die Dependency muss trotz gleichem Titel strikt per ID aufgeloest werden.
+  const inc = buildIncomingMap(g);
+  assert.deepStrictEqual(inc.get('q-beta'), ['q-alpha']);
 });
 
 // =============================================================================
@@ -197,6 +214,20 @@ test('upsertQuestInGraph ignoriert Self-Dependency', () => {
   const next = upsertQuestInGraph(g, quest('q1'), ['q1']);
   // Keine Kanten, weil Self-Dependency gefiltert wird
   assert.equal(graphEdges(next).filter((e) => e.relation === 'dependency').length, 0);
+});
+
+test('upsertQuestInGraph ergänzt structure-Edges aus nested children', () => {
+  // Regression: wenn ein Node mit Children upserted wird, müssen die
+  // parent->child-Kanten explizit in edges auftauchen, damit Rebuilds den
+  // Subtree nicht verlieren.
+  const g = makeRpgGraph([], []);
+  const next = upsertQuestInGraph(
+    g,
+    quest('q1', [leaf('a'), leaf('b')]),
+    []
+  );
+  const structure = graphEdges(next).filter(isParentChildRelation).map((e) => `${e.from}->${e.to}`).sort();
+  assert.deepStrictEqual(structure, ['q1->a', 'q1->b']);
 });
 
 test('removeQuestFromGraph entfernt Node und Kanten', () => {

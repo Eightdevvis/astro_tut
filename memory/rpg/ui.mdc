@@ -11,7 +11,7 @@
   - `codex`: Pergament & Tinte, warmer heller Stil
   - `orrery`: Blueprint/Celestial, tiefes Indigo + Cyan
   - Theme wird ueber `.dir-astrolab/.dir-codex/.dir-orrery` auf `.rpg-tree` gesetzt
-- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads — **6 Tools**: `add`, `edit`, `note` (super-only), `focus`, `settings` (Alchemie-Labor), `hub`. Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
+- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads — **7 Tools**: `add`, `edit`, `cut` (Schere), `note` (super-only), `focus`, `settings` (Alchemie-Labor), `hub`. Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
 - **Vessels** (RpgVessel.jsx): Canvas-2D-Glasgefaesse fuer Mana (blau) und Heart (rot) links unten. Glitzer-Partikel, Fresnel-Rimlight, Glass-Highlights. Desktop-only; Mobil weiterhin LiquidVessels im Overlay.
 - **Quest-Panel** (RpgQuestPanel.jsx): Rechtes Detail-Panel im Codex-Stil. Sigil-Header mit Eyebrow-Status, Fortschrittsbalken (Meter), Reward-Pills, Node-Baum via RpgQuestNodesView, Meta-Details (`Quest-ID`/`Zweige`/`Aufgaben`/`Auswahl`).
 - **Topbar**: Serif-Titel "Codex der Quests · **Quest-Baum**" + Location-Breadcrumb rechts. Glasmorphism-Hintergrund.
@@ -25,7 +25,7 @@
   - Zoom ueber Wheel nur mit gedrueckter `Ctrl`-Taste.
   - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`).
-- Mobile-Topbar: links Hamburger-Menue statt Astrolab; enthaelt die Tool-Aktionen `Quest hinzufuegen`, `Quest bearbeiten` (nur bei Selection aktiv), `Super-Notizen` (nur Superuser), `Fokus`, `Alchemie-Labor`, `Sammlung`.
+- Mobile-Topbar: links Hamburger-Menue statt Astrolab; enthaelt die Tool-Aktionen `Quest hinzufuegen`, `Quest bearbeiten` (nur bei Selection aktiv), `Schere`, `Super-Notizen` (nur Superuser), `Fokus`, `Alchemie-Labor`, `Sammlung`.
 - Mobile-Tree-Pick-Flow (`+Node aus Tree` im Editor): wechselt in einen reinen Tree-Modus ohne Panel; Abschluss ueber schwebenden `Fertig`-Button unten; danach zurueck in den Editor.
 - Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button.
 - Superuser-only Notizen ueber Astrolab-Tool `note`.
@@ -40,6 +40,7 @@
   - Fertig → gedaempftes Gold
   - Aktiv mit Fortschritt → leuchtendes Gold-Dasharray mit Glow
   - sonst → subtiles Braun
+  - `Schere`-Tool aktiv: Sub-Node-Kanten (`parent_of`) im Graph sind direkt anklickbar (groesse Hit-Area + Crosshair). Klick entfernt nur diese Parent/Child-Relation (`removeParentChildEdge`), beide Nodes bleiben bestehen.
 - Bootstrap: Loading-Screen (`RpgBootstrapLoading`) wie vorher.
 
 ## Hub (UI) — "Zauberer" Design (Stand 2026-04-28)
@@ -76,7 +77,7 @@
 | NodesBuilder | ~859 | `src/components/RpgQuestNodesBuilder.jsx` — Editor-Subkomponente fuer Quest-Struktur |
 | RewardsBuilder | ~261 | `src/components/RpgQuestRewardsBuilder.jsx` — aus NodesBuilder extrahiert |
 | Achievement-Combobox | ~klein | `src/components/RpgAchievementCombobox.jsx` — Editor-UI fuer den `achievement`-Reward-Typ |
-| Astrolab | ~330 | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere mit 6 Tools (add/edit/note/focus/settings/hub) |
+| Astrolab | ~330 | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere mit 7 Tools (add/edit/cut/note/focus/settings/hub) |
 | Vessel | ~309 | `src/components/RpgVessel.jsx` — Canvas-2D-Glasgefaesse (Mana/Heart) |
 | Quest-Panel | ~247 | `src/components/RpgQuestPanel.jsx` — Rechtes Detail-Panel; vom Tree genutzt |
 | Settings-Modal | ~262 | `src/components/RpgTreeSettings.jsx` — Alchemie-Labor: Theme-Switch + Backups |

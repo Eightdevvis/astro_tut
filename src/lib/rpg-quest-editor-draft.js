@@ -240,7 +240,11 @@ function processDraftSiblings(meaningfulSiblings, usedIds, parentId) {
 
   for (const d of meaningfulSiblings) {
     const label = (d.title || '').trim() || 'Schritt';
-    const id = makeUniqueNodeIdFromLabel(label, usedIds);
+    const stableId = typeof d.stableId === 'string' ? d.stableId.trim() : '';
+    const id =
+      stableId && !usedIds.has(stableId)
+        ? (usedIds.add(stableId), stableId)
+        : makeUniqueNodeIdFromLabel(label, usedIds);
     /** @type {string[]} */
     const deps = d.legacyDependsOn?.length ? [...d.legacyDependsOn] : [];
     out.push(buildRawFromDraft(d, id, deps, usedIds, parentId));
@@ -253,8 +257,8 @@ function processDraftSiblings(meaningfulSiblings, usedIds, parentId) {
  * @param {string | null} [rootParentId]
  * @returns {import('./rpg-quests-data.js').RpgNode[]}
  */
-export function draftNodesToQuestNodes(drafts, rootParentId = null) {
-  const usedIds = new Set();
+export function draftNodesToQuestNodes(drafts, rootParentId = null, initialUsedIds = undefined) {
+  const usedIds = initialUsedIds instanceof Set ? new Set(initialUsedIds) : new Set();
   const meaningful = drafts.filter(isDraftNodeMeaningful);
   const raw = processDraftSiblings(meaningful, usedIds, rootParentId);
   return normalizeQuestNodesTree(raw, rootParentId);

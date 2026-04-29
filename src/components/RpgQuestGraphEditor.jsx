@@ -466,6 +466,8 @@ export default function RpgQuestGraphEditor({
       existingIdsForSplit,
       selfSubtreeIdsForSplit
     );
+    const usedNodeIdsForDraftBuild = new Set(existingIdsForSplit);
+    for (const sid of selfSubtreeIdsForSplit || []) usedNodeIdsForDraftBuild.delete(sid);
 
     let next;
     if (mode === 'edit' && questId) {
@@ -485,7 +487,7 @@ export default function RpgQuestGraphEditor({
         title: title.trim(),
         description: description.trim(),
         rewards,
-        children: draftNodesToQuestNodes(cleanDrafts, targetId),
+        children: draftNodesToQuestNodes(cleanDrafts, targetId, usedNodeIdsForDraftBuild),
       };
       const updatedContainer = applyNodeFieldsUpdate(container, targetId, fields, containerOverlay);
 
@@ -499,7 +501,7 @@ export default function RpgQuestGraphEditor({
       next = upsertQuestInGraph(prunedGraph, updatedContainer, []);
     } else {
       // Create-Pfad: neuer Top-Level-Quest. Kein Container, sondern komplett neues Node.
-      const children = draftNodesToQuestNodes(cleanDrafts, nid);
+      const children = draftNodesToQuestNodes(cleanDrafts, nid, usedNodeIdsForDraftBuild);
       const quest = {
         id: nid,
         parentId: null,

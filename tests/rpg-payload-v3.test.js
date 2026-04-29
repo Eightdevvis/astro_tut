@@ -305,6 +305,27 @@ test('addParentChildEdge ignoriert Self-Edges', () => {
   assert.equal(next, g);
 });
 
+test('addParentChildEdge behaelt bestehende Subtree-Children des Child-Nodes', () => {
+  // Regression für Multi-Parent-Bug: child-Node `1` hat nested Children 2/3,
+  // aber zunächst keine expliziten structure-Edges 1->2/3. Beim Hinzufügen
+  // der Edge 11->1 dürfen 2/3 nicht als eigene Roots herausfallen.
+  const g = makeRpgGraph(
+    [
+      { id: '1', title: 'One', children: [{ id: '2', title: 'Two', children: [] }, { id: '3', title: 'Three', children: [] }] },
+      { id: '11', title: 'Eleven', children: [] },
+    ],
+    []
+  );
+  const next = addParentChildEdge(g, '11', '1');
+  assert.deepStrictEqual(getChildIds(next, '11'), ['1']);
+  // Children von 1 müssen erhalten bleiben
+  assert.deepStrictEqual(getChildIds(next, '1').sort(), ['2', '3']);
+  // 2/3 dürfen keine Roots sein
+  const roots = getRootNodeIds(next);
+  assert.equal(roots.includes('2'), false);
+  assert.equal(roots.includes('3'), false);
+});
+
 test('removeParentChildEdge entfernt Edge', () => {
   const g = makeRpgGraph(
     { q1: { id: 'q1', title: 'Q1' }, q2: { id: 'q2', title: 'Q2' } },

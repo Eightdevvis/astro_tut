@@ -193,6 +193,18 @@ test('draftNodesToQuestNodes konvertiert Drafts zurueck zu Nodes', () => {
   }
 });
 
+test('draftNodesToQuestNodes erzeugt unterschiedliche IDs bei gleichen Titeln', () => {
+  const drafts = [
+    { ...createEmptyNodeDraft(true), title: 'Zentrale' },
+    { ...createEmptyNodeDraft(true), title: 'Zentrale' },
+    { ...createEmptyNodeDraft(true), title: 'Zentrale' },
+  ];
+  const nodes = draftNodesToQuestNodes(drafts);
+  const ids = nodes.map((n) => n.id).sort();
+  assert.equal(nodes.length, 3);
+  assert.deepStrictEqual(ids, ['zentrale', 'zentrale-2', 'zentrale-3']);
+});
+
 test('draftNodesToQuestNodes filtert leere Drafts', () => {
   const drafts = [
     { ...createEmptyNodeDraft(), title: '' }, // leer, wird gefiltert

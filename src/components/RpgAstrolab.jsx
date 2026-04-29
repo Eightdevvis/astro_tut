@@ -45,6 +45,7 @@ export default function RpgAstrolab({ activeTool, onTool, canUseNotes = false, h
   const TOOLS = [
     { id: 'add', glyph: '+', label: 'Quest +', hint: 'Neue Quest anlegen', ring: 1, t: 0.15 },
     { id: 'edit', glyph: '\u26AF', label: 'Verwalten', hint: 'Quest bearbeiten', ring: 1, t: 0.62 },
+    { id: 'cut', glyph: '\u2702', label: 'Schere', hint: 'Verbindung schneiden', ring: 1, t: 0.88 },
     // Notiz nur fuer User mit RPG-Zugang sichtbar
     ...(canUseNotes
       ? [{ id: 'note', glyph: '\u261E', label: 'Notiz', hint: 'Tree-Notiz \u00f6ffnen', ring: 2, t: 0.30 }]

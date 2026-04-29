@@ -283,9 +283,31 @@
   pointer-events: none;
 }
 
+.rpg-tree-node-edges {
+  pointer-events: auto;
+}
+
 .rpg-tree-node-nodes {
   pointer-events: auto;
   cursor: pointer;
+}
+
+.rpg-tree-node-edge-hit {
+  pointer-events: none;
+}
+
+.rpg-tree--tool-cut .rpg-tree-node-edge--cuttable {
+  cursor: crosshair;
+}
+
+.rpg-tree--tool-cut .rpg-tree-node-edge-hit {
+  pointer-events: stroke;
+  cursor: crosshair;
+}
+
+.rpg-tree--tool-cut .rpg-tree-node-edge--cuttable:hover {
+  stroke: rgba(235, 96, 96, 0.9);
+  stroke-width: 1.8;
 }
 
 /* Quest-Root-Nodes (Hauptknoten) */
@@ -1595,6 +1617,12 @@
     border-radius: 0;
     border: none;
     padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Mobile Editor im Fullscreen-Panel darf nicht durch Tree-Theme max-width gekappt werden */
+  .rpg-tree .qpanel--editor .rpg-graph-editor--embedded {
+    width: 100%;
+    max-width: 100%;
   }
 
   .rpg-tree-panel {
