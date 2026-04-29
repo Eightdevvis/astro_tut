@@ -4,7 +4,7 @@ title: Perfectionism
 author: Sasha
 description: "Perfectionism and why you should let it go."
 
-pubDate: 2026-24-02
+pubDate: 2026-02-24
 tags: ["perfection", "skill", "philosophy?", "psychology"]
 ---
 **Perfection. Perfection. Perfection.**
