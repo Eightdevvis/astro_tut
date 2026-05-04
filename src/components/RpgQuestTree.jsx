@@ -13,10 +13,10 @@ import {
   leafProgressRatio,
 } from '../lib/rpg-quest-graph.js';
 import { LOCK_CURSOR_VALUE } from '../lib/rpg-lock-icon.jsx';
-// Force-Directed Layout (2026-05-03): ersetzt das alte Layered-Layout +
-// das radiale Children-Overlay durch ein einheitliches Spring-System fuer
-// alle Nodes (Roots + Children gemeinsam). Multi-Parent-aware.
-import { computeForceLayout } from '../lib/rpg-force-layout.js';
+// Sugiyama-Layout (2026-05-04): klassisches DAG-Layout-Framework —
+// Layer-Assignment + Crossing-Minimization + Coordinate-Assignment.
+// Ersetzt das vorherige Force-Directed (verknoddelte zu oft).
+import { computeSugiyamaLayout } from '../lib/rpg-sugiyama-layout.js';
 // Smart Edge Routing (2026-05-04, A*-Variante): Grid-basiertes Pathfinding
 // mit 8-Richtungen, Catmull-Rom-Smoothing, festen Stuetzpunkten fuer
 // spaetere Animations-Faehigkeit. Fallback auf gerade Linie wenn umzingelt.
@@ -332,11 +332,11 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const byId = useMemo(() => questMap(graph), [graph]);
   const vitalsView = useMemo(() => toRpgVitalsView(vitals), [vitals]);
 
-  // Force-Directed Layout: ALLE Nodes (Roots + Children) in einem Sim.
+  // Sugiyama-Layout: ALLE Nodes (Roots + Children) als ein DAG.
   // Liefert positions[id] = {x, y}, plus Bounding-Box (width/height/minX/minY).
-  // Deterministisch durch Hash-basierten Init — gleicher Graph = gleiches Layout.
+  // Deterministisch — gleicher Graph = gleiches Layout, immer.
   const layout = useMemo(
-    () => computeForceLayout(graph, { compact }),
+    () => computeSugiyamaLayout(graph, { compact }),
     [graph, compact]
   );
   // treePositions als kurzer Alias — viele Stellen lesen das (focus, render).

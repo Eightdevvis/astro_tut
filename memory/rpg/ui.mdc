@@ -20,7 +20,7 @@
 - Neuanlage und Bearbeitung ueber Astrolab-Tools `add` (→ openCreateNode) und `edit` (→ openEditNode).
 - Einstellungen ueber Astrolab-Tool `settings` (→ Alchemie-Labor Modal mit Theme-Switch + Backups).
 - Manuelle Entwuerfe im Browser-`localStorage` (wie vorher).
-- Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeForceLayout` (Force-Directed, deterministisch via Hash-Init); Edges via `routeEdge` (Smart-Routing mit Hindernisvermeidung).
+- Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeSugiyamaLayout` (klassisches DAG-Layout: Layer-Assignment + Crossing-Minimization + Coordinate-Assignment, deterministisch); Edges via `routeEdge` aus rpg-edge-routing-grid (A* mit Line-of-Sight-Smoothing).
   - Trackpad-Zwei-Finger-Swipe/Scroll verschiebt den Baum (Pan).
   - Zoom ueber Wheel nur mit gedrueckter `Ctrl`-Taste.
   - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
@@ -91,7 +91,7 @@
 | Nodes-Ansicht | ~354 | `src/components/RpgQuestNodesView.jsx` — gemeinsam von Hub + Panel + Editor-Preview genutzt |
 | Location | ~571 | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
 | Rewards | ~339 | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (4 Typen inkl. achievement) |
-| Force-Layout | ~310 | `src/lib/rpg-force-layout.js` — Force-Directed mit Hierarchie-Bias (parent_of-Edges → Parent leicht oben), Connected-Components-aware (disconnected Trees rücken auseinander), Annealing-Damping. Deterministisch via Hash-Init. |
+| Sugiyama-Layout | ~430 | `src/lib/rpg-sugiyama-layout.js` — Klassisches DAG-Layout: Layer-Assignment (longest-path) + Crossing-Minimization (Median-Heuristik mit Down/Up-Sweeps) + Coordinate-Assignment + Connected-Components-Packing. Deterministisch. Ersetzt das vorherige Force-Directed (verknoddelte zu oft). |
 | Edge-Routing | ~440 | `src/lib/rpg-edge-routing-grid.js` — A* auf 12px-Grid mit 8-Richtungen-Bewegung, Catmull-Rom-Smoothing, 16 gleichmaessig verteilte Sample-Punkte (Animation-bereit fuer spaeteres Punkt-zu-Punkt-Tween). Fallback gerade Linie wenn umzingelt. |
 | Vitals | ~161 | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
 | Seiten | — | `src/pages/rpg/index.astro` (Hub mit Serif-Fonts), `src/pages/rpg/tree.astro` |

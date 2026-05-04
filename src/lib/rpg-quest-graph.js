@@ -1,6 +1,6 @@
 /**
  * Graph-Operationen: Unlock-Pruefung, Fortschritt, Upsert, Zyklen-Erkennung.
- * Layout-Code liegt in rpg-force-layout.js (+ rpg-edge-routing-grid.js fuer Edges).
+ * Layout-Code liegt in rpg-sugiyama-layout.js (+ rpg-edge-routing-grid.js fuer Edges).
  *
  * Phase 2 (DAG): Done-Status liest sich aus dem flachen `Record<nodeId, boolean>`
  * (RpgFlatNodeDone). Helper wie `nodeProgress`, `leafProgressRatio`,
