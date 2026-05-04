@@ -437,6 +437,30 @@
   cursor: inherit;
 }
 
+/* Drag-and-Drop (2026-05-04): Cursor-Hinweis dass der Knoten verschiebbar
+   ist. Nur aktiv wenn Drag erlaubt ist (Desktop, kein Edge-Tool, kein
+   Tree-Pick). Waehrend Drag → grabbing-Cursor + leichte Z-Hervorhebung. */
+.rpg-tree-node--draggable {
+  cursor: grab;
+}
+.rpg-tree-node--dragging,
+.rpg-tree-node--dragging * {
+  cursor: grabbing !important;
+}
+.rpg-tree-node--dragging .rpg-tree-node__shape {
+  filter: drop-shadow(0 0 16px rgba(255,220,140,0.7));
+}
+.rpg-tree-node-node--draggable {
+  cursor: grab;
+}
+.rpg-tree-node-node--dragging,
+.rpg-tree-node-node--dragging * {
+  cursor: grabbing !important;
+}
+.rpg-tree-node-node--dragging .rpg-tree-node-node__shape {
+  filter: drop-shadow(0 0 12px rgba(255,220,140,0.6));
+}
+
 .rpg-tree-node__shape {
   fill: rgba(28,22,14,0.9);
   stroke: rgba(200,147,47,0.5);

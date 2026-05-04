@@ -11,12 +11,14 @@ import {
   getEdgeLockSide,
   computeLockedNodeIds,
   leafProgressRatio,
+  setNodePosition,
 } from '../lib/rpg-quest-graph.js';
 import { LOCK_CURSOR_VALUE } from '../lib/rpg-lock-icon.jsx';
-// Sugiyama-Layout (2026-05-04): klassisches DAG-Layout-Framework —
-// Layer-Assignment + Crossing-Minimization + Coordinate-Assignment.
-// Ersetzt das vorherige Force-Directed (verknoddelte zu oft).
-import { computeSugiyamaLayout } from '../lib/rpg-sugiyama-layout.js';
+// Force-Directed Layout (2026-05-04, restored): mit Hierarchie-Bias auf
+// parent_of-Edges, Connected-Components-Packing, Annealing-Damping,
+// Sibling-Subtree-Swap fuer Crossing-Reduction, Re-Settle-Phase. Manual-
+// Position-Override durch User-Drag-and-Drop. Sugiyama wurde abgeloest.
+import { computeForceLayout } from '../lib/rpg-force-layout.js';
 // Smart Edge Routing (2026-05-04, A*-Variante): Grid-basiertes Pathfinding
 // mit 8-Richtungen, Catmull-Rom-Smoothing, festen Stuetzpunkten fuer
 // spaetere Animations-Faehigkeit. Fallback auf gerade Linie wenn umzingelt.
@@ -332,15 +334,101 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const byId = useMemo(() => questMap(graph), [graph]);
   const vitalsView = useMemo(() => toRpgVitalsView(vitals), [vitals]);
 
-  // Sugiyama-Layout: ALLE Nodes (Roots + Children) als ein DAG.
+  // Force-Directed Layout: ALLE Nodes (Roots + Children) in einem Sim.
   // Liefert positions[id] = {x, y}, plus Bounding-Box (width/height/minX/minY).
-  // Deterministisch — gleicher Graph = gleiches Layout, immer.
+  // Deterministisch durch Hash-basierten Init.
+  // Manuell platzierte Nodes (graph.nodes[i].x/y) ueberschreiben den Force-
+  // Output automatisch im Layout-Modul.
   const layout = useMemo(
-    () => computeSugiyamaLayout(graph, { compact }),
+    () => computeForceLayout(graph, { compact }),
     [graph, compact]
   );
-  // treePositions als kurzer Alias — viele Stellen lesen das (focus, render).
-  const treePositions = layout.positions;
+
+  // ── Drag-and-Drop ────────────────────────────────────────────────────
+  // Nodes koennen vom User per Drag verschoben werden. Live-Position
+  // landet in `manualDragPos`, beim Drag-End wird sie via setNodePosition
+  // in den Graph persistiert.
+  // Mobile (compact): Drag aus. Edge-Tools aktiv (cut/lock): Drag aus.
+  // Tree-Pick-Modus: Drag aus.
+  const [draggingNodeId, setDraggingNodeId] = useState(/** @type {string | null} */ (null));
+  const [manualDragPos, setManualDragPos] = useState(
+    /** @type {Record<string, { x: number; y: number }>} */ ({})
+  );
+  const dragStartRef = useRef(
+    /** @type {{ nodeId: string; pointerId: number; startClientX: number; startClientY: number; startWorldX: number; startWorldY: number; moved: boolean } | null} */ (null)
+  );
+  // treePositions: layout.positions plus laufender Drag-Override.
+  // Waehrend ein User dragt, ueberschreibt manualDragPos die Layout-Position
+  // sofort (kein Frame-Lag). Nach Drag-End persistiert applyGraph den Wert
+  // in den Graph; das nachfolgende Layout-Memo bringt den Wert dort wieder
+  // rein und manualDragPos kann gecleart werden, ohne Flicker.
+  const treePositions = useMemo(() => {
+    if (Object.keys(manualDragPos).length === 0) return layout.positions;
+    return { ...layout.positions, ...manualDragPos };
+  }, [layout.positions, manualDragPos]);
+
+  // Drag erlaubt? Mobile aus, Edge-Tools aus, Tree-Pick aus.
+  // (`activeTool` ist 'focus' im Default-Zustand; alles andere ist ein
+  // gezielter Werkzeug-Modus, in dem Drag stoeren wuerde.)
+  const isDragAllowed = !compact && activeTool === 'focus' && !treePickActive;
+
+  /** Drag-Start auf einer Node-Group. Setzt PointerCapture damit Move/Up
+   * auch ankommen wenn der Cursor das Element verlaesst. Kein Drag-State
+   * direkt — erst beim Move-Threshold wird `draggingNodeId` aktiviert,
+   * sonst koennten kleine Mausbewegungen versehentliche Drags ausloesen. */
+  const onNodePointerDown = useCallback((/** @type {PointerEvent} */ e, /** @type {string} */ nodeId, /** @type {{ x: number; y: number } | null | undefined} */ currentPos) => {
+    if (!isDragAllowed || !currentPos) return;
+    if (e.button !== 0) return;
+    const target = /** @type {Element} */ (e.currentTarget);
+    try { target.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    dragStartRef.current = {
+      nodeId,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startWorldX: currentPos.x,
+      startWorldY: currentPos.y,
+      moved: false,
+    };
+  }, [isDragAllowed]);
+
+  const onNodePointerMove = useCallback((/** @type {PointerEvent} */ e) => {
+    const ref = dragStartRef.current;
+    if (!ref || ref.pointerId !== e.pointerId) return;
+    const dxPx = e.clientX - ref.startClientX;
+    const dyPx = e.clientY - ref.startClientY;
+    if (!ref.moved) {
+      if (Math.hypot(dxPx, dyPx) < 5) return; // Threshold gegen Click
+      ref.moved = true;
+      setDraggingNodeId(ref.nodeId);
+    }
+    // Welt-Koordinaten: Pixel-Offset durch aktuelle Skalierung teilen.
+    const wx = ref.startWorldX + dxPx / scale;
+    const wy = ref.startWorldY + dyPx / scale;
+    setManualDragPos((prev) => ({ ...prev, [ref.nodeId]: { x: wx, y: wy } }));
+  }, [scale]);
+
+  const onNodePointerUp = useCallback((/** @type {PointerEvent} */ e) => {
+    const ref = dragStartRef.current;
+    if (!ref || ref.pointerId !== e.pointerId) return;
+    const target = /** @type {Element} */ (e.currentTarget);
+    try { target.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (ref.moved) {
+      // Click-Suppression: ein direkter Click-Event nach dem PointerUp wuerde
+      // sonst Selection-Logik ausloesen. Der bestehende Mechanismus aus
+      // useTreePanZoom kuemmert sich darum, wir setzen das Flag analog.
+      suppressNodeClickRef.current = true;
+      const pos = manualDragPos[ref.nodeId];
+      if (pos) {
+        applyGraph(setNodePosition(graph, ref.nodeId, pos.x, pos.y));
+      }
+    }
+    dragStartRef.current = null;
+    setDraggingNodeId(null);
+    // manualDragPos belassen — der naechste Render hat die Position aus
+    // graph.nodes[id].x/y, beide Werte sind identisch, kein Flicker.
+    // Beim naechsten Drag wird der Eintrag ueberschrieben.
+  }, [graph, manualDragPos, applyGraph, suppressNodeClickRef]);
 
   const dependencyEdges = useMemo(
     () => graphEdges(graph).filter((e) => e.relation !== 'structure'),
@@ -1070,12 +1158,21 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 // Smart-Routing: gerade default, lokal um Hindernisse kurven,
                 // schneiden wenn der Umweg zu krass waere. From/To selbst
                 // werden vom Routing als Hindernisse ausgeschlossen.
-                const routed = routeEdge(
-                  { x: seg.x1, y: seg.y1 },
-                  { x: seg.x2, y: seg.y2 },
-                  obstacles,
-                  { excludeIds: new Set([e.from, e.to]) }
-                );
+                // Waehrend ein Drag laeuft: gerade Linien statt A*-Routing
+                // (sonst recomputen wir Pathfinding pro Frame fuer jede Edge).
+                const routed = draggingNodeId
+                  ? {
+                      d: `M${seg.x1.toFixed(2)} ${seg.y1.toFixed(2)} L${seg.x2.toFixed(2)} ${seg.y2.toFixed(2)}`,
+                      type: 'line',
+                      cut: false,
+                      samples: [],
+                    }
+                  : routeEdge(
+                      { x: seg.x1, y: seg.y1 },
+                      { x: seg.x2, y: seg.y2 },
+                      obstacles,
+                      { excludeIds: new Set([e.from, e.to]) }
+                    );
                 const pct = nodeProgress(qa, nodeDone, graph);
                 const doneU = isNodeCompleted(qa, nodeDone);
                 const addedU = added.has(e.from);
@@ -1122,13 +1219,21 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 if (!fromPos || !toPos) return null;
                 const r = nodeR();
                 const seg = edgeEndpoints(fromPos.x, fromPos.y, toPos.x, toPos.y, r, r);
-                // Smart-Routing inkl. Hindernisvermeidung
-                const routed = routeEdge(
-                  { x: seg.x1, y: seg.y1 },
-                  { x: seg.x2, y: seg.y2 },
-                  obstacles,
-                  { excludeIds: new Set([edge.from, edge.to]) }
-                );
+                // Smart-Routing inkl. Hindernisvermeidung — waehrend Drag
+                // simple gerade Linie fuer Performance.
+                const routed = draggingNodeId
+                  ? {
+                      d: `M${seg.x1.toFixed(2)} ${seg.y1.toFixed(2)} L${seg.x2.toFixed(2)} ${seg.y2.toFixed(2)}`,
+                      type: 'line',
+                      cut: false,
+                      samples: [],
+                    }
+                  : routeEdge(
+                      { x: seg.x1, y: seg.y1 },
+                      { x: seg.x2, y: seg.y2 },
+                      obstacles,
+                      { excludeIds: new Set([edge.from, edge.to]) }
+                    );
                 // Subtree-Progress des CHILD (edge.to): bestimmt wie weit die
                 // Edge prozentual leuchtet. Glow erklimmt von Child nach Parent —
                 // dafuer routen wir einen Reverse-Pfad, damit stroke-dasharray
@@ -1136,12 +1241,19 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 const glowPct = leafProgressRatio(graph, edge.to, nodeDone).percent;
                 const showGlow = glowPct > 0 && glowPct < 100;
                 const routedReverse = showGlow
-                  ? routeEdge(
-                      { x: seg.x2, y: seg.y2 },
-                      { x: seg.x1, y: seg.y1 },
-                      obstacles,
-                      { excludeIds: new Set([edge.from, edge.to]) }
-                    )
+                  ? (draggingNodeId
+                      ? {
+                          d: `M${seg.x2.toFixed(2)} ${seg.y2.toFixed(2)} L${seg.x1.toFixed(2)} ${seg.y1.toFixed(2)}`,
+                          type: 'line',
+                          cut: false,
+                          samples: [],
+                        }
+                      : routeEdge(
+                          { x: seg.x2, y: seg.y2 },
+                          { x: seg.x1, y: seg.y1 },
+                          obstacles,
+                          { excludeIds: new Set([edge.from, edge.to]) }
+                        ))
                   : null;
                 const glowLen = showGlow ? Math.max(0, seg.len * (glowPct / 100)) : 0;
                 // Done-Status: Ziel ist erledigter Leaf ODER 100% Subtree-Progress.
@@ -1247,12 +1359,19 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 const timeUrgent = !completed && questHasUrgentTimeBoundLeaves(q, nodeDone);
                 const isActive = unlocked && isAdded && !completed;
 
+                const isBeingDragged = draggingNodeId === q.id;
                 return (
                   <g
                     key={q.id}
-                    class={`${cls}${isDirectlySelected ? ' rpg-tree-node--selected' : ''}${treePickActive && treePickNodeIds.has(q.id) ? ' rpg-tree-node--pick-selected' : ''}`}
+                    class={`${cls}${isDirectlySelected ? ' rpg-tree-node--selected' : ''}${treePickActive && treePickNodeIds.has(q.id) ? ' rpg-tree-node--pick-selected' : ''}${isDragAllowed ? ' rpg-tree-node--draggable' : ''}${isBeingDragged ? ' rpg-tree-node--dragging' : ''}`}
                     transform={`translate(${p.x},${p.y})`}
-                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onNodePointerDown(e, q.id, p);
+                    }}
+                    onPointerMove={onNodePointerMove}
+                    onPointerUp={onNodePointerUp}
+                    onPointerCancel={onNodePointerUp}
                     onClick={() => onGraphNodeClick(q.id)}
                   >
                     {/* Knoten-Form (Polygon je nach Subtree-Tiefe):
@@ -1305,12 +1424,19 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 const isNodeSelected = selectedNode?.nodeId === n.nodeId && selectedNode?.questId === n.questId;
                 // Hub-Status: leuchtet pulsierend wenn der Sub-Node selbst added wurde.
                 const isAddedSub = added.has(n.nodeId);
+                const isBeingDragged = draggingNodeId === n.nodeId;
                 return (
                   <g
                     key={n.id}
-                    class={`${cls}${isNodeSelected ? ' rpg-tree-node-node--selected' : ''}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}${isAddedSub ? ' rpg-tree-node-node--added' : ''}`}
+                    class={`${cls}${isNodeSelected ? ' rpg-tree-node-node--selected' : ''}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}${isAddedSub ? ' rpg-tree-node-node--added' : ''}${isDragAllowed ? ' rpg-tree-node-node--draggable' : ''}${isBeingDragged ? ' rpg-tree-node-node--dragging' : ''}`}
                     transform={`translate(${pos.x},${pos.y})`}
-                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onNodePointerDown(e, n.nodeId, pos);
+                    }}
+                    onPointerMove={onNodePointerMove}
+                    onPointerUp={onNodePointerUp}
+                    onPointerCancel={onNodePointerUp}
                     onClick={() => {
                       if (suppressNodeClickRef.current) {
                         suppressNodeClickRef.current = false;

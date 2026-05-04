@@ -61,7 +61,7 @@
 - `src/lib/useManualQuestDraftAutosave.js` (~199) — Manual-Draft Autosave/Restore-Hook (Editor, Pass 4)
 - `src/lib/rpg-quest-rewards.js` (~339) — Reward-Normalisierung, Display, Unlock-Schedule
 - `src/lib/rpg-quest-editor-draft.js` (~680) — Editor-Draft-Modell (Drafts <-> Nodes)
-- `src/lib/rpg-sugiyama-layout.js` (~430) — Klassisches Sugiyama-DAG-Layout: Layer-Assignment (longest-path), Crossing-Minimization (Median-Heuristik + Down/Up-Sweeps), Coordinate-Assignment. Connected-Components-aware. Deterministisch. Ersetzt das Force-Directed (das verknoddelte zu oft).
+- `src/lib/rpg-force-layout.js` (~860) — Force-Directed mit Hierarchie-Bias auf parent_of-Edges, Connected-Components, Annealing-Damping, Subtree-Sibling-Swap, Re-Settle, **Manual-Position-Override** (User-Drag). Deterministisch via Hash-Init. Sugiyama wurde 2026-05-04 zurueck zu Force gewechselt + Drag-and-Drop drauf gesetzt.
 - `src/lib/rpg-edge-routing-grid.js` (~440) — A* auf 12px-Grid mit Catmull-Rom-Smoothing + 16-Sample-Output fuer spaetere Animation. Fallback gerade Linie wenn Target umzingelt. Ersetzt rpg-edge-routing.js (Bezier-Variante).
 - `src/lib/rpg-achievement-catalog-db.js` (~129) — DB-Backing fuer den `achievement`-Reward-Typ
 - `src/lib/rpg-quest-form-helpers.js` (~40) — minimaler Helper-Modul (normalizeQuestId, labelsToNodes); historische Editor-Text-Modus-Funktionen in Pass 4 entfernt

@@ -2,7 +2,7 @@
  * rpg-tree-svg.js — Pure SVG-Helper fuer den Quest-Baum.
  *
  * Stark gekuerzt im Force-Layout-Refactor (2026-05-03):
- *   - Layout-Berechnung komplett raus (lebt jetzt in rpg-sugiyama-layout.js)
+ *   - Layout-Berechnung komplett raus (lebt jetzt in rpg-force-layout.js)
  *   - computeNodeTreeOverlay raus (Render-Liste wird in der JSX gebaut)
  *   - Quest-Cluster-Radius-Spread, Edge-Ports, Distribute-Helper raus
  *     (alles waren Hilfen fuers radiale Children-Layout, nicht mehr noetig)

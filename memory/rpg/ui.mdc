@@ -20,7 +20,8 @@
 - Neuanlage und Bearbeitung ueber Astrolab-Tools `add` (→ openCreateNode) und `edit` (→ openEditNode).
 - Einstellungen ueber Astrolab-Tool `settings` (→ Alchemie-Labor Modal mit Theme-Switch + Backups).
 - Manuelle Entwuerfe im Browser-`localStorage` (wie vorher).
-- Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeSugiyamaLayout` (klassisches DAG-Layout: Layer-Assignment + Crossing-Minimization + Coordinate-Assignment, deterministisch); Edges via `routeEdge` aus rpg-edge-routing-grid (A* mit Line-of-Sight-Smoothing).
+- Canvas: Pan/Zoom; **Nodes per Drag verschiebbar (Desktop only)**, Position persistiert als `node.x`/`node.y` im Graph. Auto-Layout `computeForceLayout` nur als Fallback fuer noch nicht manuell platzierte Nodes (Hierarchie-Bias, Connected-Components, Annealing, Subtree-Sibling-Swap, Re-Settle). Edges via `routeEdge` aus rpg-edge-routing-grid (A* mit Line-of-Sight-Smoothing); waehrend aktivem Drag: gerade Linien fuer Performance.
+- Drag-Bedingungen: `compact` (Mobile) → aus, `activeTool !== 'focus'` (Edge-Tools wie Schere/Sperre) → aus, Tree-Pick-Modus → aus.
   - Trackpad-Zwei-Finger-Swipe/Scroll verschiebt den Baum (Pan).
   - Zoom ueber Wheel nur mit gedrueckter `Ctrl`-Taste.
   - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
@@ -91,7 +92,7 @@
 | Nodes-Ansicht | ~354 | `src/components/RpgQuestNodesView.jsx` — gemeinsam von Hub + Panel + Editor-Preview genutzt |
 | Location | ~571 | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
 | Rewards | ~339 | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (4 Typen inkl. achievement) |
-| Sugiyama-Layout | ~430 | `src/lib/rpg-sugiyama-layout.js` — Klassisches DAG-Layout: Layer-Assignment (longest-path) + Crossing-Minimization (Median-Heuristik mit Down/Up-Sweeps) + Coordinate-Assignment + Connected-Components-Packing. Deterministisch. Ersetzt das vorherige Force-Directed (verknoddelte zu oft). |
+| Force-Layout | ~860 | `src/lib/rpg-force-layout.js` — Force-Directed mit Hierarchie-Bias (parent_of), Connected-Components-Packing, Annealing-Damping, Subtree-Sibling-Swap fuer Crossing-Reduction, Re-Settle-Phase nach Swaps, **Manual-Position-Override** (Drag-and-Drop). Deterministisch via Hash-Init. |
 | Edge-Routing | ~440 | `src/lib/rpg-edge-routing-grid.js` — A* auf 12px-Grid mit 8-Richtungen-Bewegung, Catmull-Rom-Smoothing, 16 gleichmaessig verteilte Sample-Punkte (Animation-bereit fuer spaeteres Punkt-zu-Punkt-Tween). Fallback gerade Linie wenn umzingelt. |
 | Vitals | ~161 | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
 | Seiten | — | `src/pages/rpg/index.astro` (Hub mit Serif-Fonts), `src/pages/rpg/tree.astro` |

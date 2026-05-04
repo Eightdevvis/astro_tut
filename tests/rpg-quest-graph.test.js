@@ -31,6 +31,7 @@ import {
   graphHasCycle,
   sanitizeAddedIds,
   validateNodeDone,
+  setNodePosition,
 } from '../src/lib/rpg-quest-graph.js';
 
 // --- Hilfsfunktionen ---
@@ -409,4 +410,77 @@ test('validateNodeDone lehnt nicht-boolean Werte ab', () => {
 test('validateNodeDone lehnt Object-Werte als Top-Level ab (Phase 2 erwartet flach)', () => {
   const r = validateNodeDone({ q1: [true, false] });
   assert.equal(r.ok, false);
+});
+
+// =============================================================================
+// setNodePosition (Drag-and-Drop, 2026-05-04)
+// =============================================================================
+
+test('setNodePosition setzt x/y auf einen Top-Level-Node', () => {
+  const g = makeRpgGraph(
+    { a: { id: 'a', title: 'A' }, b: { id: 'b', title: 'B' } },
+    []
+  );
+  const next = setNodePosition(g, 'a', 100, 200);
+  const a = graphNodes(next).find((n) => n.id === 'a');
+  assert.equal(a.x, 100);
+  assert.equal(a.y, 200);
+  // Andere Nodes unveraendert
+  const b = graphNodes(next).find((n) => n.id === 'b');
+  assert.equal(b.x, undefined);
+  assert.equal(b.y, undefined);
+});
+
+test('setNodePosition mit null/undefined entfernt x/y (Reset auf Auto-Layout)', () => {
+  const g = makeRpgGraph(
+    { a: { id: 'a', title: 'A', x: 50, y: 60 } },
+    []
+  );
+  const cleared = setNodePosition(g, 'a', null, null);
+  const a = graphNodes(cleared).find((n) => n.id === 'a');
+  assert.equal(a.x, undefined);
+  assert.equal(a.y, undefined);
+});
+
+test('setNodePosition mit NaN/Infinity entfernt x/y (defensiv)', () => {
+  const g = makeRpgGraph(
+    { a: { id: 'a', title: 'A', x: 50, y: 60 } },
+    []
+  );
+  const cleared = setNodePosition(g, 'a', NaN, Infinity);
+  const a = graphNodes(cleared).find((n) => n.id === 'a');
+  assert.equal(a.x, undefined);
+  assert.equal(a.y, undefined);
+});
+
+test('setNodePosition liefert SAME Reference wenn keine Aenderung noetig', () => {
+  const g = makeRpgGraph({ a: { id: 'a', title: 'A' } }, []);
+  // Versuch x/y zu loeschen wo keine sind → keine Aenderung erwartet
+  const same = setNodePosition(g, 'a', null, null);
+  assert.equal(same, g, 'Kein Change → gleiche Referenz, vermeidet unnoetige Re-Renders');
+});
+
+test('setNodePosition mit unbekannter ID liefert unveraenderten Graph', () => {
+  const g = makeRpgGraph({ a: { id: 'a', title: 'A' } }, []);
+  const same = setNodePosition(g, 'unknown', 10, 20);
+  assert.equal(same, g);
+});
+
+test('setNodePosition wirkt auf Sub-Nodes (Compat-View: b nested in a.children)', () => {
+  // makeRpgGraph baut Compat-View: a ist top-level, b haengt nested in
+  // a.children weil parent_of-Edge a→b existiert. setNodePosition muss
+  // tief rein und b erreichen koennen.
+  const g = makeRpgGraph(
+    {
+      a: { id: 'a', title: 'A' },
+      b: { id: 'b', title: 'B' },
+    },
+    [{ from: 'a', to: 'b', relation: 'parent_of' }]
+  );
+  const next = setNodePosition(g, 'b', 80, 90);
+  // b wird nested unter a gefunden
+  const a = graphNodes(next).find((n) => n.id === 'a');
+  const b = a?.children?.find((c) => c.id === 'b');
+  assert.equal(b?.x, 80, `b.x sollte 80 sein, war ${b?.x}`);
+  assert.equal(b?.y, 90);
 });

@@ -1,6 +1,6 @@
 /**
  * Graph-Operationen: Unlock-Pruefung, Fortschritt, Upsert, Zyklen-Erkennung.
- * Layout-Code liegt in rpg-sugiyama-layout.js (+ rpg-edge-routing-grid.js fuer Edges).
+ * Layout-Code liegt in rpg-force-layout.js (+ rpg-edge-routing-grid.js fuer Edges).
  *
  * Phase 2 (DAG): Done-Status liest sich aus dem flachen `Record<nodeId, boolean>`
  * (RpgFlatNodeDone). Helper wie `nodeProgress`, `leafProgressRatio`,
@@ -368,6 +368,71 @@ function buildFlatNodeMap(graph) {
   }
   for (const n of graphNodes(graph)) add(n);
   return m;
+}
+
+/**
+ * Setzt eine manuelle Position (x, y) auf einen Node und liefert einen
+ * neuen Graph-Snapshot zurueck. Wenn `x` oder `y` null/undefined oder
+ * nicht-finite sind, werden beide Felder ENTFERNT (Reset auf Auto-Layout).
+ *
+ * Pure Funktion — mutiert den uebergebenen Graph nicht.
+ *
+ * Genutzt vom Drag-and-Drop-Mechanismus in RpgQuestTree.jsx: nach jedem
+ * Drag-End wird der Graph mit der neuen Position via `applyGraph` in den
+ * State gepusht und dadurch persistiert (existing markDirty + debounced save).
+ *
+ * Multi-Parent-Hinweis: Ein Node hat eine Identitaet, also auch eine Position.
+ * Wird ein Multi-Parent-Node verschoben, gilt die neue Position fuer alle
+ * eingehenden Edges (sie aktualisieren sich automatisch beim Render).
+ *
+ * @param {RpgGraph} graph
+ * @param {string} nodeId
+ * @param {number | null | undefined} x
+ * @param {number | null | undefined} y
+ * @returns {RpgGraph}
+ */
+export function setNodePosition(graph, nodeId, x, y) {
+  if (!nodeId || typeof nodeId !== 'string') return graph;
+  const xFinite = typeof x === 'number' && Number.isFinite(x);
+  const yFinite = typeof y === 'number' && Number.isFinite(y);
+  const wantsClear = !xFinite || !yFinite;
+  // Wir muessen jeden Knoten mit dieser ID anpassen — auch nested-Children
+  // in der Compat-View zaehlen.
+  let changed = false;
+  /** @param {RpgNode} n */
+  function adjust(n) {
+    if (!n || typeof n !== 'object') return n;
+    /** @type {RpgNode} */
+    let next = n;
+    if (n.id === nodeId) {
+      if (wantsClear) {
+        if (n.x !== undefined || n.y !== undefined) {
+          // Felder rauswerfen, Rest erhalten
+          const { x: _x, y: _y, ...rest } = /** @type {any} */ (n);
+          next = /** @type {RpgNode} */ (rest);
+          changed = true;
+        }
+      } else if (n.x !== x || n.y !== y) {
+        next = { ...n, x: /** @type {number} */ (x), y: /** @type {number} */ (y) };
+        changed = true;
+      }
+    }
+    if (Array.isArray(next.children) && next.children.length > 0) {
+      const newChildren = next.children.map(adjust);
+      // Pruefen ob Children-Array sich tatsaechlich aendern muss
+      let childChanged = false;
+      for (let i = 0; i < newChildren.length; i++) {
+        if (newChildren[i] !== next.children[i]) { childChanged = true; break; }
+      }
+      if (childChanged) {
+        next = { ...next, children: newChildren };
+      }
+    }
+    return next;
+  }
+  const newNodes = graphNodes(graph).map(adjust);
+  if (!changed) return graph;
+  return makeRpgGraph(newNodes, graphEdges(graph));
 }
 
 /**

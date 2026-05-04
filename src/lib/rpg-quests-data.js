@@ -58,7 +58,17 @@
  *   isLock?: boolean;
  *   orderInLayer?: number;
  *   questmakerPrompt?: string;
+ *   x?: number;
+ *   y?: number;
  * }} RpgNode
+ *
+ * `x`/`y`-Felder (optional, ab 2026-05-04)
+ * ─────────────────────────────────────────
+ * Manuell vom User per Drag-and-Drop gesetzte Position im Tree-Canvas.
+ * Wenn beide finite Numbers sind → Auto-Layout (Sugiyama) ueberspringt diesen
+ * Node und nutzt die gesetzten Werte. Wenn fehlend oder NaN/Infinity → der
+ * Node bekommt eine vom Auto-Layout berechnete Position (Fallback).
+ * Persistiert als Teil des Graph-Payloads (kein separates Schema).
  */
 
 /**
