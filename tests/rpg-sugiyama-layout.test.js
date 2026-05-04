@@ -268,6 +268,36 @@ test('Sugiyama: verschiedene Edge-Insertion-Reihenfolge liefert gleiches Layout'
 });
 
 // =============================================================================
+// Dependency-Edges beeinflussen Layout nicht
+// =============================================================================
+
+test('Sugiyama: dependency-Edge zwingt Knoten NICHT in andere Layer', () => {
+  // Zwei separate Quest-Trees, verbunden nur via dependency.
+  // Beide Roots sollten auf Layer 0 bleiben (Querverbindung "neben" den Trees).
+  const g = makeRpgGraph(
+    {
+      r1: { id: 'r1', title: 'R1' },
+      a: { id: 'a', title: 'A' },
+      r2: { id: 'r2', title: 'R2' },
+      b: { id: 'b', title: 'B' },
+    },
+    [
+      { from: 'r1', to: 'a', relation: 'parent_of' },
+      { from: 'r2', to: 'b', relation: 'parent_of' },
+      { from: 'r1', to: 'r2', relation: 'dependency' },
+    ]
+  );
+  const { positions } = computeSugiyamaLayout(g);
+  // r1 und r2 muessen beide auf Layer 0 sein (gleiche Y), trotz
+  // dependency-Edge. Sie sind in derselben Component (durch dependency
+  // verbunden), aber die Layer-Hierarchie zaehlt nur parent_of.
+  assert.equal(
+    positions.r1.y, positions.r2.y,
+    `r1 (y=${positions.r1.y}) und r2 (y=${positions.r2.y}) muessen beide auf Layer 0 sein — dependency darf das Layout nicht verformen`
+  );
+});
+
+// =============================================================================
 // Edge-Cases
 // =============================================================================
 

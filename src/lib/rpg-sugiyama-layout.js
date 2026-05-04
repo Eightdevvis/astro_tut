@@ -22,11 +22,14 @@
  *
  * Edges
  * ─────
- * Beide Edge-Typen (parent_of/structure UND dependency) zaehlen fuer
- * Layer-Assignment und Crossing-Minimization — eine `dependency`-Edge
- * impliziert "B braucht A", also B in tieferer Layer als A. Damit wirkt
- * sich auch sie sauber auf das Layout aus statt als Querverbindung
- * "drueber zu liegen".
+ * NUR `parent_of`/`structure`-Edges wirken auf Layer-Assignment und
+ * Crossing-Minimization. `dependency`-Edges (Querverbindungen) bleiben
+ * neutral — sie werden weiterhin gerendert und zaehlen fuer Connected-
+ * Components-Detection (damit dependency-verbundene Quests in derselben
+ * Insel landen), aber sie zwingen die Knoten NICHT in spezifische Layer.
+ *
+ * Damit liegen dependency-Edges optisch seitlich neben den Trees statt
+ * das Layout zu verformen — gewuenschtes Verhalten (User 2026-05-04).
  *
  * Connected Components
  * ────────────────────
@@ -447,9 +450,12 @@ export function computeSugiyamaLayout(graph, opts = {}) {
   }
 
   // ----- Edges sammeln + Trennung structure / dependency -----
-  // Beide Typen wirken auf Layer-Assignment (dependency: B braucht A → B
-  // tiefer als A) und Crossing-Minimization. Dadurch liegen abhaengige
-  // Quests konsistent untereinander statt als wilde Querverbindung.
+  // structureEdges (parent_of) wirken auf Layer-Assignment und Crossing-
+  // Minimization — sie definieren die Hierarchie.
+  // dependency-Edges sind Querverbindungen — sie bleiben fuer Connected-
+  // Components-Detection drin (damit verwandte Quests in derselben Insel
+  // landen), aber NICHT fuer Layout-Berechnung. So liegen sie optisch
+  // seitlich neben den Trees statt sie zu verformen.
   /** @type {Array<[string, string]>} */
   const idEdges = [];
   /** @type {Array<[string, string]>} */
@@ -459,8 +465,9 @@ export function computeSugiyamaLayout(graph, opts = {}) {
     if (!allNodes.has(e.from) || !allNodes.has(e.to)) continue;
     if (e.from === e.to) continue;
     idEdges.push([e.from, e.to]);
-    const isStructure = e.relation === 'structure' || e.relation === 'parent_of'
-      || e.relation === 'dependency'; // dependency aehnliche Hierarchie-Wirkung
+    // NUR parent_of/structure beeinflussen das Layout. dependency wird
+    // bewusst ausgenommen — bleibt eine reine Querverbindung im Render.
+    const isStructure = e.relation === 'structure' || e.relation === 'parent_of';
     if (isStructure) structureEdges.push([e.from, e.to]);
   }
   // Stabile Sortierung — gleiche Eingabe → gleiches Layout
