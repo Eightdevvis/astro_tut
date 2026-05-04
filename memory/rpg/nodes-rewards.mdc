@@ -39,16 +39,15 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb d
 - Solange ein Lock-Child eines Parents nicht fertig ist, sind alle nicht-Lock-Sibling-Leafs des Parents beim Toggeln gesperrt.
 - Lock-Node selbst wird normal ueber `children` + `dependsOn` abgeschlossen.
 
-## 4. Rewards — eine Pipeline, tiefenagnostisch (04/2026)
+## 4. Rewards — eine Pipeline, tiefenagnostisch (04/2026, geaendert 2026-05-04)
 
 `buildRewardDisplayList(node, nodeDone, opts?)` ist EIN Render-Pfad fuer ALLE Tiefen — Root-Quest, Sub-Node, Leaf — gleicher Code, gleiche Output-Form. Keine Subtypen, kein `source: 'node' | 'quest'`-Switch mehr.
 
 - Eigene Rewards des `node` → unlocked wenn der Node selbst komplett ist.
-- Sub-Node-Rewards (rekursiv via `walkNodesPreOrder`) → unlocked wenn der jeweilige Sub-Node komplett ist.
+- **Sub-Node-Rewards werden NICHT mehr eingesammelt (Aenderung 2026-05-04).** Wenn der User eine Quest anklickt, sieht er nur deren Self-Rewards. Sub-Node-Rewards erscheinen erst beim direkten Klick auf den Sub-Node. Vorher: rekursive Aggregation via `walkNodesPreOrder` — wurde im Panel zu unuebersichtlich.
 - `opts.scopeQuestId` legt den Lookup-Key in `nodeDone` fest (Root-Quest-ID); Default = `node.id` (Root-Fall).
-- `opts.selfProgressPercent` (optional) erlaubt Override fuer den Self-Unlock — z.B. aggregierter Graph-Progress aus `questProgress(..., graph)`. Wird nur bei Root-View ausgewertet.
-- Output-Felder pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. `nodeId` zeigt die Position im Baum, ist aber NICHT verhaltensrelevant.
-- Tooltip vereinheitlicht: `'Quest erledigt'` / `'Nach Erledigung der Quest'` — fuer JEDEN Reward, egal ob Root- oder Sub-Node-Origin.
+- `opts.selfProgressPercent` (optional) erlaubt Override fuer den Self-Unlock — z.B. aggregierter Graph-Progress aus `questProgress(..., graph)`.
+- Output-Felder pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. `nodeId` ist immer `node.id` (kein Mismatch durch Sub-Node-Aggregation mehr).
 
 `questLeafProgressRatio(quest, nodeDone, scopeQuestId?)` ist genauso tiefenagnostisch — der optionale `scopeQuestId` ueberschreibt den Lookup-Key.
 

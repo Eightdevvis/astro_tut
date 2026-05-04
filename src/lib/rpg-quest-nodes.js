@@ -546,11 +546,16 @@ export function questHasUrgentTimeBoundLeaves(quest, nodeDone, nowMs = Date.now(
 // --- Reward-Display (kombiniert Node-Logik mit Reward-Modul) ---
 
 /**
- * Sammelt alle Rewards des Nodes UND seiner Sub-Nodes mit Unlock-Status.
+ * Sammelt nur die EIGENEN Rewards des Nodes mit Unlock-Status.
  *
- * Kein Subtypen-Switch (Root vs. Child): jeder Reward, egal ob auf
- * `node` selbst oder auf einem Descendant, wird identisch berechnet —
- * unlocked == "der Node, dem dieser Reward gehört, ist komplett".
+ * Geaendert 2026-05-04: Sub-Node-Rewards werden NICHT mehr eingesammelt.
+ * Wenn der User auf eine Quest klickt, sieht er nur deren eigene Rewards.
+ * Sub-Node-Rewards erscheinen erst wenn der jeweilige Sub-Node selbst
+ * angeklickt wird. Vorher wurden die Listen rekursiv kombiniert, was im
+ * Panel verwirrend war (alle Rewards aller Tiefen unter einer Quest).
+ *
+ * unlocked == "dieser Node ist komplett" (alle non-optional Leaf-Children
+ * abgehakt).
  *
  * Phase 2: nodeDone ist flach (Record<nodeId, boolean>). `opts.scopeQuestId`
  * existiert nur noch fuer Backward-Kompatibilitaet und wird ignoriert.
@@ -603,6 +608,10 @@ export function buildRewardDisplayList(node, nodeDone, opts) {
   };
 
   // Eigene Rewards des Nodes — unlocked wenn dieser Node selbst komplett ist.
+  // Sub-Node-Rewards werden hier bewusst NICHT mehr gesammelt (Aenderung
+  // 2026-05-04). Der User sieht im Quest-Panel nur die Rewards der gerade
+  // ausgewaehlten Quest, nicht aller Descendants. Sub-Node-Rewards
+  // erscheinen erst beim Anklicken des jeweiligen Sub-Nodes.
   const pct = typeof opts?.selfProgressPercent === 'number' && Number.isFinite(opts.selfProgressPercent)
     ? opts.selfProgressPercent
     : questLeafProgressRatio(node, nodeDone).percent;
@@ -610,18 +619,6 @@ export function buildRewardDisplayList(node, nodeDone, opts) {
   for (const r of getNodeRewardRows(node)) {
     pushRow(r.entry, selfUnlocked, node.id);
   }
-
-  // Sub-Node-Rewards (rekursiv, alle Tiefen) — unlocked wenn der jeweilige
-  // Sub-Node komplett ist. Identische Logik wie oben.
-  walkNodesPreOrder(node.children || [], (s) => {
-    if (!s || !s.rewards || s.rewards.length === 0) return;
-    const unlocked = isNodeCompleteInQuest(node, s.id, nodeDone);
-    for (const rawEntry of s.rewards) {
-      const entry = normalizeRewardEntry(rawEntry);
-      if (!entry) continue;
-      pushRow(entry, unlocked, s.id);
-    }
-  });
 
   return rows;
 }

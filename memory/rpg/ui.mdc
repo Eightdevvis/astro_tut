@@ -101,7 +101,7 @@
 
 Render fuer Detail-Panel und Hub ist tiefenagnostisch — EIN Pfad fuer Root, Sub-Node, Leaf:
 
-- **`buildRewardDisplayList(node, nodeDone, opts?)`**: Sammelt Self- + Sub-Node-Rewards. Output-Form pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. Kein `source: 'node'/'quest'` mehr — die Halluzination wurde entfernt. `opts.scopeQuestId` traegt den Lookup-Scope (Root-Quest-ID), `opts.selfProgressPercent` ist optionaler Override fuer Self-Unlock (nur bei Root-View ausgewertet).
+- **`buildRewardDisplayList(node, nodeDone, opts?)`** (geaendert 2026-05-04): Sammelt **NUR** Self-Rewards des `node`. Sub-Node-Rewards werden NICHT mehr rekursiv aggregiert — Quest-Panel zeigt nur die Rewards der angeklickten Quest, Sub-Node-Rewards erscheinen beim Klick auf den Sub-Node. Output-Form pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. Kein `source: 'node'/'quest'` mehr.
 - **`questLeafProgressRatio(quest, nodeDone, scopeQuestId?)`**: Tiefenagnostischer Progress. Aufrufer reichen `scopeQuestId` weiter wenn der `quest`-Parameter ein Sub-Node ist.
 - **`deriveRpgTreeSelectionView`**: Liefert den View-Node mit SEINER eigenen ID (kein Spoofing) plus `scopeQuestId` separat. Aufrufer geben den Scope an `RpgQuestNodesView`/`buildRewardDisplayList` weiter.
 - **`RpgQuestPanel`**: Title/Description/Rewards/Children werden alle aus `viewNode = selectedNodeView || quest` gelesen — gleicher Code-Pfad fuer Root- und Sub-Node-Selection.
