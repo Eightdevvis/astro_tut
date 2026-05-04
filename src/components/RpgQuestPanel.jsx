@@ -43,7 +43,17 @@ function statusEyebrow(quest, unlocked, completed, added) {
  *   itemCatalog?: Record<string, any>;
  *   currentLocation?: any;
  *   progressPct: number;
+ *   treeLocked?: boolean;
  * }} props
+ *
+ * `treeLocked` markiert den angezeigten View-Node (selectedNodeView ?? quest) als
+ * im Tree-Subtree-Lock. Wirkung: Title + Description bleiben sichtbar (User
+ * weiss WORUM es geht), alle weiteren Detail-Felder werden durch '?' maskiert
+ * (Status, Fortschritt, Belohnungen, Zweige, Quest-Meta). Aktions-Buttons
+ * werden ausgeblendet — der Knoten ist verschlossen, Interaktion macht keinen Sinn.
+ *
+ * STRICT GETRENNT vom Lock-Sibling-Modifier (`node.isLock`) — das hier ist die
+ * Tree-View-Subtree-Sperre, ein eigenes Konzept auf Edge-Ebene.
  */
 export default function RpgQuestPanel({
   quest,
@@ -64,10 +74,13 @@ export default function RpgQuestPanel({
   itemCatalog,
   currentLocation,
   progressPct,
+  treeLocked = false,
 }) {
   if (!quest) return null;
 
-  const eyebrow = statusEyebrow(quest, unlocked, completed, added);
+  // Treelocked hat Vorrang vor allen normalen Status-Labels: der Knoten ist
+  // versiegelt — keine Aussage ueber unlocked/completed/added macht hier Sinn.
+  const eyebrow = treeLocked ? 'Versiegelt' : statusEyebrow(quest, unlocked, completed, added);
   const pct = typeof progressPct === 'number' ? progressPct : 0;
   const isActive = unlocked && added && !completed;
 
@@ -156,102 +169,144 @@ export default function RpgQuestPanel({
         </div>
       </header>
 
-      {/* Fortschrittsbalken (nur fuer aktive Quests) */}
-      {isActive && (
-        <div class="qpanel__meter">
-          <div class="qpanel__meter-rail">
-            <div class="qpanel__meter-fill" style={{ width: `${pct}%` }} />
-            <div class="qpanel__meter-glow" style={{ width: `${pct}%` }} />
+      {/* Treelocked-Pfad: ALLE Felder unter Title/Description durch '?' ersetzt.
+          Der Nutzer sieht WAS verschlossen ist (Title), aber nicht den Inhalt.
+          Vom Aktions-Bereich abgesehen — der entfaellt komplett, weil Hinzufuegen/
+          Bearbeiten an einem versiegelten Knoten keinen Sinn machen. */}
+      {treeLocked ? (
+        <>
+          <div class="qpanel__meter qpanel__meter--locked" aria-label="Fortschritt versiegelt">
+            <div class="qpanel__meter-rail">
+              <div class="qpanel__meter-fill" style={{ width: '0%' }} />
+            </div>
+            <div class="qpanel__meter-label">
+              <span>Fortschritt</span>
+              <span>?</span>
+            </div>
           </div>
-          <div class="qpanel__meter-label">
-            <span>Fortschritt</span>
-            <span>{pct}%</span>
+
+          <div class="qpanel__rewards qpanel__rewards--locked">
+            <div class="qpanel__section-label">Belohnungen</div>
+            <div class="qpanel__rewards-row">
+              <span class="reward reward--locked"><span class="reward__icon">?</span><span>?</span></span>
+            </div>
           </div>
-        </div>
+
+          <div class="qpanel__tree qpanel__tree--locked">
+            <div class="qpanel__section-label">Zweige</div>
+            <div class="qpanel__nodes qpanel__nodes--locked">?</div>
+          </div>
+
+          <div class="qpanel__meta qpanel__meta--locked">
+            <div class="qpanel__section-label">Details</div>
+            <ul class="qpanel__meta-list">
+              <li><span>Quest-ID</span><strong>?</strong></li>
+              <li><span>Zweige</span><strong>?</strong></li>
+              <li><span>Aufgaben</span><strong>?</strong></li>
+              <li><span>Auswahl</span><strong>?</strong></li>
+            </ul>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Fortschrittsbalken (nur fuer aktive Quests) */}
+          {isActive && (
+            <div class="qpanel__meter">
+              <div class="qpanel__meter-rail">
+                <div class="qpanel__meter-fill" style={{ width: `${pct}%` }} />
+                <div class="qpanel__meter-glow" style={{ width: `${pct}%` }} />
+              </div>
+              <div class="qpanel__meter-label">
+                <span>Fortschritt</span>
+                <span>{pct}%</span>
+              </div>
+            </div>
+          )}
+
+          {/* Rewards-Sektion: nutzt buildRewardDisplayList-Output (kind, label, unlocked, pointKind, nodeId). */}
+          {rewards.length > 0 && (
+            <div class="qpanel__rewards">
+              <div class="qpanel__section-label">Belohnungen</div>
+              <div class="qpanel__rewards-row">
+                {rewards.map((r, i) => (
+                  <span
+                    key={`${r.nodeId}-${i}-${r.kind}`}
+                    class={`reward reward--${r.kind}${r.unlocked ? '' : ' reward--locked'}`}
+                    title={r.unlocked ? undefined : 'Noch nicht freigeschaltet'}
+                  >
+                    {/* Icon je nach Typ — spiegelt die Logik aus RpgQuestNodesView */}
+                    {r.kind === 'item' ? (
+                      <span class="reward__icon">▧</span>
+                    ) : r.kind === 'points' ? (
+                      <span class="reward__icon">{r.pointKind === 'mana' ? '◐' : '♥'}</span>
+                    ) : r.kind === 'achievement' ? (
+                      <span class="reward__icon">🏆</span>
+                    ) : (
+                      <span class="reward__icon">✦</span>
+                    )}
+                    <span>{r.label}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Aktions-Leiste: Hinzufuegen/Entfernen + Bearbeiten */}
+          <div class="qpanel__actions">
+            <button
+              type="button"
+              class={`qpanel__action-btn${added ? ' qpanel__action-btn--remove' : ''}`}
+              disabled={addButtonDisabled}
+              onClick={onToggleAdded}
+            >
+              {completed ? 'Fertig' : panelAddLabel}
+            </button>
+            <button
+              type="button"
+              class="qpanel__action-btn qpanel__action-btn--edit"
+              disabled={!canEditSelected}
+              onClick={onEdit}
+              aria-label="Quest bearbeiten"
+              title="Quest bearbeiten"
+            >
+              {'✎'}
+            </button>
+          </div>
+
+          {/* Node-Baum (verschachtelt) — delegiert an RpgQuestNodesView.
+              Identische Pipeline ob viewNode = Root oder Sub-Node. */}
+          <div class="qpanel__tree">
+            <div class="qpanel__section-label">Zweige</div>
+            <RpgQuestNodesView
+              node={viewNode}
+              guardQuest={quest}
+              nodeDone={nodeDone}
+              onToggleNode={onToggleNode}
+              doneScopeNodeId={quest.id}
+              interactive
+              showChildren
+              childrenClass="qpanel__nodes"
+              rewardsClass="qpanel__node-rewards"
+              graph={graph}
+              itemCatalog={itemCatalog}
+              currentLocation={currentLocation}
+              showLocationGuidance={false}
+              showRewards={false}
+            />
+          </div>
+
+          {/* Quest-Meta am unteren Rand */}
+          <div class="qpanel__meta">
+            <div class="qpanel__section-label">Details</div>
+            <ul class="qpanel__meta-list">
+              <li><span>Quest-ID</span><strong>{quest.id}</strong></li>
+              <li><span>Zweige</span><strong>{Array.isArray(quest.children) ? quest.children.length : 0}</strong></li>
+              <li><span>Aufgaben</span><strong>{countQuestLeaves(quest)}</strong></li>
+              <li><span>Auswahl</span><strong>{selectedGraphNode?.id || 'Quest-Root'}</strong></li>
+            </ul>
+          </div>
+        </>
       )}
-
-      {/* Rewards-Sektion: nutzt buildRewardDisplayList-Output (kind, label, unlocked, pointKind, nodeId). */}
-      {rewards.length > 0 && (
-        <div class="qpanel__rewards">
-          <div class="qpanel__section-label">Belohnungen</div>
-          <div class="qpanel__rewards-row">
-            {rewards.map((r, i) => (
-              <span
-                key={`${r.nodeId}-${i}-${r.kind}`}
-                class={`reward reward--${r.kind}${r.unlocked ? '' : ' reward--locked'}`}
-                title={r.unlocked ? undefined : 'Noch nicht freigeschaltet'}
-              >
-                {/* Icon je nach Typ — spiegelt die Logik aus RpgQuestNodesView */}
-                {r.kind === 'item' ? (
-                  <span class="reward__icon">▧</span>
-                ) : r.kind === 'points' ? (
-                  <span class="reward__icon">{r.pointKind === 'mana' ? '◐' : '♥'}</span>
-                ) : r.kind === 'achievement' ? (
-                  <span class="reward__icon">🏆</span>
-                ) : (
-                  <span class="reward__icon">✦</span>
-                )}
-                <span>{r.label}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Aktions-Leiste: Hinzufuegen/Entfernen + Bearbeiten */}
-      <div class="qpanel__actions">
-        <button
-          type="button"
-          class={`qpanel__action-btn${added ? ' qpanel__action-btn--remove' : ''}`}
-          disabled={addButtonDisabled}
-          onClick={onToggleAdded}
-        >
-          {completed ? 'Fertig' : panelAddLabel}
-        </button>
-        <button
-          type="button"
-          class="qpanel__action-btn qpanel__action-btn--edit"
-          disabled={!canEditSelected}
-          onClick={onEdit}
-          aria-label="Quest bearbeiten"
-          title="Quest bearbeiten"
-        >
-          {'✎'}
-        </button>
-      </div>
-
-      {/* Node-Baum (verschachtelt) — delegiert an RpgQuestNodesView.
-          Identische Pipeline ob viewNode = Root oder Sub-Node. */}
-      <div class="qpanel__tree">
-        <div class="qpanel__section-label">Zweige</div>
-        <RpgQuestNodesView
-          node={viewNode}
-          guardQuest={quest}
-          nodeDone={nodeDone}
-          onToggleNode={onToggleNode}
-          doneScopeNodeId={quest.id}
-          interactive
-          showChildren
-          childrenClass="qpanel__nodes"
-          rewardsClass="qpanel__node-rewards"
-          graph={graph}
-          itemCatalog={itemCatalog}
-          currentLocation={currentLocation}
-          showLocationGuidance={false}
-          showRewards={false}
-        />
-      </div>
-
-      {/* Quest-Meta am unteren Rand */}
-      <div class="qpanel__meta">
-        <div class="qpanel__section-label">Details</div>
-        <ul class="qpanel__meta-list">
-          <li><span>Quest-ID</span><strong>{quest.id}</strong></li>
-          <li><span>Zweige</span><strong>{Array.isArray(quest.children) ? quest.children.length : 0}</strong></li>
-          <li><span>Aufgaben</span><strong>{countQuestLeaves(quest)}</strong></li>
-          <li><span>Auswahl</span><strong>{selectedGraphNode?.id || 'Quest-Root'}</strong></li>
-        </ul>
-      </div>
     </aside>
   );
 }

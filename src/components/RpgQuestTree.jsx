@@ -7,8 +7,20 @@ import {
   isQuestCompleted as isNodeCompleted,
   questProgress as nodeProgress,
   removeParentChildEdge,
+  toggleEdgeLockSide,
+  getEdgeLockSide,
+  computeLockedNodeIds,
+  leafProgressRatio,
 } from '../lib/rpg-quest-graph.js';
-import { computeLayeredLayout } from '../lib/rpg-graph-layout.js';
+import { LOCK_CURSOR_VALUE } from '../lib/rpg-lock-icon.jsx';
+// Force-Directed Layout (2026-05-03): ersetzt das alte Layered-Layout +
+// das radiale Children-Overlay durch ein einheitliches Spring-System fuer
+// alle Nodes (Roots + Children gemeinsam). Multi-Parent-aware.
+import { computeForceLayout } from '../lib/rpg-force-layout.js';
+// Smart Edge Routing (2026-05-04, A*-Variante): Grid-basiertes Pathfinding
+// mit 8-Richtungen, Catmull-Rom-Smoothing, festen Stuetzpunkten fuer
+// spaetere Animations-Faehigkeit. Fallback auf gerade Linie wenn umzingelt.
+import { routeEdge } from '../lib/rpg-edge-routing-grid.js';
 import {
   questHasUrgentTimeBoundLeaves,
   nodeIsLeaf,
@@ -33,14 +45,9 @@ import { useRpgBootstrap } from '../lib/useRpgBootstrap.js';
 import {
   edgeEndpoints,
   nodeShapePath,
-  countLeavesInNodeSubtree,
-  countLeafDescendants,
-  countQuestLeaves,
-  spreadQuestRootsByClusterRadius,
-  buildEdgePorts,
+  maxNodeDepth,
   nodeClass,
   nodeNodeClass,
-  computeNodeTreeOverlay,
 } from '../lib/rpg-tree-svg.js';
 import { useTreePanZoom } from '../lib/useTreePanZoom.js';
 import RpgTreeSuperNotes, { useTreeSuperNotes } from './RpgTreeSuperNotes.jsx';
@@ -324,71 +331,154 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
   const byId = useMemo(() => questMap(graph), [graph]);
   const vitalsView = useMemo(() => toRpgVitalsView(vitals), [vitals]);
+
+  // Force-Directed Layout: ALLE Nodes (Roots + Children) in einem Sim.
+  // Liefert positions[id] = {x, y}, plus Bounding-Box (width/height/minX/minY).
+  // Deterministisch durch Hash-basierten Init — gleicher Graph = gleiches Layout.
   const layout = useMemo(
-    () =>
-      computeLayeredLayout(
-        graph,
-        compact
-          ? { colGap: 92, rowGap: 96, padding: 56, compact: true }
-          : { colGap: 128, rowGap: 108, padding: 72, compact: false }
-      ),
+    () => computeForceLayout(graph, { compact }),
     [graph, compact]
   );
-  const treePositions = useMemo(
-    () => spreadQuestRootsByClusterRadius(layout.positions, graph.nodes || [], compact),
-    [layout.positions, graph.nodes, compact]
+  // treePositions als kurzer Alias — viele Stellen lesen das (focus, render).
+  const treePositions = layout.positions;
+
+  const dependencyEdges = useMemo(
+    () => graphEdges(graph).filter((e) => e.relation !== 'structure'),
+    [graph]
   );
-  const questEdgePorts = useMemo(
-    () => buildEdgePorts(graph, treePositions, nodeR()),
-    [graph, treePositions, nodeR]
+  // structure-Edges (parent_of): die Hauptstruktur der Hierarchie.
+  // Werden separat gerendert (anderer Look, Lock-Toggle, etc.).
+  const structureEdges = useMemo(
+    () => graphEdges(graph).filter((e) => e.relation === 'structure'),
+    [graph]
   );
-  const dependencyEdges = useMemo(() => graphEdges(graph).filter((e) => e.relation !== 'structure'), [graph]);
-  const nodeTreeOverlay = useMemo(() => {
-    const qMap = new Map((graph.nodes || []).map((q) => [q.id, q]));
-    const overlay = computeNodeTreeOverlay({
-      graphNodes: graph.nodes || [],
-      treePositions,
-      compact,
-      questNodeRadius: nodeR(),
-      fallbackWidth: layout.width,
-      fallbackHeight: layout.height,
-      isLeaf: nodeIsLeaf,
-      isDone: (questId, nodeId) => isNodeCompleteInQuest(qMap.get(questId), nodeId, nodeDone),
-      isLock: isLockNode,
-      leafCount: countLeavesInNodeSubtree,
-      leafDescendants: countLeafDescendants,
+  // Subtree-Lock-Set: pro Graph- ODER nodeDone-Aenderung neu berechnen.
+  // nodeDone wird gebraucht fuer die Sibling-Lock-Awareness (node.isLock):
+  // eine done-Lock-Node sperrt ihre Geschwister NICHT mehr — konsistent mit
+  // canSetNodeDoneInGraph. So passen sich gedimmte Schwestern automatisch
+  // wieder ein, sobald die Lock-Node abgehakt wird.
+  const lockedNodeIds = useMemo(
+    () => computeLockedNodeIds(graph, nodeDone),
+    [graph, nodeDone]
+  );
+
+  // Render-Liste fuer Sub-Nodes: alle Nodes die KEINE Top-Level-Quest-Roots
+  // sind, aber im Graph erreichbar (z.B. via parent_of-Edges). Mit Metadaten
+  // fuer die JSX (label, isLeaf, isDone, isLock, isLocked, depth, questId).
+  //
+  // Funktioniert in beiden Modi:
+  //   - Compat-View: graph.nodes hat nur Roots, Sub-Nodes nested via children
+  //   - V3-canonical: graph.nodes hat alle Nodes flach
+  // Wir bauen erst eine flache Map ueber alle Nodes (deckt beide Modi ab),
+  // bestimmen dann via structureEdges welche tatsaechliche Roots sind und
+  // welche Sub-Nodes haben einen Parent.
+  const nodeRenderList = useMemo(() => {
+    // Schritt 1: flache Map ueber ALLE Nodes (egal ob top-level oder nested)
+    /** @type {Map<string, import('../lib/rpg-quests-data.js').RpgNode>} */
+    const allNodes = new Map();
+    /** @param {import('../lib/rpg-quests-data.js').RpgNode | null | undefined} n */
+    function collect(n) {
+      if (!n || typeof n.id !== 'string' || !n.id || allNodes.has(n.id)) return;
+      allNodes.set(n.id, n);
+      if (Array.isArray(n.children)) for (const c of n.children) collect(c);
+    }
+    for (const n of graph.nodes || []) collect(n);
+
+    // Schritt 2: erster Parent pro Sub-Node (fuer questId-Selection)
+    // Edges sortieren (alphabetisch nach from, dann to), damit Multi-Parent-
+    // Nodes immer den lexikographisch ersten Parent als questId bekommen —
+    // unabhaengig von der Edge-Insertion-Reihenfolge. Verhindert Selection-
+    // Drift wenn der User Edges hinzufuegt/entfernt.
+    /** @type {Map<string, string>} */
+    const firstParentByNode = new Map();
+    const sortedEdges = [...structureEdges].sort((a, b) => {
+      const fa = String(a?.from || '');
+      const fb = String(b?.from || '');
+      if (fa !== fb) return fa.localeCompare(fb);
+      return String(a?.to || '').localeCompare(String(b?.to || ''));
     });
-    /** @type {Record<string, number>} */
-    const byNodeId = {};
-    for (const n of overlay.nodeNodes || []) {
-      const id = String(n?.nodeId || '').trim();
-      if (!id) continue;
-      byNodeId[id] = (byNodeId[id] || 0) + 1;
-    }
-    const duplicatedNodeIds = Object.entries(byNodeId)
-      .filter(([, c]) => c > 1)
-      .map(([id, count]) => ({ id, count }));
-    /** @type {Record<string, string[]>} */
-    const parentIdsByNode = {};
-    for (const e of graph.edges || []) {
-      if (!e || e.relation !== 'structure') continue;
-      const from = String(e.from || '').trim();
+    for (const e of sortedEdges) {
       const to = String(e.to || '').trim();
-      if (!from || !to) continue;
-      if (!parentIdsByNode[to]) parentIdsByNode[to] = [];
-      if (!parentIdsByNode[to].includes(from)) parentIdsByNode[to].push(from);
+      if (!to || firstParentByNode.has(to)) continue;
+      firstParentByNode.set(to, String(e.from || '').trim());
     }
-    const duplicatedWithParents = duplicatedNodeIds.map(({ id, count }) => ({
-      id,
-      count,
-      parents: parentIdsByNode[id] || [],
-      questOccurrences: (overlay.nodeNodes || [])
-        .filter((n) => String(n?.nodeId || '') === id)
-        .map((n) => String(n?.questId || ''))
-        .filter(Boolean),
-    }));
-    return overlay;
-  }, [compact, graph.nodes, layout.height, layout.width, nodeDone, treePositions, nodeR]);
+
+    // Schritt 3: pro Sub-Node den TOP-LEVEL-QUEST-ROOT bestimmen.
+    // Wir walken via firstParentByNode rekursiv nach oben bis kein Parent mehr.
+    // WICHTIG: questId muss der TOP-LEVEL-ROOT sein (das was in `byId` steht
+    // und durch `selectedId` referenziert wird), nicht der direkte Parent.
+    // Sonst findet `byId.get(selectedId)` beim Klick auf einen Sub-Sub-Node
+    // den Quest nicht → das Panel oeffnet sich nicht. Memoisiert via Cache.
+    /** @type {Map<string, string>} */
+    const rootByNode = new Map();
+    /** @param {string} startId */
+    function findRoot(startId) {
+      if (rootByNode.has(startId)) return rootByNode.get(startId);
+      let current = startId;
+      /** @type {Set<string>} */
+      const visited = new Set();
+      /** @type {string[]} */
+      const path = [];
+      while (firstParentByNode.has(current) && !visited.has(current)) {
+        visited.add(current);
+        path.push(current);
+        current = firstParentByNode.get(current);
+      }
+      // `current` ist jetzt der Top-Level-Root (oder eine Cycle-Bruchstelle —
+      // dank visited-Set kein Endlos-Loop). Cache fuer alle besuchten IDs.
+      for (const id of path) rootByNode.set(id, current);
+      rootByNode.set(current, current);
+      return current;
+    }
+
+    // Schritt 4: Quest-Root-Map fuer isNodeCompleteInQuest-Lookup
+    const qMap = new Map((graph.nodes || []).map((q) => [q.id, q]));
+
+    // Schritt 5: Output bauen — alle Nodes die einen Parent haben sind Sub-Nodes.
+    // Roots (ohne Parent) werden separat als Quest-Root gerendert, hier ueberspringen.
+    /** @type {Array<{id: string; nodeId: string; questId: string; label: string; depth: number; isLeaf: boolean; isDone: boolean; isLock: boolean; isLocked: boolean}>} */
+    const out = [];
+    for (const [id, node] of allNodes) {
+      if (!firstParentByNode.has(id)) continue; // hat keinen Parent → ist ein Root → separat gerendert
+      const questId = findRoot(id);
+      const leaf = nodeIsLeaf(node);
+      out.push({
+        id: `${questId}::${id}`,
+        nodeId: id,
+        questId,
+        label: node.title || id,
+        depth: maxNodeDepth(node),
+        isLeaf: leaf,
+        isDone: leaf ? isNodeCompleteInQuest(qMap.get(questId), id, nodeDone) : false,
+        isLock: isLockNode(node),
+        isLocked: lockedNodeIds.has(id),
+      });
+    }
+    return out;
+  }, [graph, structureEdges, nodeDone, lockedNodeIds]);
+
+  // Hindernisse fuer Smart-Edge-Routing: alle Nodes mit Position und Radius.
+  // Wird beim Rendern jeder Edge geprueft, damit kollidierende Edges
+  // lokal um andere Nodes herum kurven (oder schneiden, wenn Umweg zu lang).
+  const obstacles = useMemo(() => {
+    const r = nodeR();
+    const list = [];
+    for (const id of Object.keys(treePositions)) {
+      const p = treePositions[id];
+      if (!p) continue;
+      list.push({ id, x: p.x, y: p.y, radius: r });
+    }
+    return list;
+  }, [treePositions, nodeR]);
+
+  // Schneller Lookup nodeId → render-meta (fuer Sub-Node-Edge-Rendering:
+  // braucht isDone/isLeaf/isLock vom Ziel-Node).
+  const nodeMetaById = useMemo(() => {
+    /** @type {Map<string, typeof nodeRenderList[number]>} */
+    const m = new Map();
+    for (const n of nodeRenderList) m.set(n.nodeId, n);
+    return m;
+  }, [nodeRenderList]);
 
   useEffect(() => {
     const m = questMap(graph);
@@ -514,8 +604,22 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   /**
    * Astrolab-Tool-Handler: leitet Aktionen an die richtige Stelle.
    * Die Armillarsphaere ersetzt die alten Top-Bar-Buttons.
+   *
+   * Toggle-Off fuer den Lock-Modus
+   * ──────────────────────────────
+   * Edge-Tools wie 'lock' bleiben aktiv bis der User explizit aussteigt.
+   * Nochmal auf den schon-aktiven Lock-Button → Modus beenden (Wechsel auf
+   * 'focus' als neutraler Default — zeigt keine Edge-Hit-Areas mehr und
+   * bringt den normalen Cursor zurueck). Andere Tools (add/edit/note/...)
+   * sind one-shot Aktionen — Toggle-Off macht dort keinen Sinn.
    */
   const handleAstrolabTool = useCallback((toolId) => {
+    // Toggle-Off-Pfad: zweites Klicken auf den aktiven Lock-Button aussteigt.
+    if (toolId === 'lock' && activeTool === 'lock') {
+      setActiveTool('focus');
+      setMobileToolsOpen(false);
+      return;
+    }
     setActiveTool(toolId);
     setMobileToolsOpen(false);
     switch (toolId) {
@@ -531,6 +635,10 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
         }
         break;
       case 'cut':
+        break;
+      case 'lock':
+        // Modus aktiv halten — die eigentliche Toggle-Aktion passiert beim
+        // Edge-Klick (handleLockEdge), nicht hier.
         break;
       case 'note':
         if (canUseNotes) openSuperNotes();
@@ -553,13 +661,15 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
         window.location.href = '/rpg';
         break;
     }
-  }, [selectedQuest, selectedNode, canUseNotes]);
+    // activeTool muss in der Dep-Liste, weil der Toggle-Off-Pfad ihn liest.
+  }, [selectedQuest, selectedNode, canUseNotes, activeTool]);
 
   const mobileToolItems = useMemo(() => {
     const tools = [
       { id: 'add', label: 'Quest hinzufügen' },
       { id: 'edit', label: 'Quest bearbeiten', disabled: !selectedQuest },
       { id: 'cut', label: 'Schere' },
+      { id: 'lock', label: 'Sperre' },
       { id: 'focus', label: 'Fokus' },
       { id: 'settings', label: 'Alchemie-Labor' },
       { id: 'hub', label: 'Sammlung' },
@@ -717,7 +827,15 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
     `dir-${direction}`,
     compact && selectedId && !treePickActive ? 'rpg-tree--detail-mobile' : '',
     activeTool === 'cut' ? 'rpg-tree--tool-cut' : '',
+    activeTool === 'lock' ? 'rpg-tree--tool-lock' : '',
   ].filter(Boolean).join(' ');
+
+  // CSS-Custom-Property fuer den Lock-Cursor: nur setzen wenn Lock-Modus aktiv,
+  // damit das Default-Cursor-Verhalten (grab/grabbing) sonst greift. Quelle:
+  // `src/lib/rpg-lock-icon.js` — eine Quelle fuer Bead-Icon UND Cursor.
+  const rootTreeStyle = activeTool === 'lock'
+    ? { '--rpg-lock-cursor': LOCK_CURSOR_VALUE }
+    : undefined;
 
   const handleCutEdge = useCallback((fromNodeId, toNodeId) => {
     if (activeTool !== 'cut') return;
@@ -726,8 +844,60 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
     applyGraph(next);
   }, [activeTool, graph, applyGraph]);
 
+  /**
+   * Lock-Edge-Toggle MIT SIDE-BERECHNUNG (bidirektional, Stand 2026-05-04).
+   *
+   * Aus dem Click-Event berechnen wir, auf welcher Haelfte der Edge der User
+   * geklickt hat: Maus-Position wird in SVG-Koordinaten umgerechnet, dann auf
+   * den Edge-Vektor (from→to) projiziert. Der t-Parameter zwischen 0 (am
+   * Parent-Ende) und 1 (am Child-Ende) bestimmt die Side:
+   *   - t < 0.5 → 'parent' (Klick naeher am Parent → Parent-Branch sperren)
+   *   - t >= 0.5 → 'child' (Klick naeher am Child → Subtree sperren)
+   *
+   * Toggle-Semantik:
+   *   - Edge ist auf gleicher Side gelockt → unlock (zweiter Klick = Aus)
+   *   - Edge ist auf anderer Side gelockt → switch (Side-Wechsel)
+   *   - Edge ist nicht gelockt → setze auf gewaehlte Side
+   *
+   * Wir nutzen die getrimmten Endpunkte (seg.x1/y1 → seg.x2/y2) als Vektor —
+   * die Bezier-Kruemmung interessiert hier nicht, weil wir nur "naeher zu
+   * Parent oder Child" wissen muessen, und die mittlere Hoehe der Kurve
+   * stimmt fuer diese Heuristik mit der geraden Linie ueberein.
+   *
+   * @param {PointerEvent | MouseEvent} ev — Click-Event mit clientX/Y
+   * @param {{ from: string; to: string }} edge
+   * @param {{ x1: number; y1: number; x2: number; y2: number }} seg —
+   *   getrimmte Endpunkte im SVG-Koordinatensystem
+   */
+  const handleLockEdge = useCallback((ev, edge, seg) => {
+    if (activeTool !== 'lock') return;
+    // Die SVG-Element-Hierarchie: das innere SVG ist Bestandteil des Trees.
+    // ownerSVGElement liefert das aeusserste SVG des Hit-Elements.
+    const svg = ev.currentTarget?.ownerSVGElement;
+    if (!svg || typeof svg.createSVGPoint !== 'function') return;
+    // Maus → SVG-Coords via aktuelle Screen-Transform-Matrix.
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = svg.createSVGPoint();
+    pt.x = ev.clientX;
+    pt.y = ev.clientY;
+    const inv = ctm.inverse();
+    const m = pt.matrixTransform(inv);
+    // Projektion auf den Edge-Vektor (Parent→Child).
+    const dx = seg.x2 - seg.x1;
+    const dy = seg.y2 - seg.y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 1e-3) return; // entartete Edge — nichts tun
+    const t = ((m.x - seg.x1) * dx + (m.y - seg.y1) * dy) / lenSq;
+    /** @type {'child' | 'parent'} */
+    const side = t < 0.5 ? 'parent' : 'child';
+    const next = toggleEdgeLockSide(graph, edge.from, edge.to, side);
+    if (next === graph) return;
+    applyGraph(next);
+  }, [activeTool, graph, applyGraph]);
+
   return (
-    <div class={rootTreeClass}>
+    <div class={rootTreeClass} style={rootTreeStyle}>
       {/* Astrolab: Armillarsphaere als Navigation (oben links) */}
       <RpgAstrolab
         activeTool={activeTool}
@@ -857,9 +1027,9 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
         >
           <svg
             class="rpg-tree__svg"
-            width={nodeTreeOverlay.width}
-            height={nodeTreeOverlay.height}
-            viewBox={`${nodeTreeOverlay.minX} ${nodeTreeOverlay.minY} ${nodeTreeOverlay.width} ${nodeTreeOverlay.height}`}
+            width={layout.width}
+            height={layout.height}
+            viewBox={`${layout.minX} ${layout.minY} ${layout.width} ${layout.height}`}
             aria-hidden={false}
           >
             <title>Quest-Baum</title>
@@ -878,10 +1048,10 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
             <rect
               class="rpg-tree__hit"
-              x={nodeTreeOverlay.minX}
-              y={nodeTreeOverlay.minY}
-              width={nodeTreeOverlay.width}
-              height={nodeTreeOverlay.height}
+              x={layout.minX}
+              y={layout.minY}
+              width={layout.width}
+              height={layout.height}
             />
 
             {/* Quest-Kanten (Abhaengigkeiten zwischen Root-Nodes) */}
@@ -890,10 +1060,22 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 const qa = byId.get(e.from);
                 const qb = byId.get(e.to);
                 if (!qa || !qb) return null;
-                const pa = questEdgePorts.fromPorts[i];
-                const pb = questEdgePorts.toPorts[i];
-                if (!pa || !pb) return null;
-                const seg = edgeEndpoints(pa.x, pa.y, pb.x, pb.y, 0, 0);
+                const fromPos = treePositions[e.from];
+                const toPos = treePositions[e.to];
+                if (!fromPos || !toPos) return null;
+                const r = nodeR();
+                // Endpunkte am Knotenrand (statt im Zentrum) — die Kruemmung
+                // beginnt damit von dort.
+                const seg = edgeEndpoints(fromPos.x, fromPos.y, toPos.x, toPos.y, r, r);
+                // Smart-Routing: gerade default, lokal um Hindernisse kurven,
+                // schneiden wenn der Umweg zu krass waere. From/To selbst
+                // werden vom Routing als Hindernisse ausgeschlossen.
+                const routed = routeEdge(
+                  { x: seg.x1, y: seg.y1 },
+                  { x: seg.x2, y: seg.y2 },
+                  obstacles,
+                  { excludeIds: new Set([e.from, e.to]) }
+                );
                 const pct = nodeProgress(qa, nodeDone, graph);
                 const doneU = isNodeCompleted(qa, nodeDone);
                 const addedU = added.has(e.from);
@@ -909,15 +1091,17 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
                 return (
                   <g key={`${e.from}-${e.to}-${i}`}>
-                    <line
-                      x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                    <path
+                      d={routed.d}
+                      fill="none"
                       stroke={doneU ? doneStroke : dimStroke}
                       stroke-width={doneU ? 2.2 : 1.35}
                       stroke-linecap="round"
                     />
                     {showBright && brightLen > 0.5 && (
-                      <line
-                        x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                      <path
+                        d={routed.d}
+                        fill="none"
                         stroke={glowStroke}
                         stroke-width={2.4}
                         stroke-linecap="round"
@@ -930,34 +1114,110 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
               })}
             </g>
 
-            {/* Sub-Node-Kanten (Kinder eines Quest-Roots) */}
+            {/* Sub-Node-Kanten (parent_of-Edges, alle structure-Relations) */}
             <g class="rpg-tree-node-edges">
-              {nodeTreeOverlay.nodeEdges.map((edge, i) => {
-                const seg = edgeEndpoints(
-                  edge.fromX, edge.fromY,
-                  edge.toX, edge.toY,
-                  nodeR(), nodeTreeOverlay.nodeRadius
+              {structureEdges.map((edge, i) => {
+                const fromPos = treePositions[edge.from];
+                const toPos = treePositions[edge.to];
+                if (!fromPos || !toPos) return null;
+                const r = nodeR();
+                const seg = edgeEndpoints(fromPos.x, fromPos.y, toPos.x, toPos.y, r, r);
+                // Smart-Routing inkl. Hindernisvermeidung
+                const routed = routeEdge(
+                  { x: seg.x1, y: seg.y1 },
+                  { x: seg.x2, y: seg.y2 },
+                  obstacles,
+                  { excludeIds: new Set([edge.from, edge.to]) }
                 );
+                // Subtree-Progress des CHILD (edge.to): bestimmt wie weit die
+                // Edge prozentual leuchtet. Glow erklimmt von Child nach Parent —
+                // dafuer routen wir einen Reverse-Pfad, damit stroke-dasharray
+                // am Child-Ende startet und nach oben "klimmt".
+                const glowPct = leafProgressRatio(graph, edge.to, nodeDone).percent;
+                const showGlow = glowPct > 0 && glowPct < 100;
+                const routedReverse = showGlow
+                  ? routeEdge(
+                      { x: seg.x2, y: seg.y2 },
+                      { x: seg.x1, y: seg.y1 },
+                      obstacles,
+                      { excludeIds: new Set([edge.from, edge.to]) }
+                    )
+                  : null;
+                const glowLen = showGlow ? Math.max(0, seg.len * (glowPct / 100)) : 0;
+                // Done-Status: Ziel ist erledigter Leaf ODER 100% Subtree-Progress.
+                const childMeta = nodeMetaById.get(edge.to);
+                const isDone = (childMeta && childMeta.isLeaf && childMeta.isDone) || glowPct === 100;
+                // Edge-Lock-Status: Side-spezifisch (child/parent/null) plus
+                // Ziel-Subtree-Lock (visuelle Dim-Darstellung).
+                // edge.locked kann sein: 'child' | 'parent' | 'both' | true (Legacy) | undefined
+                const lockSide =
+                  edge.locked === 'both' ? 'both'
+                    : edge.locked === 'parent' ? 'parent'
+                    : (edge.locked === 'child' || edge.locked === true) ? 'child'
+                    : null;
+                const isEdgeLocked = lockSide !== null;
+                const isTargetLocked = lockedNodeIds.has(edge.to);
+                const isSourceLocked = lockedNodeIds.has(edge.from);
+                // Edge-Klassen aus mehreren Achsen zusammenbauen:
+                //  1) Cuttable (im Schere-Modus, fuer roten Hover)
+                //  2) Lockable (im Sperre-Modus, fuer Schloss-Cursor + Hover)
+                //  3) State-Modifier:
+                //     - Edge selbst gesperrt (mit Side fuer differenzierten Style)
+                //     - Ziel/Quelle im Lock-Subtree (gedimmt)
+                const edgeClasses = ['rpg-tree-node-edge'];
+                if (activeTool === 'cut') edgeClasses.push('rpg-tree-node-edge--cuttable');
+                if (activeTool === 'lock') edgeClasses.push('rpg-tree-node-edge--lockable');
+                if (isEdgeLocked) edgeClasses.push('rpg-tree-node-edge--edge-locked');
+                if (lockSide === 'child' || lockSide === 'both') edgeClasses.push('rpg-tree-node-edge--edge-locked-child');
+                if (lockSide === 'parent' || lockSide === 'both') edgeClasses.push('rpg-tree-node-edge--edge-locked-parent');
+                // treelocked: visuell gedimmt wenn ENTWEDER das Child (down-stream-Lock)
+                // ODER der Parent (up-stream-Lock) im Lock-Subtree liegt.
+                if (isTargetLocked || isSourceLocked) edgeClasses.push('rpg-tree-node-edge--treelocked');
                 return (
-                  <g key={`node-edge-${edge.fromNodeId}-${edge.toNodeId}-${i}`}>
-                    <line
-                      class={activeTool === 'cut' ? 'rpg-tree-node-edge rpg-tree-node-edge--cuttable' : 'rpg-tree-node-edge'}
-                      x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
-                      stroke={edge.isDone ? doneStroke : 'rgba(200,147,47,0.18)'}
-                      stroke-width={edge.isDone ? 2.0 : 1.05}
+                  <g key={`node-edge-${edge.from}-${edge.to}-${i}`}>
+                    <path
+                      class={edgeClasses.join(' ')}
+                      d={routed.d}
+                      fill="none"
+                      stroke={isDone ? doneStroke : 'rgba(200,147,47,0.18)'}
+                      stroke-width={isDone ? 2.0 : 1.05}
                       stroke-linecap="round"
                     />
-                    {activeTool === 'cut' ? (
-                      <line
+                    {/* Progress-Glow: laeuft vom Child nach Parent in Hoehe des
+                        Subtree-Progresses. Kommt nur wenn 0 < pct < 100 (bei
+                        100 uebernimmt das `isDone`-Styling oben). */}
+                    {showGlow && glowLen > 0.5 && routedReverse ? (
+                      <path
+                        class="rpg-tree-node-edge__progress-glow"
+                        d={routedReverse.d}
+                        fill="none"
+                        stroke={glowStroke}
+                        stroke-width={2.0}
+                        stroke-linecap="round"
+                        stroke-dasharray={`${glowLen} ${Math.max(seg.len, 1)}`}
+                        style={{ filter: 'drop-shadow(0 0 4px rgba(255,200,120,0.7))' }}
+                      />
+                    ) : null}
+                    {/* Hit-Path: dicker, transparenter Klick-Bereich fuer Edge-Tools.
+                        Im Lock-Modus uebergeben wir zusaetzlich die getrimmten
+                        Endpunkte `seg`, damit der Handler die Klick-Haelfte
+                        (parent vs. child) per Vektor-Projektion bestimmen kann. */}
+                    {(activeTool === 'cut' || activeTool === 'lock') ? (
+                      <path
                         class="rpg-tree-node-edge-hit"
-                        x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+                        d={routed.d}
+                        fill="none"
                         stroke="transparent"
                         stroke-width={14}
                         stroke-linecap="round"
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleCutEdge(edge.fromNodeId, edge.toNodeId);
+                          if (activeTool === 'cut') {
+                            handleCutEdge(edge.from, edge.to);
+                          } else if (activeTool === 'lock') {
+                            handleLockEdge(e, edge, seg);
+                          }
                         }}
                       />
                     ) : null}
@@ -974,7 +1234,10 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                 const unlocked = isNodeUnlocked(q.id, graph, nodeDone, byId);
                 const completed = isNodeCompleted(q, nodeDone);
                 const isAdded = added.has(q.id);
-                const cls = nodeClass(q, unlocked, isAdded, completed);
+                // Roots koennen via parent-side-Lock im Lock-Subtree landen.
+                // Dann muessen sie genauso gedimmt werden wie Sub-Nodes.
+                const isRootLocked = lockedNodeIds.has(q.id);
+                const cls = nodeClass(q, unlocked, isAdded, completed, isRootLocked);
                 const r = nodeR();
                 const label = q.title.length > 20 ? `${q.title.slice(0, 18)}\u2026` : q.title;
                 const isFocus = focusIdFromUrl === q.id;
@@ -992,9 +1255,10 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onGraphNodeClick(q.id)}
                   >
-                    {/* Knoten-Form (Polygon je nach Kinderzahl) */}
+                    {/* Knoten-Form (Polygon je nach Subtree-Tiefe):
+                        depth 0 = Leaf = Circle, 1 = Tropfen, 2 = Linse, 3+ = Polygon */}
                     {(() => {
-                      const path = nodeShapePath(countQuestLeaves(q), r);
+                      const path = nodeShapePath(maxNodeDepth(q), r);
                       if (!path) {
                         return <circle class="rpg-tree-node__shape" r={r} stroke-width={isFocus ? 2.6 : 1.8} />;
                       }
@@ -1015,9 +1279,11 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                     ) : null}
 
                     {/* Label (Serif-Font, Gold) */}
-                    <text class="rpg-tree-node__label" y={r + 16}>
-                      {label}
-                    </text>
+                    {!isRootLocked ? (
+                      <text class="rpg-tree-node__label" y={r + 16}>
+                        {label}
+                      </text>
+                    ) : null}
                   </g>
                 );
               })}
@@ -1025,16 +1291,25 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
 
             {/* Sub-Nodes (Kinder der Quest-Roots) */}
             <g class="rpg-tree-node-nodes">
-              {nodeTreeOverlay.nodeNodes.map((n) => {
-                const cls = nodeNodeClass(n.isDone, n.isLeaf, n.isLock);
+              {nodeRenderList.map((n) => {
+                const pos = treePositions[n.nodeId];
+                if (!pos) return null;
+                const subR = nodeR();
+                // nodeNodeClass: vierter Parameter `isLocked` ist additiver
+                // CSS-Modifier `--treelocked` fuer den Tree-View-Subtree-Lock,
+                // der visuell auf dem Basis-Status (done/lock/leaf/container) aufsetzt.
+                const cls = nodeNodeClass(n.isDone, n.isLeaf, n.isLock, n.isLocked);
                 const label = n.label.length > 20 ? `${n.label.slice(0, 18)}\u2026` : n.label;
-                const shapePath = nodeShapePath(n.leafDescendants, nodeTreeOverlay.nodeRadius);
+                // Form ueber Subtree-Tiefe (depth 0 = Leaf = Circle).
+                const shapePath = nodeShapePath(n.depth, subR);
                 const isNodeSelected = selectedNode?.nodeId === n.nodeId && selectedNode?.questId === n.questId;
+                // Hub-Status: leuchtet pulsierend wenn der Sub-Node selbst added wurde.
+                const isAddedSub = added.has(n.nodeId);
                 return (
                   <g
                     key={n.id}
-                    class={`${cls}${isNodeSelected ? ' rpg-tree-node-node--selected' : ''}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}`}
-                    transform={`translate(${n.x},${n.y})`}
+                    class={`${cls}${isNodeSelected ? ' rpg-tree-node-node--selected' : ''}${treePickActive && treePickNodeIds.has(n.nodeId) ? ' rpg-tree-node-node--pick-selected' : ''}${isAddedSub ? ' rpg-tree-node-node--added' : ''}`}
+                    transform={`translate(${pos.x},${pos.y})`}
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => {
                       if (suppressNodeClickRef.current) {
@@ -1058,14 +1333,20 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                     {shapePath ? (
                       <path class="rpg-tree-node-node__shape" d={shapePath} />
                     ) : (
-                      <circle class="rpg-tree-node-node__shape" r={nodeTreeOverlay.nodeRadius} />
+                      <circle class="rpg-tree-node-node__shape" r={subR} />
                     )}
-                    {n.isLock ? (
-                      <text class="rpg-tree-node-node__glyph" y={4}>🔒</text>
+                    {/* Schloss-Glyph auf der isLock-Node entfaellt seit 2026-05-04 —
+                        die Sibling-Lock-Wirkung wird stattdessen ueber das einheitliche
+                        --treelocked-Dimming der Geschwister sichtbar (siehe
+                        computeLockedNodeIds: Sibling-Lock-Seed). */}
+                    {/* Label nur fuer NICHT-treelocked Nodes — gesperrte Nodes
+                        sollen anonym aussehen (Title verbirgt sich, im Panel
+                        wird er erst beim Anklicken sichtbar als Fragezeichen). */}
+                    {!n.isLocked ? (
+                      <text class="rpg-tree-node-node__label" y={subR + 13}>
+                        {label}
+                      </text>
                     ) : null}
-                    <text class="rpg-tree-node-node__label" y={nodeTreeOverlay.nodeRadius + 13}>
-                      {label}
-                    </text>
                   </g>
                 );
               })}
@@ -1123,6 +1404,11 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
           itemCatalog={itemCatalog}
           currentLocation={location}
           progressPct={selectedProgressPct}
+          /* Tree-View-Subtree-Sperre: prueft ob der konkret angezeigte
+             Knoten (selectedNodeView wenn Sub-Node, sonst Quest-Root) im
+             gesperrten Subtree liegt. Roots sind nie locked (computeLockedNodeIds
+             startet erst bei Nodes mit eingehenden Edges). */
+          treeLocked={lockedNodeIds.has((selectedNodeView || selectedQuest).id)}
         />
       ) : null}
     </div>

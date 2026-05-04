@@ -29,6 +29,23 @@ import { getChildIds, getParentIds } from '../src/lib/rpg-quest-graph.js';
 // Helper
 // =============================================================================
 
+/** q1→a,b; a→c — alles unter einem Root (c liegt im Container-Subtree von q1). */
+function buildSingleQuestWithNestedC() {
+  return makeRpgGraph(
+    {
+      q1: { id: 'q1', title: 'Q1' },
+      a: { id: 'a', title: 'A' },
+      b: { id: 'b', title: 'B' },
+      c: { id: 'c', title: 'C' },
+    },
+    [
+      { from: 'q1', to: 'a', relation: 'parent_of' },
+      { from: 'q1', to: 'b', relation: 'parent_of' },
+      { from: 'a', to: 'c', relation: 'parent_of' },
+    ]
+  );
+}
+
 function buildBaseGraph() {
   // Layout:
   //   q1 ──parent_of──> a
@@ -222,6 +239,33 @@ test('splitDraftsForTreePick: stableId aus dem eigenen Subtree wird NICHT als Tr
   assert.equal(treePickEdges.length, 0);
 });
 
+test('splitDraftsForTreePick: pickedFromTree erzwingt Edge auch wenn stableId im Container-Subtree liegt', () => {
+  // Regression: Multi-Parent innerhalb derselben Root-Quest — ohne Flag würde
+  // `c` im verschachtelten Save doppelt vorkommen (PUT 400).
+  const g = buildSingleQuestWithNestedC();
+  const existingIds = collectAllNodeIds(g);
+  const container = g.nodes.find((n) => n.id === 'q1');
+  const selfSubtreeIds = collectSubtreeIds(container);
+  assert.equal(selfSubtreeIds.has('c'), true);
+
+  const drafts = [{ key: 'k-c', stableId: 'c', title: 'C', pickedFromTree: true }];
+  const { cleanDrafts, treePickEdges } = splitDraftsForTreePick(drafts, 'b', existingIds, selfSubtreeIds);
+  assert.equal(cleanDrafts.length, 0);
+  assert.deepStrictEqual(treePickEdges, [{ parentId: 'b', childId: 'c' }]);
+});
+
+test('splitDraftsForTreePick: gleiche Situation ohne pickedFromTree bleibt normaler Draft', () => {
+  const g = buildSingleQuestWithNestedC();
+  const existingIds = collectAllNodeIds(g);
+  const container = g.nodes.find((n) => n.id === 'q1');
+  const selfSubtreeIds = collectSubtreeIds(container);
+
+  const drafts = [{ key: 'k-c', stableId: 'c', title: 'C' }];
+  const { cleanDrafts, treePickEdges } = splitDraftsForTreePick(drafts, 'b', existingIds, selfSubtreeIds);
+  assert.equal(cleanDrafts.length, 1);
+  assert.equal(treePickEdges.length, 0);
+});
+
 test('splitDraftsForTreePick: Draft ohne stableId (brand-new) → einfach durchgereicht', () => {
   const g = buildBaseGraph();
   const existingIds = collectAllNodeIds(g);
@@ -356,3 +400,4 @@ test('Editor-Save: removing a child via UI also removes the parent_of edge (Phas
   // b hat aber immer noch q5 als Parent (Multi-Parent erhalten)
   assert.deepStrictEqual(getParentIds(next, 'b'), ['q5']);
 });
+

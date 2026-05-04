@@ -35,6 +35,7 @@ import { normalizeQuestId } from './rpg-quest-form-helpers.js';
  *   legacyDependsOn?: string[];
  *   timeLimitOn?: boolean;
  *   timeDueAt?: string;
+ *   pickedFromTree?: boolean;
  * }} QuestNodeDraft
  */
 

@@ -70,7 +70,24 @@
  * - `'parent_of'` — V3-Alias, wird beim Einlesen auf `'structure'` gemappt
  * - `'dependency'` — Vorbedingung (Quest A muss vor Quest B fertig sein)
  *
- * @typedef {{ from: string; to: string; relation: 'structure' | 'parent_of' | 'dependency' }} RpgEdge
+ * `locked` Flag (V3, optional)
+ * ────────────────────────────
+ * Nur sinnvoll auf `relation === 'structure'`-Edges. Markiert die Kante als
+ * "Sperr-Kante" mit Richtungsangabe:
+ *   - `'child'` — Subtree UNTER dem Child-Ende ist gesperrt (down-stream)
+ *   - `'parent'` — Subtree UEBER dem Parent-Ende ist gesperrt (up-stream)
+ *   - `'both'` — beide Richtungen gleichzeitig gesperrt
+ *
+ * Legacy: `locked: true` wird beim Einlesen als `'child'` interpretiert
+ * (rueckwaertskompatibel mit der ersten Version des Lock-Features). Beim
+ * Schreiben verwenden wir immer den expliziten String — `true` taucht in
+ * neu geschriebenen Daten nicht mehr auf.
+ *
+ * Wichtig: `edge.locked` ist STRICT GETRENNT von `node.isLock`. Letzteres ist
+ * ein Modifier auf Sub-Nodes im Quest-Editor (Lock-Geschwister-Mechanik).
+ * Ersteres ist eine Edge-Eigenschaft im Tree-View, pfadspezifisch im DAG.
+ *
+ * @typedef {{ from: string; to: string; relation: 'structure' | 'parent_of' | 'dependency'; locked?: 'child' | 'parent' | 'both' | true }} RpgEdge
  */
 
 /**
@@ -112,7 +129,26 @@ function normalizeGraphEdge(raw) {
   // umbenennen, die Datenform bleibt gleich.
   const isStructure = relRaw === 'structure' || relRaw === 'parent_of';
   const relation = isStructure ? 'structure' : 'dependency';
-  return { from, to, relation };
+  /** @type {RpgEdge} */
+  const edge = { from, to, relation };
+  // Lock-Flag: nur auf structure-Kanten sinnvoll (Tree-View-Subtree-Sperre).
+  // Auf dependency-Kanten ignoriert — bewusste Einschränkung, weil Sperre
+  // eine Hierarchie-Eigenschaft ist (Subtree-unter-Edge).
+  //
+  // Werte-Migration:
+  //   - 'child' / 'parent' / 'both'  → uebernehmen wie ist
+  //   - true (Legacy)       → uebersetzen zu 'child' (alte Lock-Variante,
+  //                           es gab nur child-side-Lock)
+  //   - alles andere        → kein Lock (Feld weg)
+  // Damit: nur Edges mit explizitem Lock tragen das Feld; Default-Edges
+  // bleiben kompakt `{from, to, relation}`.
+  if (isStructure) {
+    const raw = o.locked;
+    if (raw === 'both') edge.locked = 'both';
+    else if (raw === 'parent') edge.locked = 'parent';
+    else if (raw === 'child' || raw === true) edge.locked = 'child';
+  }
+  return edge;
 }
 
 // --- Interne Hilfs-Funktionen ---

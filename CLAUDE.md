@@ -15,7 +15,7 @@ Code-Variablen bleiben kanonisch `node`/`Node`. Sichtbare UI-Texte sagen ausschl
 
 ## Tests
 
-`npm run test:quality` (alias `node --test tests/`). Stand 2026-04-28 (DAG-Phase-3): 269/0.
+`node --test tests/` (NPM-Skript hat ein Glob-Problem mit `tests/*.test.js` — das wird vom Shell nicht expandiert; lieber direkt aufrufen). Stand 2026-05-04 (nach Sibling-Lock-Integration in computeLockedNodeIds): **421/0**.
 
 ## Build-Hinweis
 

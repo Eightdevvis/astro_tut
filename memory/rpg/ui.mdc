@@ -11,7 +11,7 @@
   - `codex`: Pergament & Tinte, warmer heller Stil
   - `orrery`: Blueprint/Celestial, tiefes Indigo + Cyan
   - Theme wird ueber `.dir-astrolab/.dir-codex/.dir-orrery` auf `.rpg-tree` gesetzt
-- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads — **7 Tools**: `add`, `edit`, `cut` (Schere), `note` (super-only), `focus`, `settings` (Alchemie-Labor), `hub`. Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
+- **Astrolab** (RpgAstrolab.jsx): 3D-Armillarsphaere als Navigation oben links. Messing-Ringe mit Tool-Beads — **8 Tools**: `add`, `edit`, `cut` (Schere), `lock` (Sperre), `note` (super-only), `focus`, `settings` (Alchemie-Labor), `hub`. Rotation reagiert auf Maus-Position. Ersetzt die alten Top-Bar-Buttons.
 - **Vessels** (RpgVessel.jsx): Canvas-2D-Glasgefaesse fuer Mana (blau) und Heart (rot) links unten. Glitzer-Partikel, Fresnel-Rimlight, Glass-Highlights. Desktop-only; Mobil weiterhin LiquidVessels im Overlay.
 - **Quest-Panel** (RpgQuestPanel.jsx): Rechtes Detail-Panel im Codex-Stil. Sigil-Header mit Eyebrow-Status, Fortschrittsbalken (Meter), Reward-Pills, Node-Baum via RpgQuestNodesView, Meta-Details (`Quest-ID`/`Zweige`/`Aufgaben`/`Auswahl`).
 - **Topbar**: Serif-Titel "Codex der Quests · **Quest-Baum**" + Location-Breadcrumb rechts. Glasmorphism-Hintergrund.
@@ -20,12 +20,12 @@
 - Neuanlage und Bearbeitung ueber Astrolab-Tools `add` (→ openCreateNode) und `edit` (→ openEditNode).
 - Einstellungen ueber Astrolab-Tool `settings` (→ Alchemie-Labor Modal mit Theme-Switch + Backups).
 - Manuelle Entwuerfe im Browser-`localStorage` (wie vorher).
-- Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeLayeredLayout`.
+- Canvas: Pan/Zoom; Nodes nicht verschiebbar; Layout aus `computeForceLayout` (Force-Directed, deterministisch via Hash-Init); Edges via `routeEdge` (Smart-Routing mit Hindernisvermeidung).
   - Trackpad-Zwei-Finger-Swipe/Scroll verschiebt den Baum (Pan).
   - Zoom ueber Wheel nur mit gedrueckter `Ctrl`-Taste.
   - Touch-Pinch (zwei Finger auf Touchscreen) zoomt um den Finger-Mittelpunkt.
 - Mobile-Spezialmodus: Bei aktiver Node-Auswahl wechselt der Tree in ein Fullscreen-Detaillayout (`rpg-tree--detail-mobile`): Viewport aus, Quest-Panel als `qpanel` fast vollflächig; die **Topbar mit Hamburger bleibt sichtbar** (`z-index` über dem Panel, Panel `top` unter der Topbar), damit Werkzeuge erreichbar bleiben.
-- Mobile-Topbar: links Hamburger-Menue statt Astrolab; enthaelt die Tool-Aktionen `Quest hinzufuegen`, `Quest bearbeiten` (nur bei Selection aktiv), `Schere`, `Super-Notizen` (nur Superuser), `Fokus`, `Alchemie-Labor`, `Sammlung`.
+- Mobile-Topbar: links Hamburger-Menue statt Astrolab; enthaelt die Tool-Aktionen `Quest hinzufuegen`, `Quest bearbeiten` (nur bei Selection aktiv), `Schere`, `Sperre`, `Super-Notizen` (nur Superuser), `Fokus`, `Alchemie-Labor`, `Sammlung`.
 - Mobile-Tree-Pick-Flow (`+Node aus Tree` im Editor): wechselt in einen reinen Tree-Modus ohne Panel; Abschluss ueber schwebenden `Fertig`-Button unten; danach zurueck in den Editor.
 - Mobile-Dock: unten fester Dock mit Location-Strip + Vitals-Button.
 - Superuser-only Notizen ueber Astrolab-Tool `note`.
@@ -41,6 +41,7 @@
   - Aktiv mit Fortschritt → leuchtendes Gold-Dasharray mit Glow
   - sonst → subtiles Braun
   - `Schere`-Tool aktiv: Sub-Node-Kanten (`parent_of`) im Graph sind direkt anklickbar (groesse Hit-Area + Crosshair). Klick entfernt nur diese Parent/Child-Relation (`removeParentChildEdge`), beide Nodes bleiben bestehen.
+  - `Sperre`-Tool (Edge-Lock, V3, **bidirektional** ab 2026-05-04): Schloss-Cursor (SVG via CSS-Custom-Property `--rpg-lock-cursor`, Quelle `rpg-lock-icon.jsx`). Klick auf eine `parent_of`-Edge → die Klick-Haelfte (Maus-Position projiziert auf Edge-Vektor: t<0.5 = parent-side, t>=0.5 = child-side) bestimmt die Lock-Side. `toggleEdgeLockSide(graph, parent, child, side)` togglet: gleiche Side nochmal = unlock, andere Side = switch. Datenmodell: `edge.locked: 'child' | 'parent'` (Legacy `true` wird beim Lesen als `'child'` interpretiert, Schreiben immer als String). Subtree-Sperre via `computeLockedNodeIds(graph)` mit getrennter Down-/Up-stream-Fixpunkt-Propagation: Down-stream-Block durch `'child'`-Edges, Up-stream durch `'parent'`-Edges; Edges der jeweils anderen Side schuetzen die Propagation. Multi-Parent/Multi-Child-Schutz (alle Pfade in einer Richtung muessen blockiert sein). **STRICT GETRENNT** vom node-eigenen `isLock`-Modifier (Lock-Sibling-Mechanik im Editor). Visuell: `--edge-locked-child` (rotbraun) vs. `--edge-locked-parent` (graublau), beide gestrichelt; `--treelocked` an Sub-Nodes gedaempft + Label ausgeblendet; Edge-Klassen `--treelocked` greift wenn Source ODER Target im Lock-Subtree liegt. Im `RpgQuestPanel` setzt die `treeLocked`-Prop alle Felder unter Title/Description auf `?` (Eyebrow `Versiegelt`, keine Action-Buttons).
 - Bootstrap: Loading-Screen (`RpgBootstrapLoading`) wie vorher.
 
 ## Hub (UI) — "Zauberer" Design (Stand 2026-04-28)
@@ -77,7 +78,7 @@
 | NodesBuilder | ~859 | `src/components/RpgQuestNodesBuilder.jsx` — Editor-Subkomponente fuer Quest-Struktur |
 | RewardsBuilder | ~261 | `src/components/RpgQuestRewardsBuilder.jsx` — aus NodesBuilder extrahiert |
 | Achievement-Combobox | ~klein | `src/components/RpgAchievementCombobox.jsx` — Editor-UI fuer den `achievement`-Reward-Typ |
-| Astrolab | ~330 | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere mit 7 Tools (add/edit/cut/note/focus/settings/hub) |
+| Astrolab | ~330 | `src/components/RpgAstrolab.jsx` — 3D-Armillarsphaere mit 8 Tools (add/edit/cut/lock/note/focus/settings/hub) |
 | Vessel | ~309 | `src/components/RpgVessel.jsx` — Canvas-2D-Glasgefaesse (Mana/Heart) |
 | Quest-Panel | ~247 | `src/components/RpgQuestPanel.jsx` — Rechtes Detail-Panel; vom Tree genutzt |
 | Settings-Modal | ~262 | `src/components/RpgTreeSettings.jsx` — Alchemie-Labor: Theme-Switch + Backups |
@@ -85,12 +86,13 @@
 | Editor-AI-Flow | ~276 | `src/lib/useEditorAiFlow.js` — Questmaker-/KI-Session-Hook |
 | Shared Bootstrap-Hook | ~280 | `src/lib/useRpgBootstrap.js` — Bootstrap, Persist, Vitals, Event-Listener; Hub + Tree |
 | Pan/Zoom-Hook | ~175 | `src/lib/useTreePanZoom.js` — Wheel/Pinch/Drag |
-| SVG-Geometrie | ~497 | `src/lib/rpg-tree-svg.js` — Pure Helper fuer Node-Shapes, Edge-Ports, Cluster-Spread, computeNodeTreeOverlay |
+| SVG-Geometrie | ~165 | `src/lib/rpg-tree-svg.js` — `nodeShapePath(depth, r)`, `maxNodeDepth` (leaf=0), `regularPolygonPath`, `edgeEndpoints`, `nodeClass`/`nodeNodeClass` (stark gekuerzt im Force-Layout-Refactor) |
 | Superuser-Notizen | ~235 | `src/components/RpgTreeSuperNotes.jsx` — Hook + Modal-Komponente |
 | Nodes-Ansicht | ~354 | `src/components/RpgQuestNodesView.jsx` — gemeinsam von Hub + Panel + Editor-Preview genutzt |
 | Location | ~571 | `src/components/RpgLocationStrip.jsx`, `src/components/rpg-location-strip.css`, `src/pages/api/rpg/locations.js`, `src/lib/rpg-location*.js` |
 | Rewards | ~339 | `src/lib/rpg-quest-rewards.js` — Reward-Normalisierung, Display, Unlock-Schedule (4 Typen inkl. achievement) |
-| Graph-Layout | ~243 | `src/lib/rpg-graph-layout.js` — Layered-Layout und Collision-Resolution |
+| Force-Layout | ~310 | `src/lib/rpg-force-layout.js` — Force-Directed mit Hierarchie-Bias (parent_of-Edges → Parent leicht oben), Connected-Components-aware (disconnected Trees rücken auseinander), Annealing-Damping. Deterministisch via Hash-Init. |
+| Edge-Routing | ~440 | `src/lib/rpg-edge-routing-grid.js` — A* auf 12px-Grid mit 8-Richtungen-Bewegung, Catmull-Rom-Smoothing, 16 gleichmaessig verteilte Sample-Punkte (Animation-bereit fuer spaeteres Punkt-zu-Punkt-Tween). Fallback gerade Linie wenn umzingelt. |
 | Vitals | ~161 | `src/lib/rpg-vitals.js`, `src/components/LiquidVessels.jsx` |
 | Seiten | — | `src/pages/rpg/index.astro` (Hub mit Serif-Fonts), `src/pages/rpg/tree.astro` |
 

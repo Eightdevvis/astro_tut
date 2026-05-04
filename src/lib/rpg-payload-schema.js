@@ -100,8 +100,25 @@ export function migrateRpgGraphToV3(graph) {
   const flatNodes = new Map();
   /** @type {Set<string>} — Edge-Key 'from→to' für Dedup. */
   const structureEdgeKeys = new Set();
-  /** @type {RpgEdge[]} */
-  const structureEdges = [];
+  /** @type {RpgEdge[]} — finale Edge-Liste, korrekte Reihenfolge ist wichtig. */
+  const finalEdges = [];
+
+  // Schritt 2a: ZUERST die expliziten Edges aus `graph.edges` sammeln. Damit
+  // bewahren wir Edge-Attribute wie `locked: true`, die ein nachgelagerter
+  // Tree-Walk (Schritt 2c) nicht kennen wuerde — er wuerde nur naked
+  // structure-Edges aus parent_of-Beziehungen erzeugen und das Lock-Flag
+  // verlieren.
+  for (const e of graphEdges(v2)) {
+    if (e.relation === 'structure') {
+      const key = `${e.from}→${e.to}`;
+      if (!structureEdgeKeys.has(key)) {
+        structureEdgeKeys.add(key);
+        finalEdges.push(e); // behält locked, falls gesetzt
+      }
+    } else {
+      finalEdges.push(e); // dependency-Edges: direkt durchreichen
+    }
+  }
 
   /**
    * Klont einen Node ohne `children`/`parentId` (Compat-Felder weg).
@@ -133,14 +150,16 @@ export function migrateRpgGraphToV3(graph) {
     }
 
     // Edge zum Parent erzeugen — sowohl aus expliziter parentId als auch aus
-    // der Position im nested Tree (forced Parent durch den Caller).
+    // der Position im nested Tree (forced Parent durch den Caller). Nur falls
+    // diese Edge nicht bereits aus den expliziten `graph.edges` da ist
+    // (siehe Schritt 2a). Damit bleibt `locked` einer expliziten Edge erhalten.
     const realParent = parentId
       || (typeof node.parentId === 'string' && node.parentId.trim() ? node.parentId.trim() : null);
     if (realParent && realParent !== id) {
       const key = `${realParent}→${id}`;
       if (!structureEdgeKeys.has(key)) {
         structureEdgeKeys.add(key);
-        structureEdges.push({ from: realParent, to: id, relation: 'structure' });
+        finalEdges.push({ from: realParent, to: id, relation: 'structure' });
       }
     }
 
@@ -152,29 +171,13 @@ export function migrateRpgGraphToV3(graph) {
     }
   }
 
+  // Schritt 2b: Tree-Walk fuer flatNodes-Map UND als Fallback fuer fehlende
+  // structure-Edges (die nicht in graph.edges, aber im nested children-Tree
+  // existieren). Dank Schritt 2a haben echte Edges Vorrang — der Walk fuegt
+  // nur ergaenzend hinzu, ueberschreibt nichts.
   for (const root of graphNodes(v2)) {
     walk(root, null, new Set());
   }
-
-  // Schritt 4: vorhandene Edges übernehmen — Dependency-Edges direkt,
-  // structure-Edges via Dedup-Set (vermeidet Doppelungen mit den aus
-  // parentId/children erzeugten).
-  /** @type {RpgEdge[]} */
-  const finalEdges = [];
-  for (const e of graphEdges(v2)) {
-    if (e.relation === 'structure') {
-      const key = `${e.from}→${e.to}`;
-      if (!structureEdgeKeys.has(key)) {
-        structureEdgeKeys.add(key);
-        finalEdges.push(e);
-      }
-    } else {
-      finalEdges.push(e);
-    }
-  }
-  // Dann die aus dem Walk gesammelten structure-Edges (Reihenfolge: erst
-  // explizit benannte, dann strukturell abgeleitete).
-  for (const e of structureEdges) finalEdges.push(e);
 
   // makeRpgGraph mit Map (statt Array) materialisiert automatisch die
   // Compat-View: `roots` werden aus den structure-Edges rekonstruiert mit

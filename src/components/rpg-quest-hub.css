@@ -623,6 +623,23 @@
   opacity: 0.62;
 }
 
+/*
+ * Treelocked: Lock-Sibling-Wirkung im Panel/Hub — analog zum Tree-View
+ * (`.rpg-tree-node-node--treelocked` / `.rpg-tree-node--treelocked`).
+ * Schwester-Nodes einer aktiven `isLock`-Node werden gedimmt und kursiv —
+ * Lesbarkeit reduziert, Klick funktioniert weiterhin (canSetNodeDone-Guard
+ * verhindert versehentliches Abhaken).
+ */
+.rpg-node--treelocked {
+  opacity: 0.4;
+  font-style: italic;
+}
+
+.rpg-node--treelocked .rpg-node__text,
+.rpg-node--treelocked .rpg-node__summary-text {
+  filter: grayscale(0.4);
+}
+
 /* ── Reward-Pills (Items + Punkte) ─────────────────────────────── */
 .rpg-rewards {
   display: flex;

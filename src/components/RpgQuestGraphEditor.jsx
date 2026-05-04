@@ -349,7 +349,8 @@ export default function RpgQuestGraphEditor({
       // neue Nodes zu klonen. Kein Move, kein Duplikat — multi-parent-fähig.
       const selectedDrafts = selectedIds
         .map((id) => graphNodeIdToDraft(graph, id))
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((d) => ({ ...d, pickedFromTree: true }));
 
       if (selectedDrafts.length > 0) {
         if (parentDraftKey === ROOT_PICK) {
@@ -578,16 +579,27 @@ export default function RpgQuestGraphEditor({
       const removedIdSet = new Set(out.removedIds.map((id) => String(id || '').trim()).filter(Boolean));
       const cleanedChildren =
         removedIdSet.size > 0 ? stripDependsOnReferences(out.nodes, removedIdSet) : out.nodes;
-      onApply(
-        upsertQuestInGraph(
-          graph,
-          {
-            ...container,
-            children: cleanedChildren,
-          },
-          []
-        )
+      const updatedContainer = {
+        ...container,
+        children: cleanedChildren,
+      };
+      const targetId = String(editTargetNodeId || questId).trim();
+      const newSubtreeIds = collectSubtreeIds(updatedContainer);
+      const prunedGraph = pruneStaleParentEdgesForContainer(
+        graph,
+        String(editContainerQuestId || '').trim(),
+        newSubtreeIds
       );
+      const graphWithoutRemoved = {
+        ...prunedGraph,
+        nodes: (prunedGraph.nodes || []).filter((n) => !removedIdSet.has(String(n?.id || '').trim())),
+        edges: (prunedGraph.edges || []).filter((e) => {
+          const from = String(e?.from || '').trim();
+          const to = String(e?.to || '').trim();
+          return !removedIdSet.has(from) && !removedIdSet.has(to);
+        }),
+      };
+      onApply(upsertQuestInGraph(graphWithoutRemoved, updatedContainer, []));
       setDraftsOpen(false);
       onClose();
       return;

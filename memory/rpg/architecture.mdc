@@ -16,7 +16,7 @@
 
 - Modellregel: **Node-only** — jede Einheit ist ein Node; Parent/Child sind ebenfalls Nodes; keine fachliche Trennung Quest-vs-Node.
 - **Render-Pipeline tiefenagnostisch**: Display/Reward/Progress-Funktionen (`buildRewardDisplayList`, `questLeafProgressRatio`, `RpgQuestNodesView`, `RpgQuestPanel`) arbeiten ohne Subtypen-Verzweigung Root-vs-Sub-Node. Lookup-Scope wird ueber `scopeQuestId`-Parameter explizit getragen, nicht ueber ID-Spoofing oder `source: 'quest'/'node'`-Flags.
-- Graph-Form: kanonisch `{ nodes: RpgNode[], edges: RpgEdge[] }` mit `RpgEdge = { from, to, relation }`. Legacy-Aliase (`quests`, `fromNodeId`/`toNodeId`) werden von Normalizern beim Einlesen akzeptiert, aber nie geschrieben.
+- Graph-Form: kanonisch `{ nodes: RpgNode[], edges: RpgEdge[] }` mit `RpgEdge = { from, to, relation, locked? }`. Legacy-Aliase (`quests`, `fromNodeId`/`toNodeId`) werden von Normalizern beim Einlesen akzeptiert, aber nie geschrieben. Optionales `locked: true` nur auf `relation === 'structure'`-Edges (Tree-View Subtree-Sperre, V3); auf dependency-Kanten verworfen. STRICT GETRENNT von `node.isLock` (Lock-Sibling-Modifier im Editor).
 - **DAG-Form (V3, ab Phase 1)**: Hierarchie lebt ausschliesslich in `graph.edges` als `relation: 'parent_of'` (Alias `'structure'`). In V3-canonical sind Nodes flach in `graph.nodes` (kein nested `children`, kein `parentId`). Multi-Parent-Knoten sind dadurch moeglich. Die **Compat-View** (`denormalizeGraphForCompat`) baut zur Laufzeit `children`/`parentId` zurueck, sodass Phase-1-Aufrufer unveraendert weiterlaufen. Phase 2 stellt Aufrufer auf Edge-Helper (`getChildIds`, `getParentIds`, `addParentChildEdge`, `hasDagCycle` etc.) um, Phase 3+4 entfernen Compat.
 - Graph-Kanten modellieren Quest-Abhaengigkeiten; Freischaltung basiert auf Abschluss der Vorgaenger.
 - Quest-Differenzierung erfolgt nicht mehr ueber `main`/`side`, sondern nur ueber Struktur (`children`) + Kanten.
@@ -41,7 +41,7 @@
 - `src/pages/api/rpg/quests-generate.js`
 - `src/pages/api/rpg/achievements.js`
 - `src/pages/api/rpg/locations.js`
-- `src/lib/rpg-quest-graph.js` — inkl. V3 DAG-Helper (`getChildIds`, `getParentIds`, `getChildNodes`, `getParentNodes`, `getRootNodeIds`, `addParentChildEdge`, `removeParentChildEdge`, `hasDagCycle`)
+- `src/lib/rpg-quest-graph.js` — inkl. V3 DAG-Helper (`getChildIds`, `getParentIds`, `getChildNodes`, `getParentNodes`, `getRootNodeIds`, `addParentChildEdge`, `removeParentChildEdge`, `hasDagCycle`) + Edge-Lock-Helper (`setEdgeLocked`, `toggleEdgeLocked`, `isEdgeLocked`, `isNodeLockedInGraph`, `computeLockedNodeIds`)
 - `src/lib/rpg-quest-nodes.js` — inkl. `breakGraphCycles` + `deduplicateGraphRoots` (Sicherung gegen Render-Stack-Overflow)
 - `src/lib/rpg-payload-schema.js` — `RPG_PAYLOAD_SCHEMA_VERSION = 3`, `migrateRpgGraphToV3`, `stripGraphCompatFields`
 - `src/lib/rpg-graph-validation.js` — Referenz-/Subtree-Guards
@@ -54,13 +54,14 @@
 
 - `src/lib/useRpgBootstrap.js` (~280) — Bootstrap/Persist/Vitals-Reconciliation (Hub + Tree)
 - `src/lib/useTreePanZoom.js` (~175) — Pan/Zoom-Viewport-Hook (Tree)
-- `src/lib/rpg-tree-svg.js` (~497) — Pure SVG-Geometrie/Layout-Helper (Tree)
+- `src/lib/rpg-tree-svg.js` (~165) — Pure SVG-Helper: nodeShapePath/maxNodeDepth (Form via Subtree-Tiefe), edgeEndpoints, nodeClass/nodeNodeClass (gekuerzt im Force-Layout-Refactor)
 - `src/components/RpgTreeSuperNotes.jsx` (~235) — Superuser-Notizen Hook + Modal (Tree)
 - `src/lib/rpg-graph-editor-ops.js` (~385) — Pure Editor-Operationen (Graph-Traversal, applyNodeFieldsUpdate, formatAiError)
 - `src/lib/useEditorAiFlow.js` (~276) — Questmaker-/KI-Session-Hook (Editor)
 - `src/lib/useManualQuestDraftAutosave.js` (~199) — Manual-Draft Autosave/Restore-Hook (Editor, Pass 4)
 - `src/lib/rpg-quest-rewards.js` (~339) — Reward-Normalisierung, Display, Unlock-Schedule
 - `src/lib/rpg-quest-editor-draft.js` (~680) — Editor-Draft-Modell (Drafts <-> Nodes)
-- `src/lib/rpg-graph-layout.js` (~243) — Layered-Layout und Collision-Resolution
+- `src/lib/rpg-force-layout.js` (~310) — Force-Directed mit Hierarchie-Bias (parent_of-Edges) + Connected-Components (disconnected Trees getrennt) + Annealing-Damping. Deterministisch via Hash-Init. Ersetzt rpg-graph-layout.js seit 2026-05-04.
+- `src/lib/rpg-edge-routing-grid.js` (~440) — A* auf 12px-Grid mit Catmull-Rom-Smoothing + 16-Sample-Output fuer spaetere Animation. Fallback gerade Linie wenn Target umzingelt. Ersetzt rpg-edge-routing.js (Bezier-Variante).
 - `src/lib/rpg-achievement-catalog-db.js` (~129) — DB-Backing fuer den `achievement`-Reward-Typ
 - `src/lib/rpg-quest-form-helpers.js` (~40) — minimaler Helper-Modul (normalizeQuestId, labelsToNodes); historische Editor-Text-Modus-Funktionen in Pass 4 entfernt

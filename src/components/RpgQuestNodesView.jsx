@@ -1,6 +1,6 @@
-import { useState } from 'preact/hooks';
-import { canSetNodeDone, buildRewardDisplayList, isLockNode } from '../lib/rpg-quest-nodes.js';
-import { nodeProgress } from '../lib/rpg-quest-graph.js';
+import { useState, useMemo } from 'preact/hooks';
+import { canSetNodeDone, buildRewardDisplayList } from '../lib/rpg-quest-nodes.js';
+import { nodeProgress, computeLockedNodeIds } from '../lib/rpg-quest-graph.js';
 import { normalizeQuestCityLocation, normalizeNodePlaceLocation } from '../lib/rpg-location.js';
 import { resolveNodeGuardQuest } from '../lib/rpg-graph-validation.js';
 
@@ -68,9 +68,9 @@ function RewardManaStarIcon() {
   );
 }
 
-function NodeLockIcon() {
-  return <span class="rpg-node-badge rpg-node-badge--lock" title="Gesperrte Quest">🔒</span>;
-}
+// NodeLockIcon entfaellt seit 2026-05-04 — die Lock-Sibling-Mechanik
+// (node.isLock) zeigt sich jetzt einheitlich ueber das `--treelocked`-Dimming
+// der gesperrten Geschwister-Nodes (siehe `lockedNodeIds` weiter unten).
 
 /**
  * @param {{
@@ -136,6 +136,16 @@ export default function RpgQuestNodesView({
   const cityMismatch = !!questCity && !!currentCity && questCity !== currentCity;
   const cityLead = Object.values(doneFor).some(Boolean) ? 'Kehre zurueck zu' : 'Gehe zu';
 
+  // Lock-Set fuer visuelles Dimming der gesperrten Sub-Nodes — einheitlich
+  // mit dem Tree-View. Berechnet:
+  //   - Edge-Lock (child/parent/both) auf parent_of-Edges
+  //   - Sibling-Lock via aktive node.isLock-Nodes (nodeDone-aware)
+  // Wenn kein Graph uebergeben wurde, leeres Set → keine Dimming-Wirkung.
+  const lockedNodeIds = useMemo(
+    () => (graph ? computeLockedNodeIds(graph, activeNodeDone) : new Set()),
+    [graph, activeNodeDone]
+  );
+
   return (
     <>
       {activeShowChildren ? (
@@ -165,6 +175,7 @@ export default function RpgQuestNodesView({
                 showLocationGuidance={showLocationGuidance}
                 doneScopeNodeId={activeDoneScopeNodeId}
                 graph={graph}
+                lockedNodeIds={lockedNodeIds}
               />
             ))
           )}
@@ -246,8 +257,12 @@ function NodeBranch({
   showLocationGuidance,
   doneScopeNodeId,
   graph = null,
+  lockedNodeIds = null,
 }) {
   const hasSubs = Array.isArray(childNode.children) && childNode.children.length > 0;
+  // Treelocked: dieser Node ist via Edge-Lock oder Sibling-Lock im
+  // gemeinsamen Lock-Set. Visuell gedimmt — analog zum Tree-View.
+  const isTreeLocked = !!(lockedNodeIds && lockedNodeIds.has(childNode.id));
 
   if (hasSubs) {
     // Fortschritt fuer Gruppen-Nodes berechnen (nur wenn graph vorhanden)
@@ -256,7 +271,7 @@ function NodeBranch({
     return (
       <li
         key={childNode.id}
-        class="rpg-node rpg-node--group"
+        class={`rpg-node rpg-node--group${isTreeLocked ? ' rpg-node--treelocked' : ''}`}
         style={{ '--rpg-node-depth': String(depth) }}
       >
         <details class="rpg-node__details" open={depth < 1}>
@@ -265,7 +280,7 @@ function NodeBranch({
               {childNode.title}
               {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
             </span>
-            {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}
+            {/* NodeLockIcon entfaellt — Sibling-Lock-Wirkung jetzt via --treelocked-Dimming. */}
             {childNode.optional ? (
               <span class="rpg-node-badge" title="Optional">
                 optional
@@ -294,6 +309,7 @@ function NodeBranch({
                 showLocationGuidance={showLocationGuidance}
                 doneScopeNodeId={doneScopeNodeId}
                 graph={graph}
+                lockedNodeIds={lockedNodeIds}
               />
             ))}
           </ul>
@@ -333,7 +349,9 @@ function NodeBranch({
       key={childNode.id}
       class={`rpg-node rpg-node--leaf${childNode.optional ? ' rpg-node--optional' : ''}${
         hasFocusedSibling && !isFocused ? ' rpg-node--dimmed' : ''
-      }${showGoToHint ? ' rpg-node--place-blocked' : ''}`}
+      }${showGoToHint ? ' rpg-node--place-blocked' : ''}${
+        isTreeLocked ? ' rpg-node--treelocked' : ''
+      }`}
       style={{ '--rpg-node-depth': String(depth) }}
       onMouseEnter={() => setFocusedNodeId(childNode.id)}
       onFocusCapture={() => setFocusedNodeId(childNode.id)}
@@ -354,7 +372,7 @@ function NodeBranch({
           <span class="rpg-node__text">{childNode.title}</span>
           {childNode.description ? <small class="rpg-node__desc">{childNode.description}</small> : null}
         </span>
-        {isLockNode(/** @type {any} */ (childNode)) ? <NodeLockIcon /> : null}
+        {/* NodeLockIcon entfaellt — Sibling-Lock-Wirkung jetzt via --treelocked-Dimming. */}
         {childNode.optional ? (
           <span class="rpg-node-badge" title="Optional">
             optional

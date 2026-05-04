@@ -310,6 +310,114 @@
   stroke-width: 1.8;
 }
 
+/* ── Lock-Tool: Schloss-Cursor + lockable Edges ───────────────────── */
+/*
+ * Cursor wird via CSS-Custom-Property `--rpg-lock-cursor` injiziert —
+ * Quelle ist `src/lib/rpg-lock-icon.js` (LOCK_CURSOR_VALUE), gesetzt im
+ * RpgQuestTree als inline-Style. Damit teilen Bead-Icon und Cursor genau
+ * dasselbe SVG-Symbol; aendern wir die Geometrie in `rpg-lock-icon.js`,
+ * folgen beide automatisch.
+ *
+ * Fallback `pointer` falls die Property nicht gesetzt ist (z.B. SSR
+ * oder vor Mount).
+ */
+.rpg-tree--tool-lock,
+.rpg-tree--tool-lock .rpg-tree__viewport,
+.rpg-tree--tool-lock .rpg-tree__viewport--dragging {
+  cursor: var(--rpg-lock-cursor, pointer);
+}
+
+.rpg-tree--tool-lock .rpg-tree-node-edge--lockable {
+  /* Cursor erbt vom Container; explizit setzen schadet nicht. */
+  cursor: inherit;
+}
+
+.rpg-tree--tool-lock .rpg-tree-node-edge-hit {
+  pointer-events: stroke;
+  cursor: inherit;
+}
+
+.rpg-tree--tool-lock .rpg-tree-node-edge--lockable:hover {
+  /* Hover im Lock-Modus: warmer Goldton, deutlich sichtbar wo geklickt wird. */
+  stroke: rgba(255, 200, 100, 0.95);
+  stroke-width: 1.8;
+}
+
+/* ── Edge-Locked-State (Edge traegt locked: 'child' | 'parent') ───── */
+/*
+ * Bidirektionale Lock-Side (ab 2026-05-04): die Edge zeigt visuell, welcher
+ * Subtree gesperrt wurde — damit der User beim zweiten Klick weiss, auf
+ * welche Haelfte er treffen muss zum Entsperren.
+ *
+ * Dasharray-Trick: 50% sichtbar + 50% Luecke. Mit `stroke-dashoffset` kann
+ * man die Position der gestrichelten Haelfte verschieben:
+ *   - Default (offset 0): Strich startet am from-Ende → markiert Parent-Haelfte
+ *   - Negativer offset: Strich beginnt verschoben → markiert Child-Haelfte
+ *
+ * Wir benutzen `pathLength="100"` (im JSX) waere aber Aufwand; einfacher ist:
+ * wir lassen beide Variants als komplett gestrichelte Linie und unterscheiden
+ * durch Stroke-Farbe — fuer den ersten Wurf reicht das.
+ */
+.rpg-tree-node-edge--edge-locked {
+  stroke: rgba(140, 100, 50, 0.55) !important;
+  stroke-width: 1.2 !important;
+  stroke-dasharray: 4 5;
+}
+
+/* Child-Side-Lock (Subtree unten gesperrt): waermer rotbraun. */
+.rpg-tree-node-edge--edge-locked-child {
+  stroke: rgba(170, 90, 50, 0.7) !important;
+}
+
+/* Parent-Side-Lock (Subtree oben gesperrt): kuehler graublau. */
+.rpg-tree-node-edge--edge-locked-parent {
+  stroke: rgba(100, 110, 140, 0.7) !important;
+}
+
+/* ── Treelocked-State (Edge zeigt auf gesperrten Subtree) ─────────── */
+.rpg-tree-node-edge--treelocked {
+  /* Subtree-Edges deutlich dimmen — sie "verschwimmen" optisch im Schatten. */
+  stroke: rgba(80, 60, 30, 0.32) !important;
+  stroke-width: 0.9 !important;
+}
+
+.rpg-tree-node-node--treelocked .rpg-tree-node-node__shape {
+  /* Knoten im gesperrten Subtree: stark gedaempft, kaum lesbar. */
+  fill: rgba(20, 16, 10, 0.55);
+  stroke: rgba(120, 90, 50, 0.28);
+  opacity: 0.45;
+}
+
+.rpg-tree-node-node--treelocked .rpg-tree-node-node__glyph {
+  /* Lock-Sibling-Glyph (das alte Schloss-Emoji) auch ausblenden, falls beides
+     zusammenfaellt — sonst wirkt der Knoten zu hervorgehoben. */
+  opacity: 0.25;
+}
+
+/* ── Quest-Root im Lock-Subtree (parent-side-Lock erreicht den Root) ── */
+/*
+ * Tritt auf, wenn ein parent-side-Lock auf einer ausgehenden Edge dazu fuehrt,
+ * dass der Quest-Root selbst im computeLockedNodeIds-Set landet. Visuell
+ * gleicher gedaempfter Look wie bei Sub-Node-Subtree-Locks, plus Label-Fade.
+ */
+.rpg-tree-node--treelocked .rpg-tree-node__shape {
+  fill: rgba(20, 16, 10, 0.55) !important;
+  stroke: rgba(120, 90, 50, 0.28) !important;
+  opacity: 0.45;
+}
+
+.rpg-tree-node--treelocked .rpg-tree-node__label {
+  /* Label dezent ausblenden — der Knoten ist versiegelt, der Title soll
+     nicht hervorstechen. Komplett auf 0 verschwindet zu hart, also fade. */
+  opacity: 0.3;
+  font-style: italic;
+}
+
+/* Auch der Time-Urgent-Dot (rote Frist-Markierung) faded mit. */
+.rpg-tree-node--treelocked .rpg-tree-node__time-urgent {
+  opacity: 0.3;
+}
+
 /* Quest-Root-Nodes (Hauptknoten) */
 .rpg-tree-node {
   cursor: pointer;
@@ -349,12 +457,27 @@
   filter: drop-shadow(0 0 6px rgba(200,147,47,0.3));
 }
 
-/* Aktiv: hell, Gold-Leuchten */
+/* Aktiv: hell, Gold-Leuchten + Pulsing Inner-Glow.
+   Force-Layout-Refactor 2026-05-04: added-Status fuer den Hub-Status erzeugt
+   ein sanftes Atem-Leuchten von innen — gamification dopamin nudge ohne zu
+   aufdringlich zu sein. ease-in-out + 2.8s Periode = "Lebenszeichen". */
 .rpg-tree-node--active .rpg-tree-node__shape {
   fill: rgba(60,42,18,0.85);
   stroke: var(--gold-bright);
   stroke-width: 1.8;
   filter: drop-shadow(0 0 10px rgba(255,220,140,0.55));
+  animation: rpg-pulse-active 2800ms ease-in-out infinite;
+}
+
+@keyframes rpg-pulse-active {
+  0%, 100% {
+    fill: rgba(60,42,18,0.85);
+    filter: drop-shadow(0 0 8px rgba(255,220,140,0.45));
+  }
+  50% {
+    fill: rgba(82,58,24,0.95);
+    filter: drop-shadow(0 0 16px rgba(255,220,140,0.85));
+  }
 }
 
 /* Fertig: gedaempft, edel */
@@ -438,6 +561,25 @@
 .rpg-tree-node-node--leaf .rpg-tree-node-node__shape {
   fill: rgba(200,147,47,0.1);
   stroke: rgba(200,147,47,0.55);
+  transition: fill 240ms, filter 240ms;
+}
+
+/* Sub-Node ist im Hub added: gleiches Inner-Glow-Pulse wie active Quests.
+   Wird vom JSX als zusaetzliche Klasse gesetzt, additiv zum done/leaf/etc. */
+.rpg-tree-node-node--added .rpg-tree-node-node__shape {
+  fill: rgba(82,58,24,0.85);
+  stroke: var(--gold-bright);
+  stroke-width: 1.6;
+  animation: rpg-pulse-active 2800ms ease-in-out infinite;
+}
+
+/* Edge-Progress-Glow: leuchtet von Child nach Parent, Anteil = Subtree-Progress.
+   sanfte Transition damit Aenderungen des Progresses nicht hart "snappen".
+   Diese Klasse wird auf den Glow-Path gelegt; der Path selbst hat bereits
+   stroke-dasharray fuer den prozentualen Anteil. */
+.rpg-tree-node-edge__progress-glow {
+  transition: stroke-dasharray 480ms ease-out, opacity 480ms ease-out;
+  pointer-events: none;
 }
 
 .rpg-tree-node-node--container .rpg-tree-node-node__shape {

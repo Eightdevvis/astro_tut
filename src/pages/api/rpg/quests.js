@@ -157,7 +157,13 @@ export async function PUT({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Doppelte Quest-IDs im Graph' }), { status: 400 });
   }
   const edges = graphEdges(migratedGraph);
-  const refCheck = validateRpgGraphReferences(migratedGraph, edges);
+  // Multi-Parent-Compat-View: dieselbe Node-ID kann unter mehreren Parents im
+  // nested `children`-Baum vorkommen (Absicht). validateQuestNodeDependencies
+  // prüft aber auf ID-Duplikate im Tiefen-Walk und würde false-positiv 400
+  // liefern. Validierung auf flachem Graph (wie DB-Persistenz) — siehe
+  // stripGraphCompatFields in rpg-payload-schema.js.
+  const graphForRefCheck = stripGraphCompatFields(migratedGraph);
+  const refCheck = validateRpgGraphReferences(graphForRefCheck, graphEdges(graphForRefCheck));
   if (!refCheck.ok) {
     return new Response(JSON.stringify({ error: refCheck.reason }), { status: 400 });
   }

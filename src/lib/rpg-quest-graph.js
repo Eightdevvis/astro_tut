@@ -1,6 +1,6 @@
 /**
  * Graph-Operationen: Unlock-Pruefung, Fortschritt, Upsert, Zyklen-Erkennung.
- * Layout-Code liegt in rpg-graph-layout.js.
+ * Layout-Code liegt in rpg-force-layout.js (+ rpg-edge-routing-grid.js fuer Edges).
  *
  * Phase 2 (DAG): Done-Status liest sich aus dem flachen `Record<nodeId, boolean>`
  * (RpgFlatNodeDone). Helper wie `nodeProgress`, `leafProgressRatio`,
@@ -463,6 +463,412 @@ export function addParentChildEdge(graph, parentId, childId) {
   return ensureStructureEdgesFromNodes(
     makeRpgGraph(nodesById, [...edges, { from: parentId, to: childId, relation: 'structure' }])
   );
+}
+
+// ============================================================================
+// Edge-Lock (Tree-View Subtree-Sperre, V3) — bidirektional ab 2026-05-04
+//
+// STRICT GETRENNT vom node-eigenen `isLock`-Flag (Lock-Sibling-Mechanik im
+// Editor — andere Datenkante, andere Semantik).
+//
+// Modell: jede `parent_of`-Edge kann eine `locked`-Side tragen:
+//   - 'child'  → der Child-Subtree (downstream) ist gesperrt
+//   - 'parent' → der Parent-Branch  (upstream) ist gesperrt
+//   - sonst    → kein Lock
+//
+// Legacy-Kompatibilitaet: `locked: true` aus der ersten Version wird beim
+// Lesen automatisch als `'child'` interpretiert (siehe normalizeGraphEdge).
+// Neue Schreiboperationen verwenden ausschliesslich die expliziten Strings.
+//
+// Subtree-Propagation: `computeLockedNodeIds` macht eine bidirektionale
+// Fixpunkt-Iteration — siehe dortige Doku.
+// ============================================================================
+
+/**
+ * Liest die Lock-Side einer Edge ab. Akzeptiert sowohl die explizite String-
+ * Form als auch das Legacy-Boolean `true` (= 'child').
+ *
+ * @param {RpgEdge | null | undefined} edge
+ * @returns {'child' | 'parent' | 'both' | null}
+ */
+export function readEdgeLockSide(edge) {
+  if (!edge) return null;
+  const v = /** @type {any} */ (edge).locked;
+  if (v === 'both') return 'both';
+  if (v === 'parent') return 'parent';
+  if (v === 'child' || v === true) return 'child';
+  return null;
+}
+
+/**
+ * @param {'child' | 'parent' | 'both' | null} side
+ * @returns {boolean}
+ */
+function hasChildSide(side) {
+  return side === 'child' || side === 'both';
+}
+
+/**
+ * @param {'child' | 'parent' | 'both' | null} side
+ * @returns {boolean}
+ */
+function hasParentSide(side) {
+  return side === 'parent' || side === 'both';
+}
+
+/**
+ * Setzt oder entfernt das Lock-Flag auf einer parent_of-Edge mit expliziter
+ * Side-Angabe.
+ *
+ * Idempotent: wenn die Ziel-Kante bereits den gewuenschten Zustand hat oder
+ * gar nicht existiert, gibt die Funktion den unveraenderten Graph zurueck
+ * (referenz-gleich) — vermeidet unnoetige Re-Renders.
+ *
+ * Nur structure-Edges werden modifiziert; dependency-Edges ignorieren das Flag.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @param {'child' | 'parent' | 'both' | null} side — null = Lock entfernen
+ * @returns {RpgGraph}
+ */
+export function setEdgeLockSide(graph, parentId, childId, side) {
+  if (!parentId || !childId) return graph;
+  const wantSide = side === 'child' || side === 'parent' || side === 'both' ? side : null;
+  const edges = graphEdges(graph);
+  let changed = false;
+  /** @type {RpgEdge[]} */
+  const next = [];
+  for (const e of edges) {
+    if (
+      isParentChildRelation(e)
+      && e.from === parentId
+      && e.to === childId
+    ) {
+      const currentSide = readEdgeLockSide(e);
+      if (currentSide === wantSide) {
+        // Schon im Soll-Zustand — Edge unveraendert weiterreichen.
+        next.push(e);
+      } else if (wantSide) {
+        // Side setzen oder umschalten. Vorhandenes locked-Feld ueberschreiben.
+        next.push({ ...e, locked: wantSide });
+        changed = true;
+      } else {
+        // Unlock: locked-Feld komplett entfernen (Default-Edge ist kompakt).
+        const { locked: _drop, ...rest } = /** @type {any} */ (e);
+        next.push(/** @type {RpgEdge} */ (rest));
+        changed = true;
+      }
+    } else {
+      next.push(e);
+    }
+  }
+  if (!changed) return graph;
+  // Aus der flachen ID-Map + neuen Edges rebuilden — damit Compat-Materialisierung
+  // (children/parentId) konsistent bleibt.
+  const nodesById = Object.fromEntries(buildFlatNodeMap(graph));
+  return makeRpgGraph(nodesById, next);
+}
+
+/**
+ * Toggled die Lock-Side einer Edge:
+ *   - Aktuelle Side === side → unlock (Klick auf gleiche Haelfte = entsperren)
+ *   - Aktuelle Side !== side → setze auf side (Wechsel der Sperre)
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @param {'child' | 'parent'} side — Side aus dem Click-Position berechnet
+ * @returns {RpgGraph}
+ */
+export function toggleEdgeLockSide(graph, parentId, childId, side) {
+  if (side !== 'child' && side !== 'parent') return graph;
+  const current = readEdgeLockSide(getParentChildEdge(graph, parentId, childId));
+  /** @type {'child' | 'parent' | 'both' | null} */
+  let wantSide = null;
+  // Unabhaengiges Toggle beider Seiten:
+  // parent + child koennen gleichzeitig aktiv sein (`both`), statt sich
+  // gegenseitig zu ueberschreiben.
+  if (side === 'parent') {
+    if (current === 'parent') wantSide = null;
+    else if (current === 'child') wantSide = 'both';
+    else if (current === 'both') wantSide = 'child';
+    else wantSide = 'parent';
+  } else {
+    if (current === 'child') wantSide = null;
+    else if (current === 'parent') wantSide = 'both';
+    else if (current === 'both') wantSide = 'parent';
+    else wantSide = 'child';
+  }
+  return setEdgeLockSide(graph, parentId, childId, wantSide);
+}
+
+/**
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @returns {RpgEdge | null}
+ */
+function getParentChildEdge(graph, parentId, childId) {
+  for (const e of graphEdges(graph)) {
+    if (!isParentChildRelation(e)) continue;
+    if (e.from === parentId && e.to === childId) return e;
+  }
+  return null;
+}
+
+/**
+ * Liest die Lock-Side einer Edge aus dem Graph (per ID-Lookup).
+ * Existiert die Edge nicht oder ist sie kein parent_of, returned null.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @returns {'child' | 'parent' | 'both' | null}
+ */
+export function getEdgeLockSide(graph, parentId, childId) {
+  if (!parentId || !childId) return null;
+  for (const e of graphEdges(graph)) {
+    if (!isParentChildRelation(e)) continue;
+    if (e.from !== parentId || e.to !== childId) continue;
+    return readEdgeLockSide(e);
+  }
+  return null;
+}
+
+// --- Backward-Compat-Wrapper ------------------------------------------------
+
+/**
+ * Backward-Compat: setEdgeLocked(graph, p, c, true) → setEdgeLockSide(... 'child').
+ * `false` → unlock. Neue Aufrufer sollten `setEdgeLockSide` verwenden.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @param {boolean} locked
+ * @returns {RpgGraph}
+ */
+export function setEdgeLocked(graph, parentId, childId, locked) {
+  return setEdgeLockSide(graph, parentId, childId, locked ? 'child' : null);
+}
+
+/**
+ * Backward-Compat: toggled zwischen child-side-locked und unlocked.
+ * Beachtet auch parent-side-Lock — der wird von dieser Funktion zu unlocked.
+ * Neue Aufrufer sollten `toggleEdgeLockSide` mit expliziter Side verwenden.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @returns {RpgGraph}
+ */
+export function toggleEdgeLocked(graph, parentId, childId) {
+  const current = getEdgeLockSide(graph, parentId, childId);
+  // Wenn aktuell schon (irgendwie) gelockt → unlock; sonst → child-side locken.
+  return setEdgeLockSide(graph, parentId, childId, current ? null : 'child');
+}
+
+/**
+ * Liest "ist diese Edge ueberhaupt gelockt?" (egal in welche Richtung).
+ *
+ * @param {RpgGraph} graph
+ * @param {string} parentId
+ * @param {string} childId
+ * @returns {boolean}
+ */
+export function isEdgeLocked(graph, parentId, childId) {
+  return getEdgeLockSide(graph, parentId, childId) !== null;
+}
+
+/**
+ * Direktes "ist dieser Node aufgrund eingehender Edges gelockt"-Check.
+ * Beruecksichtigt NUR child-side-Locks (down-stream-Propagation).
+ * Fuer die volle bidirektionale Logik siehe `computeLockedNodeIds`.
+ *
+ * Multi-Parent-konservativ: Node ist nur gelockt wenn ALLE eingehenden
+ * Edges child-side-locked sind UND mind. eine eingehende existiert.
+ *
+ * @param {RpgGraph} graph
+ * @param {string} nodeId
+ * @returns {boolean}
+ */
+export function isNodeLockedInGraph(graph, nodeId) {
+  if (!nodeId || typeof nodeId !== 'string') return false;
+  let total = 0;
+  let blocked = 0;
+  for (const e of graphEdges(graph)) {
+    if (!isParentChildRelation(e)) continue;
+    if (e.to !== nodeId) continue;
+    total += 1;
+    if (hasChildSide(readEdgeLockSide(e))) blocked += 1;
+  }
+  return total > 0 && blocked === total;
+}
+
+/**
+ * Berechnet die Menge aller Node-IDs, die als "gelockt" gelten —
+ * **bidirektional** propagiert (down- und up-stream) PLUS Sibling-Lock via
+ * `node.isLock`.
+ *
+ * Down-stream (child-side-Lock auf Edge P→C):
+ *   Ein Knoten N ist down-stream-gelockt, wenn EINE eingehende parent_of-Edge
+ *   selbst child-side-locked ist ODER ihr Parent transitiv gelockt ist.
+ *
+ * Up-stream (parent-side-Lock auf Edge P→C):
+ *   Ein Knoten N ist up-stream-gelockt, wenn EINE ausgehende parent_of-Edge
+ *   selbst parent-side-locked ist ODER ihr Child transitiv gelockt ist.
+ *
+ * Sibling-Lock (`node.isLock`, ab 2026-05-04 ueber computeLockedNodeIds vereinheitlicht):
+ *   Eine als `isLock: true` markierte (= "Lock-Sibling") Node sperrt visuell
+ *   alle ihre Geschwister (= Children der gleichen Parents). Die Lock-Node
+ *   selbst NICHT, andere Lock-Nodes auf gleicher Ebene auch NICHT.
+ *   nodeDone-aware: ist die Lock-Node selbst done, sind die Geschwister frei
+ *   (konsistent mit der bestehenden `canSetNodeDoneInGraph`-Logik).
+ *   Multi-Parent: Geschwister sind die Children ALLER Parents von L.
+ *   Die so markierten Geschwister landen im downLocked-Seed-Set, sodass die
+ *   Fixpunkt-Iteration ihre Subtrees automatisch mit dimmt.
+ *
+ * Algorithmus: Fixpunkt-Iteration. Konvergiert in O(V * (V+E)) im Worst Case,
+ * in der Praxis (kleine Trees) vernachlaessigbar.
+ *
+ * @param {RpgGraph} graph
+ * @param {Record<string, unknown>} [nodeDone] — flach (V3) oder verschachtelt (V2-Compat).
+ *   Wird nur fuer die Sibling-Lock-Awareness gelesen; ist die Lock-Node done,
+ *   wird sie als "frei" behandelt und sperrt ihre Geschwister NICHT.
+ * @returns {Set<string>}
+ */
+export function computeLockedNodeIds(graph, nodeDone) {
+  /** @type {Set<string>} */
+  const locked = new Set();
+  const allNodesMap = buildFlatNodeMap(graph);
+  const allIds = [...allNodesMap.keys()];
+  const parentEdges = graphEdges(graph).filter(isParentChildRelation);
+
+  /**
+   * Adjazenz-Maps mit per-Edge-Lock-Side. Eine Edge taucht zweimal auf:
+   * einmal als incoming beim Child, einmal als outgoing beim Parent.
+   * @type {Map<string, Array<{ neighbor: string; lockSide: 'child' | 'parent' | 'both' | null }>>}
+   */
+  const incoming = new Map(); // child → [{ parent, lockSide }]
+  /** @type {typeof incoming} */
+  const outgoing = new Map(); // parent → [{ child, lockSide }]
+  for (const id of allIds) {
+    incoming.set(id, []);
+    outgoing.set(id, []);
+  }
+  for (const e of parentEdges) {
+    const lockSide = readEdgeLockSide(e);
+    if (!incoming.has(e.to)) incoming.set(e.to, []);
+    incoming.get(e.to).push({ neighbor: e.from, lockSide });
+    if (!outgoing.has(e.from)) outgoing.set(e.from, []);
+    outgoing.get(e.from).push({ neighbor: e.to, lockSide });
+  }
+
+  // Hilfssets: pro Knoten getrennt "down-stream-locked" und "up-stream-locked"
+  // tracken. Ein Knoten landet im finalen `locked`-Set, wenn er in einer der
+  // beiden Richtungen gelockt ist (Vereinigung).
+  //
+  // Trennung ist wichtig fuer korrekte Propagation: eine Edge mit lockSide
+  // 'parent' SCHUETZT die Down-stream-Richtung (sagt: "von hier nach unten
+  // ist NICHTS gesperrt, die Sperre liegt auf Parent-Seite"). Analog fuer
+  // 'child'. Wenn wir nicht trennen wuerden, wuerde ein down-locked Subtree
+  // sich faelschlich auch nach oben "anstecken", obwohl die Edge eindeutig
+  // sagt "der Lock-Effekt geht in die andere Richtung".
+  /** @type {Set<string>} */
+  const downLocked = new Set();
+  /** @type {Set<string>} */
+  const upLocked = new Set();
+
+  // ── Phase 0: Sibling-Lock-Seed via node.isLock ─────────────────────
+  // Vor dem Fixpunkt: jede aktive (=nicht done) Lock-Sibling-Node fuegt
+  // ihre Geschwister ins downLocked-Set ein. Die Fixpunkt-Iteration
+  // unten propagiert die Sperre dann automatisch in deren Subtrees.
+  //
+  // Wir nutzen die schon aufgebauten incoming/outgoing-Maps fuer die
+  // Geschwister-Suche: Geschwister(L) = Vereinigung aller Children der
+  // Parents von L, ohne L selbst und ohne andere isLock-Nodes auf der
+  // gleichen Ebene.
+  const flatDone = flattenIfNested(/** @type {any} */ (nodeDone) || {});
+  for (const lockId of allIds) {
+    const lockNode = allNodesMap.get(lockId);
+    if (!lockNode || !isLockNode(lockNode)) continue;
+    if (flatDone[lockId] === true) continue; // Lock-Node selbst ist done → Schwestern frei
+    const parents = (incoming.get(lockId) || []).map((e) => e.neighbor);
+    for (const pid of parents) {
+      const sibs = (outgoing.get(pid) || []).map((e) => e.neighbor);
+      for (const sibId of sibs) {
+        if (sibId === lockId) continue;
+        const sib = allNodesMap.get(sibId);
+        if (sib && isLockNode(sib)) continue; // andere Lock-Geschwister selbst nicht dimmen
+        downLocked.add(sibId);
+      }
+    }
+  }
+
+  // Fixpunkt-Iteration: pro Runde alle Knoten pruefen, bis keiner mehr neu
+  // hinzukommt.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of allIds) {
+      // ── Down-stream-Check (eingehende Edges) ──────────────────────────
+      // Eine eingehende Edge "blockiert" Down-stream, wenn:
+      //   - sie selbst lockSide 'child' oder 'both' traegt (= Sperre zwischen Parent und N
+      //     mit Wirkrichtung Child-Seite), ODER
+      //   - sie traegt KEIN 'parent'-Lock (parent-Lock schuetzt Down) UND
+      //     der Parent ist selbst down-stream-gelockt (transitiv).
+      // Eine 'parent'-Edge ist NIEMALS Down-stream-blockierend — die Sperre
+      // wirkt auf die andere Seite der Edge.
+      //
+      // Branch-orientierte Semantik (wie im UI erwartet): EIN blockierter
+      // eingehender Pfad reicht, damit der Child-Branch ab dieser Edge im
+      // Schatten liegt. Das vermeidet "nur gestrichelt, nicht dunkel" bei
+      // Multi-Parent-Children.
+      if (!downLocked.has(id)) {
+        const inEdges = incoming.get(id) || [];
+        if (inEdges.length > 0) {
+          const anyBlocked = inEdges.some((e) => {
+            if (hasChildSide(e.lockSide)) return true;
+            if (e.lockSide === 'parent') return false;
+            return downLocked.has(e.neighbor);
+          });
+          if (anyBlocked) {
+            downLocked.add(id);
+            changed = true;
+          }
+        }
+      }
+
+      // ── Up-stream-Check (ausgehende Edges) ────────────────────────────
+      // Eine ausgehende Edge "blockiert" Up-stream, wenn:
+      //   - sie selbst lockSide 'parent' oder 'both' traegt, ODER
+      //   - sie traegt KEIN 'child'-Lock UND der Child ist up-stream-gelockt.
+      // Fuer Parent-Branch-Locks gilt absichtlich OR-Semantik: ein einziger
+      // blockierter Child-Pfad reicht, um den Parent-Zweig nach oben zu
+      // verschatten. Sonst wirken parent-side-Locks nur bei Single-Child-
+      // Knoten und "verschwinden" bei Nodes mit mehreren Children.
+      if (!upLocked.has(id)) {
+        const outEdges = outgoing.get(id) || [];
+        if (outEdges.length > 0) {
+          const anyBlocked = outEdges.some((e) => {
+            if (hasParentSide(e.lockSide)) return true;
+            if (e.lockSide === 'child') return false;
+            return upLocked.has(e.neighbor);
+          });
+          if (anyBlocked) {
+            upLocked.add(id);
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Vereinigung: ein Knoten gilt als "gelockt" wenn er in einer der beiden
+  // Richtungen blockiert ist.
+  for (const id of downLocked) locked.add(id);
+  for (const id of upLocked) locked.add(id);
+  return locked;
 }
 
 /**

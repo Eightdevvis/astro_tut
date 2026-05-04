@@ -37,6 +37,7 @@ import {
   removeParentChildEdge,
   hasDagCycle,
 } from '../src/lib/rpg-quest-graph.js';
+import { validateRpgGraphReferences } from '../src/lib/rpg-graph-validation.js';
 
 // ============================================================================
 // Schema-Version
@@ -433,6 +434,32 @@ test('Multi-Parent: V3 erlaubt einen Node mit mehreren parent_of-Edges', () => {
   );
   assert.deepStrictEqual(getParentIds(g, 'child').sort(), ['p1', 'p2']);
   assert.equal(hasDagCycle(g), false);
+});
+
+test('validateRpgGraphReferences: Multi-Parent-Compat nur nach stripGraphCompatFields', () => {
+  // migrateRpgGraphToV3 materialisiert Compat: `c` erscheint zweimal unter einem Root.
+  // validateQuestNodeDependencies auf Compat → false-positive „doppelte IDs“.
+  const raw = makeRpgGraph(
+    {
+      q1: { id: 'q1', title: 'Q1' },
+      a: { id: 'a', title: 'A' },
+      b: { id: 'b', title: 'B' },
+      c: { id: 'c', title: 'C' },
+    },
+    [
+      { from: 'q1', to: 'a', relation: 'structure' },
+      { from: 'q1', to: 'b', relation: 'structure' },
+      { from: 'a', to: 'c', relation: 'structure' },
+      { from: 'b', to: 'c', relation: 'structure' },
+    ]
+  );
+  const v3 = migrateRpgGraphToV3(raw);
+  const compatCheck = validateRpgGraphReferences(v3, graphEdges(v3));
+  assert.equal(compatCheck.ok, false);
+
+  const flat = stripGraphCompatFields(v3);
+  const flatCheck = validateRpgGraphReferences(flat, graphEdges(flat));
+  assert.equal(flatCheck.ok, true);
 });
 
 test('denormalizeGraphForCompat: Multi-Parent → kopierter Sub-Tree pro Parent', () => {

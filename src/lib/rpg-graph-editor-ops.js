@@ -351,8 +351,8 @@ export function updateDraftByKeyRecursive(drafts, key, updater) {
 // zusätzlichen Parent. Multi-Parent ist im V3-DAG legitim.
 //
 // Die Erkennung „Tree-Pick vs. echter neuer Draft" läuft über `stableId`:
-//   - Draft mit `stableId === <existierende Graph-Node-ID>` UND die ID ist
-//     NICHT Teil des aktuell editierten Subtrees → das ist ein Tree-Pick.
+//   - Draft mit `stableId === <existierende Graph-Node-ID>` UND (die ID ist
+//     NICHT im Container-Subtree ODER `pickedFromTree === true` vom UI) → Tree-Pick.
 //   - Alle anderen Drafts sind echte neue/edited Sub-Quests.
 // ============================================================
 
@@ -411,6 +411,7 @@ export function collectSubtreeIds(rootNode) {
  * @typedef {{
  *   key: string;
  *   stableId?: string;
+ *   pickedFromTree?: boolean;
  *   children?: any[];
  *   [k: string]: any;
  * }} SplittableDraft
@@ -424,10 +425,9 @@ export function collectSubtreeIds(rootNode) {
  *    parentStableId der echte Parent-Node-im-Graph ist (nicht der Draft-Key).
  *
  * Algorithmus pro Draft:
- *  1. Wenn der Draft `stableId` hat und diese in `existingIds` ist UND nicht
- *     in `selfSubtreeIds` (= eigener Edit-Container) → **Tree-Pick-Draft**.
- *     → wird NICHT in `cleanDrafts` aufgenommen, dafür eine Edge zum
- *       (logischen) Parent-Draft erzeugt.
+ *  1. Wenn der Draft `stableId` in `existingIds` ist UND außerhalb
+ *     `selfSubtreeIds` liegt **oder** `pickedFromTree` (UI „Aus Baum wählen“)
+ *     → **Tree-Pick-Draft**; Edge zum Parent-Draft, nicht in `cleanDrafts`.
  *  2. Sonst: rekursiv durchgehen. Eigene Children werden via `walk` weiter
  *     gesplittet. Der Tree-Pick-Parent ist `stableId || key`-Auflösung.
  *
@@ -461,8 +461,13 @@ export function splitDraftsForTreePick(
     for (const d of list || []) {
       if (!d || typeof d !== 'object') continue;
       const sid = typeof d.stableId === 'string' ? d.stableId.trim() : '';
-      // Tree-Pick: existierender Node im Graph, NICHT Teil des eigenen Subtrees
-      if (sid && existingIds.has(sid) && !selfSubtreeIds.has(sid)) {
+      const pickedFromTree = d.pickedFromTree === true;
+      // Tree-Pick: existierender Graph-Node. Ohne pickedFromTree: nur wenn die ID
+      // nicht im ganzen Container-Quest-Subtree liegt (ältere Heuristik). Mit
+      // pickedFromTree: explizite UI-Auswahl „Aus Baum wählen“ — auch innerhalb
+      // desselben Quests (Multi-Parent), sonst entstünden doppelte IDs im nested
+      // children-Validierungspfad.
+      if (sid && existingIds.has(sid) && (!selfSubtreeIds.has(sid) || pickedFromTree)) {
         if (parentId && parentId !== sid) {
           treePickEdges.push({ parentId, childId: sid });
         }

@@ -21,6 +21,7 @@
  * fuer Preact und das bestehende Datensystem.
  */
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { LockGlyphSvg } from '../lib/rpg-lock-icon.jsx';
 
 /**
  * @param {{
@@ -42,10 +43,17 @@ export default function RpgAstrolab({ activeTool, onTool, canUseNotes = false, h
   const [tiltY, setTiltY] = useState(0);
 
   // Werkzeuge: Glyphe, Label, Tooltip, Ring-Zuordnung, Position auf dem Ring (0..1)
+  // Lock-Tool sitzt direkt neben der Schere auf demselben Ring \u2014 beide
+  // operieren auf Edges (Schere = entfernen, Schloss = sperren), gehoeren
+  // also visuell zusammen.
   const TOOLS = [
     { id: 'add', glyph: '+', label: 'Quest +', hint: 'Neue Quest anlegen', ring: 1, t: 0.15 },
     { id: 'edit', glyph: '\u26AF', label: 'Verwalten', hint: 'Quest bearbeiten', ring: 1, t: 0.62 },
     { id: 'cut', glyph: '\u2702', label: 'Schere', hint: 'Verbindung schneiden', ring: 1, t: 0.88 },
+    // Lock-Bead: kein Glyph-Text \u2014 wir rendern ein custom SVG (LockGlyphSvg),
+    // damit das Symbol monochrom-schlank ist und nicht als Color-Emoji erscheint.
+    // `glyph: null` markiert das fuer den Render-Pfad weiter unten.
+    { id: 'lock', glyph: null, label: 'Sperre', hint: 'Subtree sperren', ring: 2, t: 0.05 },
     // Notiz nur fuer User mit RPG-Zugang sichtbar
     ...(canUseNotes
       ? [{ id: 'note', glyph: '\u261E', label: 'Notiz', hint: 'Tree-Notiz \u00f6ffnen', ring: 2, t: 0.30 }]
@@ -305,12 +313,22 @@ export default function RpgAstrolab({ activeTool, onTool, canUseNotes = false, h
                   fill={isActive ? 'url(#beadActive)' : 'url(#bead)'}
                   filter={(isHover || isActive) ? 'drop-shadow(0 0 6px rgba(251,230,160,0.8))' : ''}
                 />
-                {/* Werkzeug-Glyphe */}
-                <text x={x} y={y + 0.5} font-size={baseR * 1.2}
-                  fill="#1a140c" text-anchor="middle" dominant-baseline="middle"
-                  style={{ pointerEvents: 'none', fontFamily: 'ui-serif, Georgia, serif', fontWeight: 600 }}>
-                  {t.glyph}
-                </text>
+                {/* Werkzeug-Glyphe: entweder Unicode-Text oder custom SVG-Symbol.
+                    `glyph: null` im TOOLS-Eintrag schaltet den SVG-Pfad frei
+                    (aktuell nur fuer 'lock' verwendet — schlankes Icon statt Emoji). */}
+                {t.glyph !== null ? (
+                  <text x={x} y={y + 0.5} font-size={baseR * 1.2}
+                    fill="#1a140c" text-anchor="middle" dominant-baseline="middle"
+                    style={{ pointerEvents: 'none', fontFamily: 'ui-serif, Georgia, serif', fontWeight: 600 }}>
+                    {t.glyph}
+                  </text>
+                ) : t.id === 'lock' ? (
+                  // Custom Lock-Icon — `variant='outline'`: gold-Rand bleibt,
+                  // Innen transparent damit der goldene Bead durchschimmert.
+                  // Cursor verwendet weiterhin 'solid' (Default), wo voller
+                  // Goldfuellung fuer Lesbarkeit auf beliebigem Untergrund sorgt.
+                  <LockGlyphSvg x={x} y={y} size={baseR * 1.6} variant="outline" />
+                ) : null}
               </g>
             );
           })}
