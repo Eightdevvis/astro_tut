@@ -11,7 +11,7 @@
 import { useMemo } from 'preact/hooks';
 import RpgQuestNodesView from './RpgQuestNodesView.jsx';
 import { countQuestLeaves } from '../lib/rpg-tree-svg.js';
-import { nodeIsLeaf, isNodeCompleteInQuest, canSetNodeDone, buildRewardDisplayList } from '../lib/rpg-quest-nodes.js';
+import { nodeIsLeaf, isNodeCompleteInQuest, canSetNodeDone, buildRewardDisplayList, questLeafProgressRatio } from '../lib/rpg-quest-nodes.js';
 
 /**
  * Status-Eyebrow: menschenlesbarer Label fuer den Quest-Status.
@@ -81,13 +81,30 @@ export default function RpgQuestPanel({
   // Treelocked hat Vorrang vor allen normalen Status-Labels: der Knoten ist
   // versiegelt — keine Aussage ueber unlocked/completed/added macht hier Sinn.
   const eyebrow = treeLocked ? 'Versiegelt' : statusEyebrow(quest, unlocked, completed, added);
-  const pct = typeof progressPct === 'number' ? progressPct : 0;
+  const rootPct = typeof progressPct === 'number' ? progressPct : 0;
   const isActive = unlocked && added && !completed;
 
   // Der View-Node ist immer der relevante Knoten (Sub-Node wenn selektiert,
   // sonst der Root-Quest selbst). Title/Description/Rewards/Children werden
   // einheitlich darueber gelesen — kein Subtypen-Switch.
   const viewNode = selectedNodeView || quest;
+
+  // Fortschritt fuer die Progress-Bar — bezogen auf den ANGEZEIGTEN Knoten,
+  // nicht auf den Root-Quest. Vorher (bis 2026-05-04) hat die Bar immer den
+  // Root-Progress angezeigt, auch wenn ein Sub-Node oder Leaf selektiert war.
+  //  - Root-View: Root-Pct (aggregierter Graph-Progress, kommt schon rein)
+  //  - Sub-Container: ratio.done / ratio.total (NICHT percent — das gibt 100
+  //    bei total=0 zurueck, irrefuehrend wenn Container leer)
+  //  - Leaf: binaer 0/100 je nach abgehakt-Status
+  const pct = useMemo(() => {
+    if (viewNode === quest) return rootPct;
+    if (nodeIsLeaf(viewNode)) {
+      return isNodeCompleteInQuest(quest, viewNode.id, nodeDone) ? 100 : 0;
+    }
+    const ratio = questLeafProgressRatio(viewNode, nodeDone, quest.id);
+    if (!ratio.total) return 0;
+    return Math.round((ratio.done / ratio.total) * 100);
+  }, [viewNode, quest, nodeDone, rootPct]);
 
   // Leaf-Done-Toggle: nur wenn der View-Node ein Leaf ist.
   // Funktioniert fuer Root-Leaves (Quest ohne Children) und Sub-Leaves identisch.

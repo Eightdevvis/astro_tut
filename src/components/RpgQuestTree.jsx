@@ -1235,11 +1235,18 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                       { excludeIds: new Set([edge.from, edge.to]) }
                     );
                 // Subtree-Progress des CHILD (edge.to): bestimmt wie weit die
-                // Edge prozentual leuchtet. Glow erklimmt von Child nach Parent —
-                // dafuer routen wir einen Reverse-Pfad, damit stroke-dasharray
-                // am Child-Ende startet und nach oben "klimmt".
-                const glowPct = leafProgressRatio(graph, edge.to, nodeDone).percent;
-                const showGlow = glowPct > 0 && glowPct < 100;
+                // Edge prozentual leuchtet. Glow erklimmt von Child nach Parent.
+                //
+                // WICHTIG (Fix 2026-05-04): leafProgressRatio gibt percent=100
+                // zurueck wenn der Node selbst ein Leaf ist (total=0 — keine
+                // Pflicht-Children zu zaehlen). Wir muessen total/done direkt
+                // nutzen statt percent, sonst wuerden Edges zu Leaf-Sub-Nodes
+                // FAELSCHLICH als 100% done gelten obwohl der Leaf gar nicht
+                // abgehakt ist.
+                const ratio = leafProgressRatio(graph, edge.to, nodeDone);
+                // Glow nur wenn echter Sub-Tree-Progress: total>0, mind. einer
+                // erledigt aber nicht alle.
+                const showGlow = ratio.total > 0 && ratio.done > 0 && ratio.done < ratio.total;
                 const routedReverse = showGlow
                   ? (draggingNodeId
                       ? {
@@ -1255,10 +1262,16 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
                           { excludeIds: new Set([edge.from, edge.to]) }
                         ))
                   : null;
-                const glowLen = showGlow ? Math.max(0, seg.len * (glowPct / 100)) : 0;
-                // Done-Status: Ziel ist erledigter Leaf ODER 100% Subtree-Progress.
+                const glowLen = showGlow ? Math.max(0, seg.len * (ratio.done / ratio.total)) : 0;
+                // Done-Status: NUR wenn entweder
+                //  (a) das Ziel ist ein Leaf der direkt abgehakt wurde, ODER
+                //  (b) das Ziel ist ein Container mit echten Pflicht-Leafs (total>0)
+                //      und ALLE sind abgehakt.
+                // total=0 fuer einen Leaf-Sub-Node (oder fuer Container ohne
+                // Pflicht-Children) zaehlt explizit NICHT als done.
                 const childMeta = nodeMetaById.get(edge.to);
-                const isDone = (childMeta && childMeta.isLeaf && childMeta.isDone) || glowPct === 100;
+                const isDone = (childMeta && childMeta.isLeaf && childMeta.isDone)
+                  || (ratio.total > 0 && ratio.done === ratio.total);
                 // Edge-Lock-Status: Side-spezifisch (child/parent/null) plus
                 // Ziel-Subtree-Lock (visuelle Dim-Darstellung).
                 // edge.locked kann sein: 'child' | 'parent' | 'both' | true (Legacy) | undefined
