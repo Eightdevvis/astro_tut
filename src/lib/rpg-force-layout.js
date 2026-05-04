@@ -295,6 +295,18 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
   const dampingStart = 0.55;
   const dampingEnd = cfg.damping; // 0.86 default
 
+  // Adjazenz-Maps fuer Crossing-Reduction (nur structure-Edges):
+  // Pro Parent eine Liste seiner Children-Indizes.
+  /** @type {Map<number, number[]>} */
+  const childrenOfParent = new Map();
+  for (let e = 0; e < edges.length; e++) {
+    if (!edges[e][2]) continue; // nur structure
+    const p = edges[e][0];
+    const c = edges[e][1];
+    if (!childrenOfParent.has(p)) childrenOfParent.set(p, []);
+    childrenOfParent.get(p).push(c);
+  }
+
   // Hauptschleife — Verlet/Euler-Simulation mit Annealing
   for (let iter = 0; iter < cfg.iterations; iter++) {
     // Linearer Damping-Anstieg ueber die Iterations.
@@ -367,6 +379,95 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
       px[i] += vx[i];
       py[i] += vy[i];
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Sibling-Swap Crossing-Reduction (Post-Process)
+  // ──────────────────────────────────────────────────────────────────────
+  // Force-Directed minimiert Energie, NICHT Edge-Crossings. Wenn Geschwister
+  // unter einem gemeinsamen Parent links/rechts vertauscht stehen, koennen
+  // ihre Sub-Edges sich kreuzen — energetisch ist's egal welcher links und
+  // welcher rechts ist, also "sieht" Force-Directed das nicht.
+  //
+  // Loesung (User-gewuenscht 2026-05-04): nach Force-Konvergenz iterativ
+  // pro Geschwister-Paar pruefen ob ein X-Tausch die Anzahl Crossings im
+  // Layout reduziert. Lokale Heuristik, aehnlich Sugiyama Schritt 3
+  // (Median/Barycenter), aber auf Force-Output statt strikten Layern.
+  //
+  // Performance: pro Parent O(C^2) Paare wo C = Children-Anzahl. Pro Pair
+  // O(E) Crossings-Check. Iteration bis stabil oder maxIter erreicht.
+  // Bei realer Tree-Groesse (paar Quests, einstellige Children pro Parent)
+  // unkritisch — dominiert von der Force-Sim selbst.
+
+  /** @returns {number} 2D-Cross-Product (sign tells side) */
+  function ccw(ax_, ay_, bx_, by_, cx_, cy_) {
+    return (bx_ - ax_) * (cy_ - ay_) - (by_ - ay_) * (cx_ - ax_);
+  }
+
+  /**
+   * Pruefen ob sich zwei Strecken kreuzen — strikt im Inneren beider
+   * Strecken, gemeinsame Endpunkte zaehlen NICHT als Crossing (Edges die
+   * denselben Knoten teilen, treffen sich erlaubterweise dort).
+   */
+  function segmentsCross(a, b, c, d) {
+    if (a === c || a === d || b === c || b === d) return false; // shared endpoint
+    const d1 = ccw(px[c], py[c], px[d], py[d], px[a], py[a]);
+    const d2 = ccw(px[c], py[c], px[d], py[d], px[b], py[b]);
+    const d3 = ccw(px[a], py[a], px[b], py[b], px[c], py[c]);
+    const d4 = ccw(px[a], py[a], px[b], py[b], px[d], py[d]);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+        && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  }
+
+  /**
+   * Zaehlt Crossings in denen mindestens eine Edge Knoten `nodeIdx` enthaelt.
+   * Mit anderen Worten: wie viele Crossings "verschwinden" wenn man `nodeIdx`
+   * neu positioniert.
+   */
+  function countCrossingsInvolvingNode(nodeIdx) {
+    let count = 0;
+    for (let i = 0; i < edges.length; i++) {
+      const ai = edges[i][0];
+      const bi = edges[i][1];
+      if (ai !== nodeIdx && bi !== nodeIdx) continue;
+      for (let j = 0; j < edges.length; j++) {
+        if (i === j) continue;
+        if (segmentsCross(ai, bi, edges[j][0], edges[j][1])) count++;
+      }
+    }
+    // jedes Crossing wird doppelt gezaehlt (i,j) + (j,i) — egal, wir
+    // vergleichen nur gegen sich selbst (Vorher/Nachher).
+    return count;
+  }
+
+  // Iterativ Sibling-Pairs durchgehen — bis kein Swap mehr Crossings reduziert.
+  const maxSwapIterations = 8;
+  for (let swapIter = 0; swapIter < maxSwapIterations; swapIter++) {
+    let didSwap = false;
+    for (const [, kids] of childrenOfParent) {
+      if (kids.length < 2) continue;
+      for (let i = 0; i < kids.length; i++) {
+        for (let j = i + 1; j < kids.length; j++) {
+          const a = kids[i];
+          const b = kids[j];
+          // Crossings VOR Swap (bzgl. beider Knoten zusammen)
+          const before = countCrossingsInvolvingNode(a) + countCrossingsInvolvingNode(b);
+          if (before === 0) continue; // nichts zu verbessern
+          // X-Y-Tausch
+          const tx = px[a]; px[a] = px[b]; px[b] = tx;
+          const ty = py[a]; py[a] = py[b]; py[b] = ty;
+          const after = countCrossingsInvolvingNode(a) + countCrossingsInvolvingNode(b);
+          if (after >= before) {
+            // Swap zurueck — kein Gewinn
+            const tx2 = px[a]; px[a] = px[b]; px[b] = tx2;
+            const ty2 = py[a]; py[a] = py[b]; py[b] = ty2;
+          } else {
+            didSwap = true;
+          }
+        }
+      }
+    }
+    if (!didSwap) break;
   }
 
   // Bounding-Box bestimmen + Component zentrieren auf (0,0)

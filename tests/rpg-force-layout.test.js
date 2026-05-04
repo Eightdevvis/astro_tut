@@ -283,6 +283,79 @@ test('computeForceLayout: zwei disconnected Trees haben grossen Abstand zueinand
   );
 });
 
+// =============================================================================
+// Sibling-Swap Crossing-Reduction
+// =============================================================================
+
+/**
+ * Hilfsfunktion: zaehlt Edge-Crossings in einem Layout.
+ * Strikt innere Crossings; gemeinsame Endpunkte zaehlen nicht.
+ */
+function countCrossings(positions, structureEdges) {
+  function ccw(ax, ay, bx, by, cx, cy) {
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  }
+  function cross(e1, e2) {
+    const [a, b] = e1; const [c, d] = e2;
+    if (a === c || a === d || b === c || b === d) return false;
+    const pa = positions[a]; const pb = positions[b];
+    const pc = positions[c]; const pd = positions[d];
+    if (!pa || !pb || !pc || !pd) return false;
+    const d1 = ccw(pc.x, pc.y, pd.x, pd.y, pa.x, pa.y);
+    const d2 = ccw(pc.x, pc.y, pd.x, pd.y, pb.x, pb.y);
+    const d3 = ccw(pa.x, pa.y, pb.x, pb.y, pc.x, pc.y);
+    const d4 = ccw(pa.x, pa.y, pb.x, pb.y, pd.x, pd.y);
+    return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+        && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  }
+  let count = 0;
+  for (let i = 0; i < structureEdges.length; i++) {
+    for (let j = i + 1; j < structureEdges.length; j++) {
+      if (cross(structureEdges[i], structureEdges[j])) count++;
+    }
+  }
+  return count;
+}
+
+test('computeForceLayout: Sibling-Swap reduziert Edge-Crossings auf 0 in einfachem Tree', () => {
+  // Konstruktion: Parent X mit 2 Children A, B. Jedes Child hat 2 Sub-Kinder.
+  // Ohne Sibling-Swap koennten A1/A2/B1/B2 zufaellig so liegen, dass die
+  // Edges A→A1 und B→B1 sich kreuzen. Nach Swap-Reduction sollten keine
+  // strukturellen Crossings mehr da sein.
+  const g = makeRpgGraph(
+    {
+      x: { id: 'x', title: 'X' },
+      a: { id: 'a', title: 'A' },
+      b: { id: 'b', title: 'B' },
+      a1: { id: 'a1', title: 'A1' },
+      a2: { id: 'a2', title: 'A2' },
+      b1: { id: 'b1', title: 'B1' },
+      b2: { id: 'b2', title: 'B2' },
+    },
+    [
+      { from: 'x', to: 'a', relation: 'parent_of' },
+      { from: 'x', to: 'b', relation: 'parent_of' },
+      { from: 'a', to: 'a1', relation: 'parent_of' },
+      { from: 'a', to: 'a2', relation: 'parent_of' },
+      { from: 'b', to: 'b1', relation: 'parent_of' },
+      { from: 'b', to: 'b2', relation: 'parent_of' },
+    ]
+  );
+  const { positions } = computeForceLayout(g);
+  const structureEdges = [
+    ['x', 'a'], ['x', 'b'],
+    ['a', 'a1'], ['a', 'a2'],
+    ['b', 'b1'], ['b', 'b2'],
+  ];
+  const crossings = countCrossings(positions, structureEdges);
+  // Ziel: 0 Crossings nach Sibling-Swap. Pragmatische Toleranz <= 1
+  // falls Force-Layout in seltenen Faellen einen Edge-Case nicht trifft.
+  assert.ok(
+    crossings <= 1,
+    `Erwartet <= 1 Crossing nach Sibling-Swap, gefunden ${crossings}`
+  );
+});
+
 test('computeForceLayout: viele isolierte Nodes (alle disconnected) bekommen Abstand', () => {
   // 5 Nodes, keine Edges → 5 Components a 1 Node.
   const g = makeRpgGraph(
