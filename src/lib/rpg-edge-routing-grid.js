@@ -286,39 +286,77 @@ function heuristic(a, b) {
 // ============================================================================
 
 /**
- * Vereinfacht eine Cell-Polyline indem fast-kollineare Zwischenpunkte
- * entfernt werden. A* produziert oft viele Punkte auf einer geraden Linie
- * (Cell-Mittelpunkte haben aber kleine Pixel-Versaetze gegen die exakten
- * from/to-Positionen). Wir messen Punkt-zu-Linie-Distanz mit Pixel-Toleranz
- * statt rohem Cross-Product — verhindert dass minimale Versaetze als
- * "Knick" gewertet werden.
+ * Punkt-zu-Strecke-Distanz (analog Standard-Geometrie).
+ * @param {{ x: number; y: number }} p
+ * @param {{ x: number; y: number }} a
+ * @param {{ x: number; y: number }} b
+ * @returns {number}
+ */
+function pointToSegmentDistance(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 0.0001) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const projX = a.x + t * dx;
+  const projY = a.y + t * dy;
+  return Math.hypot(p.x - projX, p.y - projY);
+}
+
+/**
+ * Prueft ob die direkte Linie zwischen `a` und `b` ungehindert ist:
+ * kein Obstacle (ausser den exkludierten) liegt naeher an der Strecke
+ * als (radius + padding). Genutzt vom Line-of-Sight-Smoothing.
  *
- * Ohne diese Toleranz wuerden gerade Pfade vom A* faelschlich als
- * "spline" klassifiziert, was Tests + Verhaltens-Check brechen koennte.
+ * @param {{ x: number; y: number }} a
+ * @param {{ x: number; y: number }} b
+ * @param {Obstacle[]} obstacles
+ * @param {number} padding
+ * @param {Set<string> | null} excludeIds
+ * @returns {boolean}
+ */
+function isLineFree(a, b, obstacles, padding, excludeIds) {
+  for (const o of obstacles) {
+    if (excludeIds && o.id && excludeIds.has(o.id)) continue;
+    if (pointToSegmentDistance(o, a, b) < o.radius + padding) return false;
+  }
+  return true;
+}
+
+/**
+ * Line-of-Sight-Smoothing (a.k.a. "string pulling"): reduziert eine
+ * Polyline auf das Minimum der noetigen Knicke. A* findet einen Pfad
+ * durch Cells, aber viele aufeinanderfolgende Punkte koennen direkt
+ * verbunden werden ohne Hindernisse zu treffen — die Zwischenpunkte
+ * sind redundant. Greedy-Algorithmus:
+ *   Vom aktuellen Punkt aus den weitesten erreichbaren Polyline-Punkt
+ *   suchen, dort weitermachen.
+ *
+ * Ergibt minimale Polyline mit nur Knicks an Stellen wo Hindernisse
+ * tatsaechlich umgangen werden muessen — viel sauberer als der rohe
+ * Cell-Pfad und ohne Pixel-Versatz-Wiggles im Catmull-Rom-Smoothing.
  *
  * @param {Array<{ x: number; y: number }>} polyline
+ * @param {Obstacle[]} obstacles
+ * @param {number} padding
+ * @param {Set<string> | null} excludeIds
  * @returns {Array<{ x: number; y: number }>}
  */
-function simplifyCollinear(polyline) {
+function lineOfSightSmooth(polyline, obstacles, padding, excludeIds) {
   if (polyline.length <= 2) return polyline;
-  // Toleranz in Pixeln. Cell-Resolution 12 → Versaetze sind <6px;
-  // 1.5 ist generous genug fuer Floating-Point-Rauschen.
-  const tolerance = 1.5;
   const out = [polyline[0]];
-  for (let i = 1; i < polyline.length - 1; i++) {
-    const a = polyline[i - 1];
-    const b = polyline[i];
-    const c = polyline[i + 1];
-    const acDx = c.x - a.x;
-    const acDy = c.y - a.y;
-    const acLen = Math.hypot(acDx, acDy);
-    if (acLen < 0.0001) continue; // a == c → b weglassen
-    // Senkrechter Abstand von b zur Linie a→c: |cross| / |a→c|.
-    const cross = acDx * (b.y - a.y) - acDy * (b.x - a.x);
-    const dist = Math.abs(cross) / acLen;
-    if (dist > tolerance) out.push(b);
+  let i = 0;
+  while (i < polyline.length - 1) {
+    // Vom Index i aus den weitest entfernten Punkt finden, der direkt
+    // erreichbar ist (kein Hindernis im Weg).
+    let j = polyline.length - 1;
+    while (j > i + 1 && !isLineFree(polyline[i], polyline[j], obstacles, padding, excludeIds)) {
+      j--;
+    }
+    out.push(polyline[j]);
+    i = j;
   }
-  out.push(polyline[polyline.length - 1]);
   return out;
 }
 
@@ -579,11 +617,12 @@ export function routeEdge(from, to, obstacles, opts = {}) {
     } else {
       world = [from, to];
     }
-    // Kollineare Zwischenpunkte raus — A* gibt oft viele Punkte auf
-    // geraden Strecken, das verfaelscht das Catmull-Rom-Smoothing.
-    controlPoints = simplifyCollinear(world);
-    // Wenn nach Cleanup nur noch 2 Punkte uebrig sind → effektiv eine
-    // gerade Linie (kein Hindernis im Weg).
+    // Line-of-Sight-Smoothing: greedy Reduktion auf minimale Polyline.
+    // Punkte die direkt verbindbar sind (kein Hindernis dazwischen) werden
+    // gemerged. Beseitigt Cell-Mittelpunkt-Wiggles UND zigzag-Treppen aus
+    // 8-Richtungen-A*. Viel sauberer als simple kollinear-Filterung.
+    controlPoints = lineOfSightSmooth(world, obstacles, nodePadding, excludeIds);
+    // Wenn nach Smoothing nur 2 Punkte uebrig → keine Hindernisse im Weg.
     if (controlPoints.length <= 2) type = 'line';
   }
 

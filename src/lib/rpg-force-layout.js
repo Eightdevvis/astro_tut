@@ -347,78 +347,13 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
     return s;
   }
 
-  // Hauptschleife — Verlet/Euler-Simulation mit Annealing
+  // Hauptschleife — Verlet/Euler-Simulation mit Annealing-Damping.
+  // Damping startet niedrig (System bewegt sich frei, kann lokalen Minima
+  // entkommen), endet hoch (System pendelt sauber ein).
   for (let iter = 0; iter < cfg.iterations; iter++) {
-    // Linearer Damping-Anstieg ueber die Iterations.
     const progress = cfg.iterations > 1 ? iter / (cfg.iterations - 1) : 1;
     const dampingThis = dampingStart + (dampingEnd - dampingStart) * progress;
-
-    ax.fill(0);
-    ay.fill(0);
-
-    // Repulsion (jedes Paar)
-    for (let i = 0; i < N; i++) {
-      for (let j = i + 1; j < N; j++) {
-        const dx = px[j] - px[i];
-        const dy = py[j] - py[i];
-        const dist2 = dx * dx + dy * dy + 0.01;
-        const dist = Math.sqrt(dist2);
-        const force = Math.min(cfg.repulsion / dist2, maxForce);
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        ax[i] -= fx;
-        ay[i] -= fy;
-        ax[j] += fx;
-        ay[j] += fy;
-      }
-    }
-
-    // Spring per Edge (Hookesches Gesetz) + optionaler Hierarchie-Bias
-    // fuer structure-Edges (parent_of). Der Bias ist eine kleine konstante
-    // Y-Force: Parent leicht nach -y (oben), Child leicht nach +y (unten).
-    // Genug fuer sichtbare Hierarchie ohne den organischen Force-Look zu
-    // brechen. dependency-Edges bleiben neutral.
-    for (let e = 0; e < edges.length; e++) {
-      const a = edges[e][0];
-      const b = edges[e][1];
-      const isStructure = edges[e][2];
-      const dx = px[b] - px[a];
-      const dy = py[b] - py[a];
-      const dist = Math.hypot(dx, dy) + 0.001;
-      const delta = dist - cfg.springLength;
-      const force = cfg.springStrength * delta;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
-      ax[a] += fx;
-      ay[a] += fy;
-      ax[b] -= fx;
-      ay[b] -= fy;
-      // Hierarchie-Bias nur auf structure-Edges (parent_of). Konstante
-      // Y-Force zieht Parent rauf, Child runter — bildet die Hierarchie ab.
-      if (isStructure && cfg.hierarchyBias > 0) {
-        ay[a] -= cfg.hierarchyBias;
-        ay[b] += cfg.hierarchyBias;
-      }
-    }
-
-    // Center-Gravity (sanft) — verhindert Numerik-Drift, ist aber schwach
-    // genug, dass sie nicht aus lokalen Minima zieht. Im Components-Layout
-    // wird die Component am Ende ohnehin auf (0,0) zentriert; hier wirkt
-    // sie nur als Stabilisator gegen Float-Akkumulationsfehler.
-    if (cfg.centerStrength > 0) {
-      for (let i = 0; i < N; i++) {
-        ax[i] -= px[i] * cfg.centerStrength;
-        ay[i] -= py[i] * cfg.centerStrength;
-      }
-    }
-
-    // Integrate (mit Annealing-Damping)
-    for (let i = 0; i < N; i++) {
-      vx[i] = (vx[i] + ax[i]) * dampingThis;
-      vy[i] = (vy[i] + ay[i]) * dampingThis;
-      px[i] += vx[i];
-      py[i] += vy[i];
-    }
+    runForceStep(dampingThis);
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -505,6 +440,64 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
     return count;
   }
 
+  /**
+   * Eine einzelne Force-Sim-Iteration. Wird sowohl in der Hauptschleife
+   * (mit Annealing-Damping) als auch in der Re-Settle-Phase nach den
+   * Sibling-Swaps verwendet. DRY-Helper.
+   * @param {number} dampingThis
+   */
+  function runForceStep(dampingThis) {
+    ax.fill(0);
+    ay.fill(0);
+    // Repulsion (jedes Paar)
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const dx = px[j] - px[i];
+        const dy = py[j] - py[i];
+        const dist2 = dx * dx + dy * dy + 0.01;
+        const dist = Math.sqrt(dist2);
+        const force = Math.min(cfg.repulsion / dist2, maxForce);
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        ax[i] -= fx; ay[i] -= fy;
+        ax[j] += fx; ay[j] += fy;
+      }
+    }
+    // Spring per Edge + Hierarchie-Bias
+    for (let e = 0; e < edges.length; e++) {
+      const a = edges[e][0];
+      const b = edges[e][1];
+      const isStructure = edges[e][2];
+      const dx = px[b] - px[a];
+      const dy = py[b] - py[a];
+      const dist = Math.hypot(dx, dy) + 0.001;
+      const delta = dist - cfg.springLength;
+      const force = cfg.springStrength * delta;
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      ax[a] += fx; ay[a] += fy;
+      ax[b] -= fx; ay[b] -= fy;
+      if (isStructure && cfg.hierarchyBias > 0) {
+        ay[a] -= cfg.hierarchyBias;
+        ay[b] += cfg.hierarchyBias;
+      }
+    }
+    // Center-Gravity
+    if (cfg.centerStrength > 0) {
+      for (let i = 0; i < N; i++) {
+        ax[i] -= px[i] * cfg.centerStrength;
+        ay[i] -= py[i] * cfg.centerStrength;
+      }
+    }
+    // Integrate
+    for (let i = 0; i < N; i++) {
+      vx[i] = (vx[i] + ax[i]) * dampingThis;
+      vy[i] = (vy[i] + ay[i]) * dampingThis;
+      px[i] += vx[i];
+      py[i] += vy[i];
+    }
+  }
+
   // Iterativ Sibling-Pairs durchgehen — bis kein Swap mehr Crossings reduziert.
   // WICHTIG: SUBTREE-Swap, nicht Node-Swap. Wenn A und B getauscht werden,
   // wandern auch alle ihre Descendants mit. Sonst wuerden A's Children
@@ -512,6 +505,7 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
   // durch den ganzen Subtree von B. Resultat: MEHR Crossings statt weniger
   // (Bug der ersten Version, gefixt 2026-05-04).
   const maxSwapIterations = 8;
+  let anySwapHappened = false;
   for (let swapIter = 0; swapIter < maxSwapIterations; swapIter++) {
     let didSwap = false;
     for (const [, kids] of childrenOfParent) {
@@ -549,11 +543,28 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
             for (const n of subB) { px[n] += dx; py[n] += dy; }
           } else {
             didSwap = true;
+            anySwapHappened = true;
           }
         }
       }
     }
     if (!didSwap) break;
+  }
+
+  // Re-Settle-Phase: wenn Swaps stattgefunden haben, sind die Federn
+  // nicht mehr im Equilibrium (Subtrees an neuen Positionen, aber alle
+  // umgebenden Kraefte nicht angepasst). Eine kurze Force-Sim mit voller
+  // Damping pendelt das System auf die neue Konfiguration ein. Verhindert
+  // dass Subtrees aufeinander stossen oder unnatuerliche Luecken haben.
+  // Velocities zuruecksetzen — sonst wuerde das System mit alter
+  // Bewegungsenergie ueberschwingen.
+  if (anySwapHappened) {
+    vx.fill(0);
+    vy.fill(0);
+    const settleIterations = Math.min(80, Math.floor(cfg.iterations * 0.25));
+    for (let iter = 0; iter < settleIterations; iter++) {
+      runForceStep(cfg.damping);
+    }
   }
 
   // Bounding-Box bestimmen + Component zentrieren auf (0,0)
