@@ -386,6 +386,10 @@
   fill: rgba(20, 16, 10, 0.55);
   stroke: rgba(120, 90, 50, 0.28);
   opacity: 0.45;
+  /* Falls der Sub-Node gleichzeitig added ist, laeuft die rpg-pulse-active-
+     Animation auf ihm — die wuerde das fill periodisch zurueckueberschreiben.
+     Versiegelte Knoten sollen statisch dunkel bleiben. */
+  animation: none !important;
 }
 
 .rpg-tree-node-node--treelocked .rpg-tree-node-node__glyph {
@@ -404,6 +408,11 @@
   fill: rgba(20, 16, 10, 0.55) !important;
   stroke: rgba(120, 90, 50, 0.28) !important;
   opacity: 0.45;
+  /* Pulse-Animation der --active-Klasse muss abgeschaltet werden, sonst
+     ueberschreibt sie das fill periodisch (CSS-Spec: !important in
+     @keyframes wird ignoriert → Animation gewinnt sonst). Versiegelte
+     Quests sollen statisch dunkel sein, kein Atmen. */
+  animation: none !important;
 }
 
 .rpg-tree-node--treelocked .rpg-tree-node__label {
