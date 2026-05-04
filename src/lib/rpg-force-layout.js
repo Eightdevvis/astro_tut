@@ -307,6 +307,46 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
     childrenOfParent.get(p).push(c);
   }
 
+  /**
+   * Sammelt alle erreichbaren Nodes ab einer Wurzel (Subtree via structure-
+   * Edges). Stoppt bei Multi-Parent-Knoten die schon besucht wurden — folgt
+   * nur Down-Stream-Richtung (parent → child).
+   * Wird einmal pro Knoten gebraucht und gecacht.
+   * @param {number} rootIdx
+   * @returns {Set<number>}
+   */
+  function collectSubtree(rootIdx) {
+    /** @type {Set<number>} */
+    const out = new Set();
+    out.add(rootIdx);
+    const stack = [rootIdx];
+    while (stack.length) {
+      const cur = stack.pop();
+      const kids = childrenOfParent.get(cur);
+      if (!kids) continue;
+      for (const k of kids) {
+        if (out.has(k)) continue;
+        out.add(k);
+        stack.push(k);
+      }
+    }
+    return out;
+  }
+
+  // Subtree-Memberships pro Knoten cachen. Sie haengen nur an der Struktur,
+  // nicht an Positionen — koennen einmal vorab berechnet und mehrfach
+  // verwendet werden. Cache-Hit-Rate ist hoch da pro Sibling-Pair beide
+  // Subtrees angefragt werden, in Iter 2 nochmal.
+  /** @type {Map<number, Set<number>>} */
+  const subtreeCache = new Map();
+  /** @param {number} idx */
+  function getSubtree(idx) {
+    if (subtreeCache.has(idx)) return subtreeCache.get(idx);
+    const s = collectSubtree(idx);
+    subtreeCache.set(idx, s);
+    return s;
+  }
+
   // Hauptschleife — Verlet/Euler-Simulation mit Annealing
   for (let iter = 0; iter < cfg.iterations; iter++) {
     // Linearer Damping-Anstieg ueber die Iterations.
@@ -440,7 +480,37 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
     return count;
   }
 
+  /**
+   * Zaehlt Crossings in denen mind. eine Edge einen Knoten aus subA oder
+   * subB beinhaltet — also genau die Crossings die durch ein Subtree-
+   * Swap potenziell betroffen waeren. Vergleichbar mit
+   * `countCrossingsInvolvingNode`, aber summiert ueber alle relevanten
+   * Knoten ohne Doppelzaehlung pro Crossing.
+   * @param {Set<number>} subA
+   * @param {Set<number>} subB
+   */
+  function countCrossingsInvolvingSubtrees(subA, subB) {
+    let count = 0;
+    for (let i = 0; i < edges.length; i++) {
+      const ai = edges[i][0];
+      const bi = edges[i][1];
+      // Ist edge[i] involved in subA oder subB? Sonst skip.
+      const aiInA = subA.has(ai), aiInB = subB.has(ai);
+      const biInA = subA.has(bi), biInB = subB.has(bi);
+      if (!aiInA && !aiInB && !biInA && !biInB) continue;
+      for (let j = i + 1; j < edges.length; j++) {
+        if (segmentsCross(ai, bi, edges[j][0], edges[j][1])) count++;
+      }
+    }
+    return count;
+  }
+
   // Iterativ Sibling-Pairs durchgehen — bis kein Swap mehr Crossings reduziert.
+  // WICHTIG: SUBTREE-Swap, nicht Node-Swap. Wenn A und B getauscht werden,
+  // wandern auch alle ihre Descendants mit. Sonst wuerden A's Children
+  // links bleiben waehrend A nach rechts wandert — Edges A→A1 zogen quer
+  // durch den ganzen Subtree von B. Resultat: MEHR Crossings statt weniger
+  // (Bug der ersten Version, gefixt 2026-05-04).
   const maxSwapIterations = 8;
   for (let swapIter = 0; swapIter < maxSwapIterations; swapIter++) {
     let didSwap = false;
@@ -450,17 +520,33 @@ function simulateLocalForceLayout(compNodeIds, allIdEdges, cfg) {
         for (let j = i + 1; j < kids.length; j++) {
           const a = kids[i];
           const b = kids[j];
-          // Crossings VOR Swap (bzgl. beider Knoten zusammen)
-          const before = countCrossingsInvolvingNode(a) + countCrossingsInvolvingNode(b);
-          if (before === 0) continue; // nichts zu verbessern
-          // X-Y-Tausch
-          const tx = px[a]; px[a] = px[b]; px[b] = tx;
-          const ty = py[a]; py[a] = py[b]; py[b] = ty;
-          const after = countCrossingsInvolvingNode(a) + countCrossingsInvolvingNode(b);
+          const subA = getSubtree(a);
+          const subB = getSubtree(b);
+          // Multi-Parent-Schutz: wenn ein Knoten in BEIDEN Subtrees liegt
+          // (gemeinsamer Descendant), wuerde das Shiften ihn mit beiden
+          // Vorzeichen versetzen — undefiniert. Solche Pairs auslassen.
+          let shared = false;
+          for (const n of subA) {
+            if (subB.has(n)) { shared = true; break; }
+          }
+          if (shared) continue;
+          // Crossings VOR Swap — alle Edges die A oder B oder ihre
+          // Descendants beruehren.
+          const before = countCrossingsInvolvingSubtrees(subA, subB);
+          if (before === 0) continue;
+          // Subtree-Shift: subA bekommt +delta, subB bekommt -delta, wo
+          // delta = Position-Differenz der Wurzeln. Damit landen A und B
+          // exakt an den Positionen des jeweils anderen, und ihre Subtrees
+          // wandern mit.
+          const dx = px[b] - px[a];
+          const dy = py[b] - py[a];
+          for (const n of subA) { px[n] += dx; py[n] += dy; }
+          for (const n of subB) { px[n] -= dx; py[n] -= dy; }
+          const after = countCrossingsInvolvingSubtrees(subA, subB);
           if (after >= before) {
-            // Swap zurueck — kein Gewinn
-            const tx2 = px[a]; px[a] = px[b]; px[b] = tx2;
-            const ty2 = py[a]; py[a] = py[b]; py[b] = ty2;
+            // Revert — kein Gewinn
+            for (const n of subA) { px[n] -= dx; py[n] -= dy; }
+            for (const n of subB) { px[n] += dx; py[n] += dy; }
           } else {
             didSwap = true;
           }
