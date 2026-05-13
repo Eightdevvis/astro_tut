@@ -36,62 +36,60 @@ const titleText = tooltip || 'Frisches Feature – Bugs sind sehr wahrscheinlich
 )}
 
 <style>
-  /* Container belegt das eckige Quadrat unten rechts. overflow: hidden clippt
-     die ueberlappenden Bandenden, sodass das Ribbon nur die Eck-Diagonale
-     zeigt. Geometrie ist so abgestimmt, dass die Ribbon-Bounding-Box nach
-     45deg-Rotate exakt in den Container passt. */
+  /* Container spannt das ganze Viewport — overflow:hidden clippt das Band
+     dann an den Viewport-Kanten (rechts/unten), nicht an einer kleinen
+     Eck-Box. Damit gibt es keinen harten Cut innerhalb der Page; das
+     innere Bandende laeuft per Mask sanft aus. */
   .beware-of-bugs-corner {
     position: fixed;
-    bottom: 0;
-    right: 0;
-    width: 220px;
-    height: 220px;
+    inset: 0;
     overflow: hidden;
     pointer-events: none;
     z-index: 9999;
   }
   .beware-of-bugs-ribbon {
     position: absolute;
-    /* zentriert im Container, dann gedreht. Width < Container-Diagonale,
-       sodass die Enden nur leicht in die Container-Kanten clippen. */
-    left: 50%;
-    top: 50%;
-    width: 300px;
-    margin-left: -150px;
-    margin-top: -19px;
+    /* Banner sitzt diagonal ueber der unteren rechten Ecke. Negative
+       right-Wert + Bottom-Offset schieben einen Bandende ueber den
+       rechten Viewport-Rand hinaus, wo es vom Container-Overflow geclippt
+       wird. */
+    bottom: 70px;
+    right: -130px;
+    width: 440px;
     transform: rotate(-45deg);
     transform-origin: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 7px 0;
+    gap: 10px;
+    padding: 8px 0;
     background: linear-gradient(180deg, #fde68a 0%, #facc15 50%, #eab308 100%);
     color: #1f1f1f;
     border-top: 1px solid rgba(180, 83, 9, 0.7);
     border-bottom: 1px solid rgba(180, 83, 9, 0.7);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-    font-size: 0.74rem;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+    font-size: 0.78rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     white-space: nowrap;
+    /* Sanftes Auslaufen am linken (sichtbaren) Bandende; rechts bleibt
+       voll, weil es ohnehin vom Viewport-Rand geclippt wird. */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 100%);
+            mask-image: linear-gradient(90deg, transparent 0%, #000 18%, #000 100%);
   }
   .beware-of-bugs-ribbon__icon {
-    font-size: 0.95rem;
+    font-size: 1rem;
     line-height: 1;
   }
   @media (max-width: 480px) {
-    .beware-of-bugs-corner {
-      width: 170px;
-      height: 170px;
-    }
     .beware-of-bugs-ribbon {
-      width: 235px;
-      margin-left: -117px;
-      margin-top: -16px;
-      font-size: 0.74rem;
+      bottom: 56px;
+      right: -100px;
+      width: 340px;
+      font-size: 0.7rem;
       padding: 6px 0;
+      gap: 8px;
     }
   }
 </style>
