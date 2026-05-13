@@ -7,6 +7,7 @@ import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../components/BewareOfBugsBanner.astro';
+import { ensureDbSchema, getDb } from '../lib/db.js';
 import '../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -21,6 +22,38 @@ if (token) {
   } catch {
     username = null;
   }
+}
+
+const isLoggedIn = Boolean(username);
+const canPost = allowed; // = eingeloggt UND blogpost_poster
+
+// Hub-Tiles: Ausschnitte aus existierenden Posts. Die Hub-Seite ist fuer
+// jeden zugaenglich (auch ausgeloggt) — das Auth-Gate wird erst beim Klick
+// auf das `+`-Tile gezogen.
+type HubTile = { id: number; snippet: string; date: string };
+const HUB_TILE_COUNT = 24; // 5x5-Grid mit dem zentralen `+`-Tile in der Mitte
+let hubTiles: HubTile[] = [];
+try {
+  await ensureDbSchema();
+  const r = await getDb().execute({
+    sql: `SELECT id, content_text, created_at
+            FROM blog_posts
+           ORDER BY datetime(created_at) DESC, id DESC
+           LIMIT ?`,
+    args: [HUB_TILE_COUNT],
+  });
+  hubTiles = (r.rows || []).map((row) => {
+    const id = Number(row.id ?? 0);
+    const text = String(row.content_text || '').replace(/\s+/g, ' ').trim();
+    const span = Math.min(140, text.length);
+    const maxStart = Math.max(0, text.length - span);
+    const start = maxStart > 0 ? Math.floor(Math.random() * (maxStart + 1)) : 0;
+    const snippet = text.slice(start, start + span);
+    const date = String(row.created_at || '').replace('T', ' ').slice(0, 10);
+    return { id, snippet, date };
+  }).filter((t) => t.id > 0);
+} catch {
+  hubTiles = [];
 }
 ---
 
@@ -288,26 +321,191 @@ if (token) {
         .tool.eraser { left: 80%; top: -2.05rem; right: auto; }
         .tool.color { left: 92%; top: -2.15rem; right: auto; }
       }
+
+      /* Hub-Grid: zentrales `+` Tile + drumherum die Post-Ausschnitte. */
+      .hub-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-auto-rows: 1fr;
+        grid-auto-flow: dense;
+        gap: 0.5rem;
+        width: min(960px, 100%);
+        margin: 0 auto;
+        padding: 1rem 0 1.5rem;
+        transition: opacity 540ms ease;
+      }
+      .hub-tile {
+        position: relative;
+        aspect-ratio: 1 / 1;
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.7rem;
+        background: var(--site-card-bg);
+        color: inherit;
+        text-decoration: none;
+        padding: 0.55rem 0.6rem;
+        overflow: hidden;
+        font-size: 0.72rem;
+        line-height: 1.35;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        text-align: left;
+        cursor: pointer;
+        transform-origin: center;
+        will-change: opacity, transform;
+        transition:
+          opacity 520ms cubic-bezier(0.34, 0.06, 0.46, 1),
+          transform 520ms cubic-bezier(0.34, 0.06, 0.46, 1);
+        transition-delay: calc(var(--tile-i, 0) * 18ms);
+      }
+      .hub-tile--post:hover,
+      .hub-tile--post:focus-visible {
+        outline: none;
+        border-color: var(--site-link, currentColor);
+      }
+      .hub-tile-date {
+        font-size: 0.62rem;
+        letter-spacing: 0.08em;
+        opacity: 0.55;
+        text-transform: uppercase;
+      }
+      .hub-tile-snippet {
+        flex: 1;
+        overflow: hidden;
+        opacity: 0.85;
+      }
+      .hub-tile--editor {
+        grid-column: 3;
+        grid-row: 3;
+        display: grid;
+        place-items: center;
+        font-size: 0;
+        border-style: dashed;
+        background: transparent;
+      }
+      .hub-tile-plus {
+        font-size: clamp(2.4rem, 5vw, 3.4rem);
+        line-height: 1;
+        opacity: 0.7;
+        transition: opacity 220ms ease, transform 220ms ease;
+      }
+      .hub-tile--editor:hover .hub-tile-plus,
+      .hub-tile--editor:focus-visible .hub-tile-plus {
+        opacity: 1;
+        transform: scale(1.08);
+      }
+
+      /* Mode-Switch: Hub blendet aus, Editor-Shell faded rein. */
+      .page[data-mode="hub"] .editor-shell {
+        opacity: 0;
+        transform: scale(0.6);
+        pointer-events: none;
+        max-height: 0;
+        margin: 0;
+        overflow: hidden;
+      }
+      .page[data-mode="hub"] .past-posts {
+        opacity: 0;
+        transform: translateY(20px);
+        pointer-events: none;
+        max-height: 0;
+        margin: 0;
+        overflow: hidden;
+      }
+      .page[data-mode="editor"] .hub-tile--post {
+        opacity: 0;
+        transform: scale(0.4);
+        pointer-events: none;
+      }
+      .page[data-mode="editor"] .hub-tile--editor {
+        opacity: 0;
+        transform: scale(2.4);
+        pointer-events: none;
+        transition-delay: 0ms;
+      }
+      .page[data-mode="editor"] .hub-grid {
+        max-height: 0;
+        margin: 0;
+        padding: 0;
+        opacity: 0;
+        transition: max-height 540ms ease 320ms, margin 540ms ease 320ms,
+          padding 540ms ease 320ms, opacity 320ms ease 360ms;
+      }
+      .editor-shell {
+        transition:
+          opacity 540ms ease 240ms,
+          transform 620ms cubic-bezier(0.22, 0.7, 0.32, 1) 240ms,
+          max-height 540ms ease 240ms,
+          margin 540ms ease 240ms;
+      }
+      .past-posts {
+        transition:
+          opacity 540ms ease 360ms,
+          transform 540ms ease 360ms,
+          max-height 540ms ease 360ms,
+          margin 540ms ease 360ms;
+      }
+
+      /* Mobile-Grid: 3 Spalten, `+` in der Mitte. */
+      @media (max-width: 720px) {
+        .hub-grid { grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+        .hub-tile--editor { grid-column: 2; grid-row: 2; }
+        .hub-tile { font-size: 0.66rem; padding: 0.45rem 0.5rem; }
+      }
+
+      /* Auth-Hinweis-Toast wenn man nicht eingeloggt / kein Recht hat. */
+      .auth-toast {
+        margin: 0.4rem auto 0.6rem;
+        max-width: 480px;
+        padding: 0.55rem 0.85rem;
+        border-radius: 0.55rem;
+        background: rgba(252, 211, 77, 0.18);
+        border: 1px solid rgba(180, 83, 9, 0.6);
+        color: var(--site-body-text);
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.7rem;
+        animation: auth-toast-pop 240ms ease;
+      }
+      .auth-toast-link {
+        color: inherit;
+        text-decoration: underline;
+        opacity: 0.85;
+      }
+      @keyframes auth-toast-pop {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
     </style>
   </head>
   <body>
-    {!username ? (
-      <main class="no-permission">
-        <h1>HEY</h1>
-        <p>DU MUSST EINGELOGGT SEIN.</p>
-        <a href="/">zurueck</a>
-      </main>
-    ) : !allowed ? (
-      <main class="no-permission">
-        <h1>NOPE</h1>
-        <p>DU HAST KEIN RECHT FUER BLOGPOSTS.</p>
-        <a href="/">zurueck</a>
-      </main>
-    ) : (
-      <>
-        <Nav2 />
-        <main class="page">
-        <section class="editor-shell" aria-label="Blogpost Editor">
+    <Nav2 />
+    <main class="page" id="blogpostPage" data-mode="hub" data-logged-in={isLoggedIn ? 'true' : 'false'} data-can-post={canPost ? 'true' : 'false'}>
+      <section class="hub-grid" id="hubGrid" aria-label="Post-Sammelstelle">
+        {hubTiles.map((tile, i) => (
+          <a
+            class="hub-tile hub-tile--post"
+            href={`/posts/db/${tile.id}`}
+            style={`--tile-i: ${i};`}
+            aria-label={`Post vom ${tile.date}`}
+          >
+            <span class="hub-tile-date">{tile.date}</span>
+            <span class="hub-tile-snippet">{tile.snippet}</span>
+          </a>
+        ))}
+        <button class="hub-tile hub-tile--editor" id="editorTile" type="button" aria-label="Neuen Blogpost schreiben">
+          <span class="hub-tile-plus">+</span>
+        </button>
+      </section>
+
+      <div class="auth-toast" id="authToast" role="status" aria-live="polite" hidden>
+        <span id="authToastText"></span>
+        <a href="/" class="auth-toast-link">zur Startseite</a>
+      </div>
+
+      <section class="editor-shell" aria-label="Blogpost Editor">
           <div class="editor-wrap" id="editorWrap">
             <button class="editor-activation" id="editorActivation" type="button" aria-label="Editor oeffnen">+</button>
             <button class="tool bold" data-tool="bold" title="Fett">B</button>
@@ -333,23 +531,25 @@ if (token) {
           <h2>Vergangene Posts</h2>
           <div class="post-grid" id="pastPostsGrid"></div>
         </section>
-        <div class="post-modal" id="postModal" aria-hidden="true">
-          <div class="post-modal-panel">
-            <div class="post-modal-head">
-              <div class="post-modal-actions">
-                <button class="post-modal-edit" id="postModalEdit" type="button">Bearbeiten</button>
-                <button class="post-modal-delete" id="postModalDelete" type="button">Loeschen</button>
-              </div>
-              <button class="post-modal-close" id="postModalClose" type="button">Schliessen</button>
+      <div class="post-modal" id="postModal" aria-hidden="true">
+        <div class="post-modal-panel">
+          <div class="post-modal-head">
+            <div class="post-modal-actions">
+              <button class="post-modal-edit" id="postModalEdit" type="button">Bearbeiten</button>
+              <button class="post-modal-delete" id="postModalDelete" type="button">Loeschen</button>
             </div>
-            <div class="post-modal-body" id="postModalBody"></div>
+            <button class="post-modal-close" id="postModalClose" type="button">Schliessen</button>
           </div>
+          <div class="post-modal-body" id="postModalBody"></div>
         </div>
-        </main>
-      </>
-    )}
+      </div>
+    </main>
 
     <script>
+      const blogpostPage = document.getElementById('blogpostPage');
+      const editorTile = document.getElementById('editorTile');
+      const authToast = document.getElementById('authToast');
+      const authToastText = document.getElementById('authToastText');
       const activation = document.getElementById('editorActivation');
       const editorWrap = document.getElementById('editorWrap');
       const editor = document.getElementById('editor');
@@ -530,6 +730,42 @@ if (token) {
           editorWrap.classList.add('active');
           editor.focus();
           resizeCanvasToBox();
+        });
+      }
+
+      function showAuthToast(text) {
+        if (!authToast || !authToastText) return;
+        authToastText.textContent = text || '';
+        authToast.hidden = false;
+      }
+
+      function enterEditorMode() {
+        if (!blogpostPage) return;
+        blogpostPage.setAttribute('data-mode', 'editor');
+        // Editor-Aktivierung nach der Fade-Animation (CSS-Delay ~240ms +
+        // Transition-Dauer). Wir warten genug, damit das Editor-Shell sichtbar
+        // ist, bevor wir den Focus setzen und das Canvas messen.
+        setTimeout(() => {
+          editorWrap?.classList.add('active');
+          editor?.focus();
+          resizeCanvasToBox();
+        }, 720);
+      }
+
+      if (editorTile && blogpostPage) {
+        editorTile.addEventListener('click', () => {
+          const loggedIn = blogpostPage.dataset.loggedIn === 'true';
+          const canPost = blogpostPage.dataset.canPost === 'true';
+          if (!loggedIn) {
+            showAuthToast('Du musst eingeloggt sein, um einen Blogpost zu schreiben.');
+            return;
+          }
+          if (!canPost) {
+            showAuthToast('Dir fehlt das Recht für Blogposts.');
+            return;
+          }
+          if (authToast) authToast.hidden = true;
+          enterEditorMode();
         });
       }
 
