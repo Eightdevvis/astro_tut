@@ -27,6 +27,8 @@ import { ensureDbSchema, getDb } from '../../../lib/db.js';
 import {
   TILE_SIZE,
   MAX_TILE_BYTES,
+  MAX_TILES_PER_PAGE,
+  MAX_TILE_BYTES_PER_PAGE,
   base64ToBytes,
   looksLikePng,
   normalizePath,
@@ -145,6 +147,25 @@ export async function POST({ request }) {
         args: [buf, pagePath, tileX, tileY],
       });
     } else {
+      // Anti-Spam-Guardrail: nur neue Tiles werden gegen das Page-Budget gechecked.
+      // Editieren bestehender Tiles bleibt frei (sonst koennte der User sein eigenes
+      // Werk nicht mehr ueberarbeiten).
+      const budget = await db.execute({
+        sql: `SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(png_blob)), 0) AS bytes
+              FROM graffiti_tiles
+              WHERE page_path = ?`,
+        args: [pagePath],
+      });
+      const usedTiles = Number(budget.rows?.[0]?.n || 0);
+      const usedBytes = Number(budget.rows?.[0]?.bytes || 0);
+      if (usedTiles >= MAX_TILES_PER_PAGE || usedBytes + buf.length > MAX_TILE_BYTES_PER_PAGE) {
+        return jsonError(429, 'Seite ist voll — bitte erst Platz schaffen', {
+          usedTiles,
+          maxTiles: MAX_TILES_PER_PAGE,
+          usedBytes,
+          maxBytes: MAX_TILE_BYTES_PER_PAGE,
+        });
+      }
       try {
         await db.execute({
           sql: `INSERT INTO graffiti_tiles (page_path, tile_x, tile_y, png_blob, version, updated_at)

@@ -6,71 +6,10 @@ import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
+import SiteInventory from '../components/SiteInventory.jsx';
+import SitePlacedItemsLayer from '../components/SitePlacedItemsLayer.jsx';
 import { ensureDbSchema, getDb } from '../lib/db.js';
 import '../styles/global.css';
-
-// Alle Markdown-Posts unter ./posts einsammeln. eager:true heisst: zur Build-Zeit
-// werden alle Module direkt geladen; jedes Modul hat frontmatter, url, Content,
-// rawContent() (Body als Markdown ohne Frontmatter), compiledContent().
-const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true })) as any[];
-
-// pubDate aus Frontmatter strikt in ms umwandeln (fehlt/ungueltig -> 0).
-// Wichtig: Date.parse() akzeptiert manche kaputten Formate "irgendwie" und kann
-// dadurch falsche Zukunftsdaten erzeugen.
-function parseStrictFrontmatterDate(value: unknown): number {
-  const raw = String(value ?? '').trim();
-  if (!raw) return 0;
-
-  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d{1,3})?(Z)?)?$/);
-  if (!m) return 0;
-
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  const day = Number(m[3]);
-  const hour = Number(m[4] ?? '0');
-  const minute = Number(m[5] ?? '0');
-  const second = Number(m[6] ?? '0');
-  const hasTime = Boolean(m[4]);
-  const hasZulu = m[7] === 'Z';
-
-  if (month < 1 || month > 12) return 0;
-  if (day < 1 || day > 31) return 0;
-  if (hour < 0 || hour > 23) return 0;
-  if (minute < 0 || minute > 59) return 0;
-  if (second < 0 || second > 59) return 0;
-
-  const t = hasTime && hasZulu
-    ? Date.UTC(year, month - 1, day, hour, minute, second, 0)
-    : new Date(year, month - 1, day, hour, minute, second, 0).getTime();
-
-  if (Number.isNaN(t)) return 0;
-  const check = hasTime && hasZulu ? new Date(t) : new Date(t);
-  if (
-    check.getFullYear() !== year ||
-    check.getMonth() !== month - 1 ||
-    check.getDate() !== day ||
-    check.getHours() !== hour ||
-    check.getMinutes() !== minute ||
-    check.getSeconds() !== second
-  ) {
-    return 0;
-  }
-  return t;
-}
-
-function pubTime(post: any): number {
-  const d = post?.frontmatter?.pubDate;
-  if (d == null) return 0;
-  return parseStrictFrontmatterDate(d);
-}
-
-// Neuester Post zuerst; bei Gleichstand deterministisch ueber url.
-const sorted = [...allPosts].sort((a, b) => {
-  const diff = pubTime(b) - pubTime(a);
-  if (diff !== 0) return diff;
-  return String(b.url ?? '').localeCompare(String(a.url ?? ''));
-});
-const lastMarkdownPost = sorted[0] ?? null;
 
 function dbTime(value: unknown): number {
   const raw = String(value ?? '').trim();
@@ -80,47 +19,31 @@ function dbTime(value: unknown): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-let lastDbPost: null | {
+const POSTS_ON_HOME = 6;
+
+type DbPost = {
   id: number;
   created_at: string;
   content_text: string;
-} = null;
+};
+
+let recentDbPosts: DbPost[] = [];
 try {
   await ensureDbSchema();
   const result = await getDb().execute({
     sql: `SELECT id, created_at, content_text
        FROM blog_posts
       ORDER BY datetime(created_at) DESC, id DESC
-      LIMIT 1`,
-    args: [],
+      LIMIT ?`,
+    args: [POSTS_ON_HOME],
   });
-  const row = result.rows?.[0];
-  if (row) {
-    lastDbPost = {
-      id: Number(row.id ?? 0),
-      created_at: String(row.created_at ?? ''),
-      content_text: String(row.content_text ?? ''),
-    };
-  }
+  recentDbPosts = (result.rows || []).map((row) => ({
+    id: Number(row.id ?? 0),
+    created_at: String(row.created_at ?? ''),
+    content_text: String(row.content_text ?? ''),
+  }));
 } catch (err) {
-  console.error('index: failed to load latest db blog post', err);
-}
-
-// Markdown-Syntax leicht abraeumen, damit das Snippet als Klartext lesbar bleibt.
-// Bewusst minimal: Headings, Links, Inline-Emphasis, Quote-/Code-Marker raus.
-// Komplexere Sachen (Tabellen, HTML) sind hier kein Thema.
-function stripMarkdownLight(src: string): string {
-  return src
-    .replace(/```[\s\S]*?```/g, ' ')          // Codeblocks komplett raus
-    .replace(/`([^`]+)`/g, '$1')               // Inline-Code: nur Backticks raus
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')     // Bilder raus
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')   // Links: nur Anzeigetext behalten
-    .replace(/^#{1,6}\s+/gm, '')               // Heading-Marker
-    .replace(/^\s*[-*+]\s+/gm, '')             // Listen-Marker
-    .replace(/^\s*>\s?/gm, '')                 // Blockquote-Marker
-    .replace(/[*_~]+/g, '')                    // bold/italic/strike
-    .replace(/\s+/g, ' ')                      // Whitespace kollabieren
-    .trim();
+  console.error('index: failed to load recent db blog posts', err);
 }
 
 // Aus dem Klartext ein zufaelliges Stueck der gewuenschten Laenge schneiden.
@@ -143,27 +66,29 @@ function pickRandomSnippet(plain: string, length = 220): string {
   return `${prefix}${trimmed.trim()}${suffix}`;
 }
 
-// Roh-Body des letzten Posts holen und Snippet bauen. rawContent ist eine Funktion
-// am Astro-Markdown-Modul; defensive Fallbacks fuer den Fall, dass der Build-Hook
-// das Modul anders liefert.
-let lastPostSnippet = '';
-let lastPostTitle = '';
-let lastPostUrl = '';
-const markdownTs = pubTime(lastMarkdownPost);
-const dbTs = dbTime(lastDbPost?.created_at);
+// DB-Posts in die Home-Liste mappen — eine Quelle, der MD-Loader ist obsolet
+// nach der Migration aller Markdown-Posts in blog_posts.
+type HomePost = { title: string; url: string; plain: string; time: number };
 
-if (dbTs > markdownTs && lastDbPost) {
-  const plain = String(lastDbPost.content_text || '').trim();
-  lastPostTitle = plain.split('\n').find((line) => line.trim().length > 0)?.trim().slice(0, 90) || 'Neuer Blogpost';
-  lastPostSnippet = pickRandomSnippet(plain, 220);
-  lastPostUrl = lastDbPost.id > 0 ? `/posts/db/${lastDbPost.id}` : '';
-} else if (lastMarkdownPost) {
-  const raw = typeof lastMarkdownPost.rawContent === 'function' ? String(lastMarkdownPost.rawContent() ?? '') : '';
-  const plain = stripMarkdownLight(raw);
-  lastPostTitle = String(lastMarkdownPost.frontmatter?.title ?? '').trim();
-  lastPostSnippet = pickRandomSnippet(plain, 220);
-  lastPostUrl = String(lastMarkdownPost.url ?? '').trim();
-}
+const homePosts = recentDbPosts
+  .map((row): HomePost => {
+    const plain = String(row.content_text || '').trim();
+    const title = plain.split('\n').find((line) => line.trim().length > 0)?.trim().slice(0, 90) || 'Neuer Blogpost';
+    const url = row.id > 0 ? `/posts/db/${row.id}` : '';
+    const time = dbTime(row.created_at);
+    return { title, url, plain, time };
+  })
+  .filter((p) => p.title && p.url && p.plain)
+  .sort((a, b) => {
+    if (b.time !== a.time) return b.time - a.time;
+    return b.url.localeCompare(a.url);
+  })
+  .slice(0, POSTS_ON_HOME)
+  .map((p) => ({
+    title: p.title,
+    url: p.url,
+    snippet: pickRandomSnippet(p.plain, 220),
+  }));
 ---
 
 <html lang="en" class="home">
@@ -183,22 +108,25 @@ if (dbTs > markdownTs && lastDbPost) {
     </header>
     <QuoteDisplay client:load />
 
-    <section class="home-tail" aria-label="Letzter Blogpost">
-      {lastPostTitle && lastPostUrl && (
+    <section class="home-tail" aria-label="Letzte Blogposts">
+      {homePosts.map((post, i) => (
         <a
-          href={lastPostUrl}
+          href={post.url}
           class="last-post-card"
-          aria-label={`Letzter Blogpost: ${lastPostTitle}`}
+          style={`--post-depth: ${i}; --post-depth-max: ${POSTS_ON_HOME - 1};`}
+          aria-label={i === 0 ? `Letzter Blogpost: ${post.title}` : `Älterer Blogpost: ${post.title}`}
         >
-          <span class="last-post-card__eyebrow">letzter blogpost</span>
-          <h2 class="last-post-card__title">{lastPostTitle}</h2>
-          {lastPostSnippet && (
-            <p class="last-post-card__snippet">{lastPostSnippet}</p>
+          {i === 0 && <span class="last-post-card__eyebrow">letzter blogpost</span>}
+          <h2 class="last-post-card__title">{post.title}</h2>
+          {post.snippet && (
+            <p class="last-post-card__snippet">{post.snippet}</p>
           )}
         </a>
-      )}
+      ))}
     </section>
     <GraffitiLayer client:load />
+    <SitePlacedItemsLayer client:load />
+    <SiteInventory client:load />
     <TesterBugBar client:load />
     <ThemeClient />
   </body>
@@ -270,16 +198,31 @@ if (dbTs > markdownTs && lastDbPost) {
     padding: 0 1rem 3rem;
     opacity: var(--home-tail-opacity);
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
   }
 
+  /*
+   * Trichter-Stack: Hauptpost (depth=0) bleibt voll, ältere Posts werden
+   * schmaler/blasser/dünner. --post-depth wird inline gesetzt (0..N-1),
+   * --post-depth-max ist (N-1).
+   * --t ist der normalisierte Fade-Faktor: 0 = voll, 1 = letzter sichtbarer.
+   */
   .last-post-card {
+    --post-depth: 0;
+    --post-depth-max: 5;
+    --t: calc(var(--post-depth) / var(--post-depth-max));
+
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    width: min(640px, 100%);
-    padding: 1.5rem 1.5rem 1.75rem;
-    border-radius: 1rem;
+    gap: calc(0.75rem * (1 - var(--t) * 0.5));
+    width: calc(min(640px, 100%) * (1 - var(--t) * 0.4));
+    padding:
+      calc(1.5rem * (1 - var(--t) * 0.55))
+      calc(1.5rem * (1 - var(--t) * 0.45))
+      calc(1.75rem * (1 - var(--t) * 0.55));
+    border-radius: calc(1rem * (1 - var(--t) * 0.35));
     background: var(--site-card-bg);
     color: var(--site-card-text);
     border: 1px solid var(--site-card-border);
@@ -289,6 +232,7 @@ if (dbTs > markdownTs && lastDbPost) {
       var(--site-card-shadow);
     text-decoration: none;
     transition: transform 0.25s ease, box-shadow 0.25s ease;
+    opacity: calc(1 - var(--t) * 0.85);
   }
 
   .last-post-card:hover,
@@ -306,14 +250,14 @@ if (dbTs > markdownTs && lastDbPost) {
 
   .last-post-card__title {
     margin: 0;
-    font-size: 1.6rem;
+    font-size: calc(1.6rem * (1 - var(--t) * 0.45));
     line-height: 1.2;
-    font-weight: 600;
+    font-weight: calc(600 - var(--t) * 200);
   }
 
   .last-post-card__snippet {
     margin: 0;
-    font-size: 0.95rem;
+    font-size: calc(0.95rem * (1 - var(--t) * 0.4));
     line-height: 1.55;
     opacity: 0.85;
     font-style: italic;
@@ -321,10 +265,13 @@ if (dbTs > markdownTs && lastDbPost) {
 
   @media (max-width: 480px) {
     .last-post-card {
-      padding: 1.1rem 1.1rem 1.3rem;
+      padding:
+        calc(1.1rem * (1 - var(--t) * 0.55))
+        calc(1.1rem * (1 - var(--t) * 0.45))
+        calc(1.3rem * (1 - var(--t) * 0.55));
     }
     .last-post-card__title {
-      font-size: 1.35rem;
+      font-size: calc(1.35rem * (1 - var(--t) * 0.45));
     }
   }
 </style>

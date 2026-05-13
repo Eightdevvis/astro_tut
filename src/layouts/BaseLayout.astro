@@ -6,6 +6,8 @@ import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import TesterBugBar from '../components/TesterBugBar.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
+import SiteInventory from '../components/SiteInventory.jsx';
+import SitePlacedItemsLayer from '../components/SitePlacedItemsLayer.jsx';
 import '../styles/global.css';
 
 const { pageTitle } = Astro.props;
@@ -28,6 +30,8 @@ const { pageTitle } = Astro.props;
       <slot />
     </main>
     <GraffitiLayer client:load />
+    <SitePlacedItemsLayer client:load />
+    <SiteInventory client:load />
     <TesterBugBar client:load />
     <Footer />
     <ThemeClient />

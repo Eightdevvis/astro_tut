@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import UserSettingsFeeds from './UserSettingsFeeds.jsx';
 
-const FGRAFFITI_HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
-const FGRAFFITI_DEFAULT_HOTKEY = ['Enter', '1'];
-
 const box = {
   maxWidth: 720,
   margin: '0 auto',
@@ -62,29 +59,6 @@ const fieldInput = {
   background: 'rgba(255,255,255,0.82)',
 };
 
-function normalizeGraffitiKey(value) {
-  if (!value) return '';
-  if (value === ' ') return 'Space';
-  if (value === 'Esc') return 'Escape';
-  if (value.length === 1) return value.toUpperCase();
-  return value;
-}
-
-function loadGraffitiHotkey() {
-  if (typeof localStorage === 'undefined') return FGRAFFITI_DEFAULT_HOTKEY;
-  try {
-    const raw = localStorage.getItem(FGRAFFITI_HOTKEY_STORAGE_KEY);
-    if (!raw) return FGRAFFITI_DEFAULT_HOTKEY;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length < 2) return FGRAFFITI_DEFAULT_HOTKEY;
-    const clean = parsed.map((k) => normalizeGraffitiKey(String(k))).filter(Boolean);
-    if (clean.length < 2) return FGRAFFITI_DEFAULT_HOTKEY;
-    return clean.slice(0, 2);
-  } catch {
-    return FGRAFFITI_DEFAULT_HOTKEY;
-  }
-}
-
 function formatNum(n) {
   if (n == null || Number.isNaN(n)) return '—';
   return new Intl.NumberFormat('de-DE').format(n);
@@ -133,8 +107,6 @@ export default function UserSettings() {
   const [testerUiEnabled, setTesterUiEnabled] = useState(true);
   const [testerBusy, setTesterBusy] = useState(false);
   const [testerMsg, setTesterMsg] = useState('');
-  const [graffitiHotkey, setGraffitiHotkey] = useState(() => FGRAFFITI_DEFAULT_HOTKEY);
-  const [graffitiMsg, setGraffitiMsg] = useState('');
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [displayNameBusy, setDisplayNameBusy] = useState(false);
   const [displayNameMsg, setDisplayNameMsg] = useState('');
@@ -185,11 +157,6 @@ export default function UserSettings() {
     };
   }, []);
 
-  useEffect(() => {
-    setGraffitiHotkey(loadGraffitiHotkey());
-  }, []);
-
-
   return (
     <div style={box}>
       <h1
@@ -208,7 +175,6 @@ export default function UserSettings() {
           <TabButton id="account" label="Konto" active={tab === 'account'} onPick={setTab} />
           {user.canUseFeeds ? <TabButton id="feeds" label="Feed" active={tab === 'feeds'} onPick={setTab} /> : null}
           <TabButton id="ai" label="KI-Nutzung" active={tab === 'ai'} onPick={setTab} />
-          <TabButton id="fgraffiti" label="fgraffiti" active={tab === 'fgraffiti'} onPick={setTab} />
           {user.isTester ? (
             <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
           ) : null}
@@ -425,92 +391,6 @@ export default function UserSettings() {
             )}
           </section>
         </>
-      )}
-
-      {!userLoading && tab === 'fgraffiti' && (
-        <section style={section}>
-          <h2 style={h2}>fgraffiti</h2>
-          <p style={muted}>
-            have fun and do good shenaningang time. i will implement jailtime maybe later so dont get caught.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, maxWidth: 460 }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <span style={{ fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75 }}>Taste 1</span>
-              <input
-                value={graffitiHotkey[0] || ''}
-                onInput={(e) => {
-                  setGraffitiMsg('');
-                  const next = normalizeGraffitiKey(e.currentTarget.value.trim());
-                  setGraffitiHotkey((prev) => [next, prev[1] || '']);
-                }}
-                style={fieldInput}
-                placeholder="z. B. Enter"
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <span style={{ fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75 }}>Taste 2</span>
-              <input
-                value={graffitiHotkey[1] || ''}
-                onInput={(e) => {
-                  setGraffitiMsg('');
-                  const next = normalizeGraffitiKey(e.currentTarget.value.trim());
-                  setGraffitiHotkey((prev) => [prev[0] || '', next]);
-                }}
-                style={fieldInput}
-                placeholder="z. B. 1"
-              />
-            </label>
-          </div>
-          <p style={{ ...muted, marginTop: 8, maxWidth: 520 }}>
-            Taste 1+2 zusammen: erstes Mal öffnet den Stift (Tag). Jeder weitere Kord: Spray → Schwamm → wieder zu. Derselbe Hotkey durchcyclt die Palette.
-          </p>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const a = normalizeGraffitiKey(graffitiHotkey[0] || '');
-                const b = normalizeGraffitiKey(graffitiHotkey[1] || '');
-                if (!a || !b) {
-                  setGraffitiMsg('Bitte zwei gueltige Tasten setzen.');
-                  return;
-                }
-                const next = [a, b];
-                localStorage.setItem(FGRAFFITI_HOTKEY_STORAGE_KEY, JSON.stringify(next));
-                window.dispatchEvent(new Event('fgraffiti-hotkey-change'));
-                setGraffitiHotkey(next);
-                setGraffitiMsg(`Gespeichert: ${next[0]} + ${next[1]} (Palette: Tag → Spray → Schwamm → aus)`);
-              }}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid rgba(0,0,0,0.2)',
-                background: 'rgba(255,255,255,0.65)',
-                cursor: 'pointer',
-              }}
-            >
-              Hotkey speichern
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem(FGRAFFITI_HOTKEY_STORAGE_KEY, JSON.stringify(FGRAFFITI_DEFAULT_HOTKEY));
-                window.dispatchEvent(new Event('fgraffiti-hotkey-change'));
-                setGraffitiHotkey(FGRAFFITI_DEFAULT_HOTKEY);
-                setGraffitiMsg('Zurueckgesetzt auf Enter + 1.');
-              }}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid rgba(0,0,0,0.2)',
-                background: 'rgba(255,255,255,0.65)',
-                cursor: 'pointer',
-              }}
-            >
-              Reset
-            </button>
-          </div>
-          {graffitiMsg ? <p style={{ ...muted, marginTop: 10 }}>{graffitiMsg}</p> : null}
-        </section>
       )}
 
       {!userLoading && tab === 'tester' && user?.isTester && (

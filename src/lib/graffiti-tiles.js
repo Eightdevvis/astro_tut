@@ -19,6 +19,13 @@ export const TILE_SIZE = 512;
  *  Schuetzt vor "Bombe-Uploads" mit grossen Bildern. */
 export const MAX_TILE_BYTES = 200 * 1024;
 
+/** Anti-Spam-Guardrails pro Page (nur bei NEUEN Tiles relevant — bestehende
+ *  Tiles duerfen immer overwritten werden, sonst kann man sein eigenes Werk
+ *  nicht editieren). Wenn eines der beiden Limits ueberschritten ist, lehnt
+ *  der Server neue Tile-Inserts mit 429 ab. */
+export const MAX_TILES_PER_PAGE = 600;
+export const MAX_TILE_BYTES_PER_PAGE = 16 * 1024 * 1024;
+
 /** Normalisiert ein page_path-Param. Verhindert dass jemand absolute URLs
  *  oder Pfade ohne Slash unterjubelt. */
 export function normalizePath(value) {

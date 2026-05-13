@@ -1,5 +1,5 @@
 ---
-import MarkdownPostLayout from '../../../layouts/MarkdownPostLayout.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { ensureDbSchema, getDb } from '../../../lib/db.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
@@ -47,19 +47,16 @@ const firstLine = post.content_text
   .map((line) => line.trim())
   .find((line) => line.length > 0);
 
-const frontmatter = {
-  title: firstLine?.slice(0, 90) || `Post #${post.id}`,
-  pubDate: post.created_at,
-  description: '',
-  author: post.username || 'Unknown',
-  image: null,
-  tags: [],
-};
+const title = firstLine?.slice(0, 90) || `Post #${post.id}`;
+const pubDate = post.created_at.slice(0, 10);
+const author = post.username || 'Unknown';
 ---
 
-<MarkdownPostLayout frontmatter={frontmatter}>
+<BaseLayout pageTitle={title}>
+  <p>{pubDate}</p>
+  <p>Written by: {author}</p>
   <article class="db-post-content" set:html={post.content_html}></article>
-</MarkdownPostLayout>
+</BaseLayout>
 
 <style>
   .db-post-content {

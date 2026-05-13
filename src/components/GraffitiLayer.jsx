@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import {
   TILE_SIZE,
   tilesCoveringBounds,
@@ -9,32 +9,29 @@ import {
   loadTileImageFromBase64,
 } from '../lib/graffiti-client.js';
 
-const HOTKEY_STORAGE_KEY = 'fgraffiti.hotkey';
-const DEFAULT_HOTKEY = ['Enter', '1'];
 /** Schwamm-Radius in CSS-Pixeln. Muss konsistent mit Server-/Tile-Render-Logik sein. */
 const ERASE_RADIUS = 26;
 
-function normalizeKeyName(key) {
-  if (!key) return '';
-  if (key === ' ') return 'Space';
-  if (key === 'Esc') return 'Escape';
-  if (key.length === 1) return key.toUpperCase();
-  return key;
-}
+/**
+ * Fallback-Werkzeuge falls /api/site-items/active nicht erreichbar ist.
+ * Spiegelt den Seed-Stand: Marker → Spraydose → Schwamm. Wird verworfen
+ * sobald der Server-Katalog geladen ist.
+ */
+const FALLBACK_DRAW_ITEMS = [
+  { id: 'marker_black', kind: 'pen', name: 'Marker', config: { strokeMode: 'tag', color: '#111111' } },
+  { id: 'spray_black', kind: 'graffiti', name: 'Spraydose', config: { strokeMode: 'spray', color: '#101010' } },
+  { id: 'sponge_eraser', kind: 'eraser', name: 'Schwamm', config: { strokeMode: 'erase' } },
+];
 
-function readHotkey() {
-  if (typeof localStorage === 'undefined') return DEFAULT_HOTKEY;
-  try {
-    const raw = localStorage.getItem(HOTKEY_STORAGE_KEY);
-    if (!raw) return DEFAULT_HOTKEY;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length < 2) return DEFAULT_HOTKEY;
-    const clean = parsed.map((k) => normalizeKeyName(String(k))).filter(Boolean);
-    if (clean.length < 2) return DEFAULT_HOTKEY;
-    return clean.slice(0, 2);
-  } catch {
-    return DEFAULT_HOTKEY;
-  }
+/** Icon-Mapping basierend auf strokeMode/kind. Erweitern wenn neue Tool-Typen dazukommen. */
+function iconForItem(item) {
+  if (!item) return '✎';
+  const m = item.config?.strokeMode;
+  if (m === 'erase') return '🧽';
+  if (m === 'spray') return '🧯';
+  if (item.kind === 'stamp') return '🪧';
+  if (item.kind === 'sticker') return '🏷️';
+  return '✎';
 }
 
 function seededRng(seed) {
@@ -57,10 +54,17 @@ function isFunctionalAtPoint(clientX, clientY) {
 }
 
 export default function GraffitiLayer() {
-  const [featureVisible, setFeatureVisible] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [mode, setMode] = useState('tag');
-  const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
+  // Draw-Werkzeuge aus /api/site-items/active. Bis das Fetch durchläuft
+  // (oder wenn es fehlschlägt) liefert FALLBACK_DRAW_ITEMS die alte Trias.
+  const [drawItems, setDrawItems] = useState(FALLBACK_DRAW_ITEMS);
+  const [selectedItemId, setSelectedItemId] = useState(FALLBACK_DRAW_ITEMS[0].id);
+  const drawItemsRef = useRef(drawItems);
+  const selectedItemIdRef = useRef(selectedItemId);
+  // mode = aktueller strokeMode des selektierten Items, gespiegelt aus
+  // selectedItem.config.strokeMode. Bleibt als getrennter State, damit
+  // bestehende Render-Pfade (paintComposite etc.) ohne Item-Lookup auskommen.
+  const [mode, setMode] = useState(FALLBACK_DRAW_ITEMS[0].config.strokeMode);
   // tiles: Map<"x:y", { x, y, version, image: HTMLImageElement }>
   // Jeder Eintrag ist ein bereits dekodiertes Tile-Image bereit zum drawImage.
   const [tiles, setTiles] = useState(() => new Map());
@@ -75,9 +79,6 @@ export default function GraffitiLayer() {
   // (destination-out). Pro Frame werden nur die Punkte ab diesem Index neu commited,
   // damit nicht jeder Frame die ganze Schwamm-Spur neu malt.
   const eraseCommittedUpToRef = useRef(0);
-  const pressedRef = useRef(new Set());
-  const chordRef = useRef({ ab: false });
-  const uiRef = useRef({ visible: false, mode: 'tag' });
   const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
   // Generations-Counter fuer Tile-Sync. Wird bei jedem pointerup/Reload erhoeht;
   // alte in-flight-Responses (zu kleinerer Gen) werden ignoriert.
@@ -90,8 +91,16 @@ export default function GraffitiLayer() {
   }, [tiles]);
 
   useEffect(() => {
-    uiRef.current = { visible: featureVisible, mode };
-  }, [featureVisible, mode]);
+    drawItemsRef.current = drawItems;
+  }, [drawItems]);
+
+  // Selektion-Spiegel: hält selectedItemIdRef + abgeleiteten strokeMode aktuell.
+  useEffect(() => {
+    selectedItemIdRef.current = selectedItemId;
+    const item = drawItems.find((i) => i.id === selectedItemId);
+    const next = String(item?.config?.strokeMode || 'tag');
+    setMode(next);
+  }, [selectedItemId, drawItems]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -109,16 +118,56 @@ export default function GraffitiLayer() {
     }
   }, [mode]);
 
-  const hintLabel = useMemo(
-    () => `${hotkey[0]} + ${hotkey[1]} · Palette weiterschalten`,
-    [hotkey]
-  );
 
+  // Long-Press auf ein Hand-Item (gefeuert von SiteInventory) aktiviert
+  // GraffitiLayer mit diesem Item als Werkzeug — Voraussetzung: behavior=draw
+  // und Item ist im aktuellen drawItems-Katalog. Phase 2a: User muss nach dem
+  // Long-Press neu pointer-downen um zu malen (Pointer-Capture-Konflikt mit
+  // dem SiteInventory-Drop-Overlay erlaubt kein nahtloses Weiter-Malen).
   useEffect(() => {
-    const sync = () => setHotkey(readHotkey());
-    sync();
-    window.addEventListener('fgraffiti-hotkey-change', sync);
-    return () => window.removeEventListener('fgraffiti-hotkey-change', sync);
+    function onSiteToolUse(e) {
+      const item = e?.detail?.item;
+      if (!item || item.behavior !== 'draw') return;
+      const items = drawItemsRef.current;
+      if (!items.some((i) => i.id === item.id)) return;
+      setSelectedItemId(item.id);
+      setEnabled(true);
+    }
+    window.addEventListener('site-tool-use', onSiteToolUse);
+    return () => window.removeEventListener('site-tool-use', onSiteToolUse);
+  }, []);
+
+  // Werkzeug-Katalog vom Server laden (behavior=draw). Fehler/leer → Fallback bleibt.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/site-items/active?behavior=draw', {
+          credentials: 'same-origin',
+          signal: ctrl.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const usable = items.filter(
+          (it) => it && typeof it.id === 'string' && it.config && typeof it.config.strokeMode === 'string'
+        );
+        if (usable.length === 0) return;
+        setDrawItems(usable);
+        // Vorherige Selektion erhalten wenn möglich, sonst Index 0.
+        setSelectedItemId((prev) => (usable.some((i) => i.id === prev) ? prev : usable[0].id));
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.warn('[graffiti] Werkzeug-Katalog laden fehlgeschlagen', err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -144,70 +193,6 @@ export default function GraffitiLayer() {
     };
   }, []);
 
-  useEffect(() => {
-    const k0 = hotkey[0];
-    const k1 = hotkey[1];
-
-    const syncChord = () => {
-      chordRef.current = {
-        ab: pressedRef.current.has(k0) && pressedRef.current.has(k1),
-      };
-    };
-
-    const onDown = (e) => {
-      if (e.repeat) return;
-      const key = normalizeKeyName(e.key);
-      if (!key) return;
-      pressedRef.current.add(key);
-
-      const ab = pressedRef.current.has(k0) && pressedRef.current.has(k1);
-      const prev = chordRef.current;
-
-      if (ab && !prev.ab) {
-        e.preventDefault();
-        chordRef.current = { ab: true };
-        const { visible, mode: m } = uiRef.current;
-        if (!visible) {
-          setFeatureVisible(true);
-          setEnabled(true);
-          setMode('tag');
-        } else if (m === 'tag') {
-          setMode('spray');
-          setEnabled(true);
-        } else if (m === 'spray') {
-          setMode('erase');
-          setEnabled(true);
-        } else {
-          setFeatureVisible(false);
-          setEnabled(false);
-          setMode('tag');
-        }
-        return;
-      }
-
-      chordRef.current = { ab };
-    };
-
-    const onUp = (e) => {
-      pressedRef.current.delete(normalizeKeyName(e.key));
-      syncChord();
-    };
-
-    const onBlur = () => {
-      pressedRef.current.clear();
-      chordRef.current = { ab: false };
-    };
-
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    window.addEventListener('blur', onBlur);
-    return () => {
-      window.removeEventListener('keydown', onDown);
-      window.removeEventListener('keyup', onUp);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, [hotkey]);
-
   // Malt alle Tiles in ihrer Zielposition ins Base-Canvas. Erwartet dass ctx
   // bereits via setTransform(DPR, ...) skaliert ist — die Tile-Coords werden
   // in CSS-Pixeln angegeben, nicht physisch.
@@ -219,13 +204,24 @@ export default function GraffitiLayer() {
     }
   }
 
+  /** Aktuelles Item-Objekt; Fallback wenn die Selektion ins Leere zeigt. */
+  function currentDrawItem() {
+    const items = drawItemsRef.current;
+    return items.find((i) => i.id === selectedItemIdRef.current) || items[0] || null;
+  }
+
+  function currentColor(fallback) {
+    const c = currentDrawItem()?.config?.color;
+    return typeof c === 'string' && c ? c : fallback;
+  }
+
   // Schreibt einen Tag-Stroke (Polyline) permanent ins Base. Pixel-identisch zur
   // Live-Vorschau in paintComposite, damit der User keinen Sprung sieht wenn
   // pointerup den Stroke commitet.
-  function commitTagStroke(ctx, points) {
+  function commitTagStroke(ctx, points, color) {
     if (!Array.isArray(points) || points.length < 2) return;
     ctx.save();
-    ctx.strokeStyle = '#111';
+    ctx.strokeStyle = color || '#111';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.lineWidth = 3;
@@ -242,12 +238,12 @@ export default function GraffitiLayer() {
   // Schreibt einen Spray-Stroke permanent ins Base. seedBase verschiebt den
   // RNG-Seed pro Punkt, damit derselbe Stroke wiederholbar diesselbe Pixel-
   // verteilung produziert (Live-Vorschau verwendet dasselbe Seed-Schema).
-  function commitSprayStroke(ctx, points, seedBase) {
+  function commitSprayStroke(ctx, points, seedBase, color) {
     if (!Array.isArray(points) || points.length < 1) return;
     ctx.save();
     for (let i = 0; i < points.length; i += 1) {
       const p = points[i];
-      drawSprayCloud(ctx, seedBase + i, p.x, p.y, 1);
+      drawSprayCloud(ctx, seedBase + i, p.x, p.y, 1, color);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
@@ -344,13 +340,13 @@ export default function GraffitiLayer() {
 
     // Live-Vorschau Tag: pixel-identisch zum spaeteren commitTagStroke.
     if (dr.active && m === 'tag') {
-      commitTagStroke(ctx, dr.points);
+      commitTagStroke(ctx, dr.points, currentColor('#111'));
     }
 
     // Live-Vorschau Spray: seedBase=0 — der spaetere finale Commit verwendet
     // dasselbe Seed-Schema, damit kein Sprung beim pointerup entsteht.
     if (dr.active && m === 'spray') {
-      commitSprayStroke(ctx, dr.points, 0);
+      commitSprayStroke(ctx, dr.points, 0, currentColor('#101010'));
     }
 
     if (dr.active && m === 'erase' && dr.points.length) {
@@ -390,9 +386,9 @@ export default function GraffitiLayer() {
     paintComposite();
   }
 
-  function drawSprayCloud(ctx, strokeId, x, y, alpha) {
+  function drawSprayCloud(ctx, strokeId, x, y, alpha, color) {
     const random = seededRng((strokeId * 1315423911 + x * 31 + y * 17) | 0);
-    ctx.fillStyle = '#101010';
+    ctx.fillStyle = color || '#101010';
     for (let i = 0; i < 20; i += 1) {
       const angle = random() * Math.PI * 2;
       const radius = random() * 18;
@@ -489,8 +485,8 @@ export default function GraffitiLayer() {
           //    werden hier final festgehalten — pixel-identisch zur Live-Vorschau,
           //    damit kein Sprung im Composite auftaucht.
           if (bctx) {
-            if (strokeMode === 'tag') commitTagStroke(bctx, points);
-            else if (strokeMode === 'spray') commitSprayStroke(bctx, points, 0);
+            if (strokeMode === 'tag') commitTagStroke(bctx, points, currentColor('#111'));
+            else if (strokeMode === 'spray') commitSprayStroke(bctx, points, 0, currentColor('#101010'));
           }
           drawRef.current.active = false;
           schedulePaint();
@@ -605,31 +601,6 @@ export default function GraffitiLayer() {
           schedulePaint();
         }}
       />
-      {featureVisible ? (
-        <button
-          type="button"
-          className={`fgraffiti-pen ${enabled ? 'is-active' : ''}`}
-          title={`fgraffiti: ${hotkey[0]}+${hotkey[1]} schaltet Tag → Spray → Schwamm → aus. Stift: Klick / Doppelklick / Umschalt+Klick.`}
-          aria-label={`fgraffiti (${hintLabel})`}
-          onClick={(e) => {
-            if (e.shiftKey) {
-              setMode('erase');
-              setEnabled((v) => !v);
-              return;
-            }
-            if (e.detail !== 1) return;
-            setMode('tag');
-            setEnabled((v) => !v);
-          }}
-          onDblClick={(e) => {
-            e.preventDefault();
-            setMode('spray');
-            setEnabled(true);
-          }}
-        >
-          {mode === 'erase' ? '🧽' : mode === 'spray' ? '🧯' : '✎'}
-        </button>
-      ) : null}
       <style>{`
         .fgraffiti-canvas {
           position: absolute;
@@ -644,24 +615,6 @@ export default function GraffitiLayer() {
         }
         .fgraffiti-canvas.is-active.is-erase {
           cursor: cell;
-        }
-        .fgraffiti-pen {
-          position: fixed;
-          left: 0.35rem;
-          bottom: -0.1rem;
-          z-index: 399;
-          width: 2.2rem;
-          height: 3rem;
-          border: 1px solid rgba(0,0,0,0.35);
-          border-radius: 0.6rem 0.6rem 0 0;
-          background: rgba(255,255,255,0.72);
-          cursor: pointer;
-          font-size: 1.25rem;
-          line-height: 1;
-          padding: 0;
-        }
-        .fgraffiti-pen.is-active {
-          background: rgba(255, 247, 154, 0.86);
         }
       `}</style>
     </>

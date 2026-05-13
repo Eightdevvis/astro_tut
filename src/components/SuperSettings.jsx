@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import {
   FONT_SETTING_LABELS,
   FONT_FAMILY_KEYS,
@@ -183,68 +183,107 @@ const btnPrimary = {
 const errStyle = { color: 'crimson', marginBottom: 12, fontSize: '0.9rem' };
 const okStyle = { color: 'seagreen', marginBottom: 12, fontSize: '0.9rem' };
 
-function drawGraffitiPreview(points, mode) {
-  const width = 220;
-  const height = 120;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  ctx.fillStyle = 'rgba(0,0,0,0.04)';
-  ctx.fillRect(0, 0, width, height);
-  const list = Array.isArray(points) ? points : [];
-  if (list.length < 1) return canvas.toDataURL('image/png');
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const p of list) {
-    const x = Number(p?.x || 0);
-    const y = Number(p?.y || 0);
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x);
-    maxY = Math.max(maxY, y);
-  }
-  const spanX = Math.max(1, maxX - minX);
-  const spanY = Math.max(1, maxY - minY);
-  const scale = Math.min((width - 20) / spanX, (height - 20) / spanY);
-  const ox = (width - spanX * scale) / 2;
-  const oy = (height - spanY * scale) / 2;
-  const mapPoint = (p) => ({
-    x: ox + (Number(p?.x || 0) - minX) * scale,
-    y: oy + (Number(p?.y || 0) - minY) * scale,
-  });
+/**
+ * Composite-Preview fuer eine Liste von Graffiti-Tiles. Malt die Tiles
+ * auf ein Canvas, skaliert auf die Preview-Breite. Position via (x, y) im
+ * Tile-Grid; Tile-Kantenlaenge = tileSize CSS-px im Originalcanvas.
+ */
+function GraffitiTilePreview({ tiles, tileSize }) {
+  const canvasRef = useRef(null);
+  const previewWidth = 360;
+  const previewMaxHeight = 240;
 
-  if (mode === 'spray') {
-    ctx.fillStyle = '#111';
-    for (const p of list) {
-      const m = mapPoint(p);
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, 1.6, 0, Math.PI * 2);
-      ctx.fill();
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (!Array.isArray(tiles) || tiles.length === 0) {
+      canvas.width = previewWidth;
+      canvas.height = 80;
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return;
     }
-    ctx.globalAlpha = 1;
-    return canvas.toDataURL('image/png');
-  }
 
-  const first = mapPoint(list[0]);
-  ctx.strokeStyle = '#111';
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 2;
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(first.x, first.y);
-  for (let i = 1; i < list.length; i += 1) {
-    const m = mapPoint(list[i]);
-    ctx.lineTo(m.x, m.y);
-  }
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  return canvas.toDataURL('image/png');
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const t of tiles) {
+      const x = Number(t.x);
+      const y = Number(t.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) {
+      canvas.width = previewWidth;
+      canvas.height = 80;
+      ctx.fillStyle = 'rgba(0,0,0,0.04)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    const cols = maxX - minX + 1;
+    const rows = maxY - minY + 1;
+    const scale = Math.min(previewWidth / (cols * tileSize), previewMaxHeight / (rows * tileSize));
+    canvas.width = Math.max(1, Math.round(cols * tileSize * scale));
+    canvas.height = Math.max(1, Math.round(rows * tileSize * scale));
+
+    ctx.fillStyle = 'rgba(0,0,0,0.04)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+
+    let cancelled = false;
+    Promise.all(
+      tiles.map(
+        (t) =>
+          new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve({ img, x: t.x, y: t.y });
+            img.onerror = () => resolve(null);
+            img.src = `data:image/png;base64,${t.pngBase64}`;
+          })
+      )
+    ).then((loaded) => {
+      if (cancelled) return;
+      for (const entry of loaded) {
+        if (!entry) continue;
+        const dx = (entry.x - minX) * tileSize * scale;
+        const dy = (entry.y - minY) * tileSize * scale;
+        const dw = tileSize * scale;
+        const dh = tileSize * scale;
+        ctx.drawImage(entry.img, dx, dy, dw, dh);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tiles, tileSize]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        width: '100%',
+        maxWidth: previewWidth,
+        borderRadius: 8,
+        border: '1px solid rgba(0,0,0,0.12)',
+        background: 'rgba(0,0,0,0.04)',
+        display: 'block',
+      }}
+    />
+  );
+}
+
+function formatBytes(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+  return `${(v / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function mergeCatalogOptions(saved, options) {
@@ -303,6 +342,7 @@ export default function SuperSettings() {
   const [fpBusy, setFpBusy] = useState(false);
   const [graffitiRows, setGraffitiRows] = useState([]);
   const [graffitiBusyId, setGraffitiBusyId] = useState(null);
+  const [graffitiTileSize, setGraffitiTileSize] = useState(512);
 
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [bugsLoaded, setBugsLoaded] = useState(false);
@@ -315,6 +355,11 @@ export default function SuperSettings() {
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesMsg, setNotesMsg] = useState('');
   const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
+
+  const [siteItems, setSiteItems] = useState([]);
+  const [siteItemsLoaded, setSiteItemsLoaded] = useState(false);
+  const [siteItemsBusy, setSiteItemsBusy] = useState(false);
+  const [siteItemsMsg, setSiteItemsMsg] = useState('');
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -405,6 +450,96 @@ export default function SuperSettings() {
     }
   }
 
+  async function loadSiteItemsPayload() {
+    if (siteItemsLoaded) return;
+    try {
+      const res = await fetch('/api/admin/site-items', { credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Site-Objekt-Katalog laden');
+      const rows = Array.isArray(data.items) ? data.items : [];
+      setSiteItems(
+        rows.map((r, i) => ({
+          id: String(r.id ?? ''),
+          kind: String(r.kind ?? ''),
+          variant: String(r.variant ?? ''),
+          name: String(r.name ?? ''),
+          description: String(r.description ?? ''),
+          behavior: String(r.behavior ?? 'none'),
+          configText: JSON.stringify(r.config ?? {}, null, 0),
+          enabled: Number(r.enabled ?? 1) ? 1 : 0,
+          sortOrder: Number(r.sortOrder ?? 0),
+          _key: `site-${i}-${r.id}`,
+        }))
+      );
+      setSiteItemsLoaded(true);
+    } catch (e) {
+      setError(e?.message || 'Site-Objekt-Katalog laden fehlgeschlagen');
+    }
+  }
+
+  async function saveSiteItems(e) {
+    e?.preventDefault?.();
+    setSiteItemsMsg('');
+    setError('');
+    setSiteItemsBusy(true);
+    try {
+      const items = siteItems.map((r) => {
+        let config = {};
+        const txt = (r.configText || '').trim();
+        if (txt) {
+          try {
+            const parsed = JSON.parse(txt);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) config = parsed;
+          } catch {
+            throw new Error(`Config bei "${r.id || '?'}" ist kein gültiges JSON.`);
+          }
+        }
+        return {
+          id: r.id.trim(),
+          kind: r.kind.trim(),
+          variant: r.variant.trim(),
+          name: r.name.trim(),
+          description: r.description.trim(),
+          behavior: r.behavior.trim() || 'none',
+          config,
+          enabled: r.enabled ? 1 : 0,
+          sortOrder: Number(r.sortOrder) || 0,
+        };
+      });
+      const res = await fetch('/api/admin/site-items', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+      setSiteItemsMsg(`Katalog: ${data.count ?? items.length} Einträge gespeichert.`);
+    } catch (err) {
+      setError(err?.message || String(err));
+    } finally {
+      setSiteItemsBusy(false);
+    }
+  }
+
+  function addSiteItemRow() {
+    setSiteItems((prev) => [
+      ...prev,
+      {
+        id: '',
+        kind: 'collectible',
+        variant: '',
+        name: '',
+        description: '',
+        behavior: 'none',
+        configText: '{}',
+        enabled: 1,
+        sortOrder: 0,
+        _key: `new-site-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      },
+    ]);
+  }
+
   async function loadQmItemsPayload() {
     if (qmLoaded) return;
     try {
@@ -437,6 +572,7 @@ export default function SuperSettings() {
   useEffect(() => {
     if (loading) return;
     if (activeSection === 'notes') void loadNotesPayload();
+    if (activeSection === 'site-items') void loadSiteItemsPayload();
     if (activeSection === 'fonts') void loadFontsPayload();
     if (activeSection === 'tester-bugs') void loadTesterBugsPayload();
     if (activeSection === 'questmaker') void loadQmItemsPayload();
@@ -481,7 +617,7 @@ export default function SuperSettings() {
   useEffect(() => {
     if (loading || activeSection !== 'graffiti') return;
     let cancelled = false;
-    fetch('/api/admin/graffiti?limit=140', { credentials: 'same-origin' })
+    fetch('/api/admin/graffiti?limit=40', { credentials: 'same-origin' })
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Graffiti-Liste');
@@ -489,6 +625,7 @@ export default function SuperSettings() {
       })
       .then((data) => {
         if (cancelled) return;
+        setGraffitiTileSize(Number(data.tileSize || 512));
         setGraffitiRows(Array.isArray(data.rows) ? data.rows : []);
       })
       .catch((e) => {
@@ -752,19 +889,19 @@ export default function SuperSettings() {
     }
   }
 
-  async function deleteGraffitiStroke(id) {
+  async function deleteGraffitiPage(pagePath) {
     setError('');
-    setGraffitiBusyId(String(id));
+    setGraffitiBusyId(String(pagePath));
     try {
       const res = await fetch('/api/admin/graffiti', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ pagePath }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Graffiti-Löschen fehlgeschlagen');
-      setGraffitiRows((prev) => prev.filter((r) => String(r.id) !== String(id)));
+      setGraffitiRows((prev) => prev.filter((r) => r.pagePath !== pagePath));
     } catch (e) {
       setError(e?.message || 'Graffiti-Löschen fehlgeschlagen');
     } finally {
@@ -774,6 +911,7 @@ export default function SuperSettings() {
 
   const sections = [
     { id: 'notes', label: 'Notizen' },
+    { id: 'site-items', label: 'Site-Objekte' },
     { id: 'permissions', label: 'Nutzer-Rechte' },
     { id: 'tester-ui', label: 'Eigene Testeroberfläche' },
     { id: 'graffiti', label: 'Graffiti' },
@@ -942,6 +1080,162 @@ export default function SuperSettings() {
             )}
           </div>
         )}
+      </section>
+      )}
+
+      {activeSection === 'site-items' && (
+      <section style={section} id="super-sec-site-items">
+        <h2 style={h2}>Site-Objekte</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78, marginBottom: '1rem' }}>
+          Kanonische Liste aller „Dinge" die auf der Seite rumfliegen oder genutzt werden können —
+          Stifte, Spraydosen, Stempel, Sticker, Schwämme, Sammlerstücke, Schlüssel.{' '}
+          <strong>Strikt getrennt vom RPG-System.</strong> Behavior steuert, was die Engine damit anstellt:
+          <code> draw</code> (Werkzeug im Graffiti-Layer), <code>place</code> (auf Seite platzieren),
+          <code> unlock</code> (schaltet etwas frei), <code>none</code> (nur Sammlerstück).
+          <code> config</code> ist typ-spezifisch (z. B. <code>{`{"strokeMode":"spray","color":"#000"}`}</code>).
+        </p>
+        <form onSubmit={saveSiteItems}>
+          {siteItems.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Noch keine Einträge.</p>
+          ) : (
+            <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thtd}>ID</th>
+                    <th style={thtd}>Kind</th>
+                    <th style={thtd}>Variant</th>
+                    <th style={thtd}>Name</th>
+                    <th style={thtd}>Behavior</th>
+                    <th style={thtd}>Config (JSON)</th>
+                    <th style={thtd}>Sort</th>
+                    <th style={thtd}>An</th>
+                    <th style={thtd} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {siteItems.map((row, idx) => (
+                    <tr key={row._key || row.id || idx}>
+                      <td style={thtd}>
+                        <input
+                          style={{ ...selectStyle, fontSize: '0.85rem' }}
+                          value={row.id}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, id: v } : x)));
+                          }}
+                          placeholder="z. B. spray_red"
+                          autoComplete="off"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          style={{ ...selectStyle, fontSize: '0.85rem' }}
+                          value={row.kind}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, kind: v } : x)));
+                          }}
+                          placeholder="graffiti/pen/stamp/..."
+                          autoComplete="off"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          style={{ ...selectStyle, fontSize: '0.85rem' }}
+                          value={row.variant}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, variant: v } : x)));
+                          }}
+                          placeholder="black/red/..."
+                          autoComplete="off"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          style={selectStyle}
+                          value={row.name}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, name: v } : x)));
+                          }}
+                          placeholder="Anzeigename"
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <select
+                          style={selectStyle}
+                          value={row.behavior}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, behavior: v } : x)));
+                          }}
+                        >
+                          <option value="draw">draw</option>
+                          <option value="place">place</option>
+                          <option value="unlock">unlock</option>
+                          <option value="none">none</option>
+                        </select>
+                      </td>
+                      <td style={thtd}>
+                        <textarea
+                          rows={2}
+                          style={{ ...selectStyle, fontFamily: 'monospace', fontSize: '0.78rem', minWidth: 200 }}
+                          value={row.configText}
+                          onInput={(e) => {
+                            const v = e.currentTarget.value;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, configText: v } : x)));
+                          }}
+                          placeholder='{"color":"#000"}'
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <input
+                          type="number"
+                          style={{ ...selectStyle, width: 70 }}
+                          value={row.sortOrder}
+                          onInput={(e) => {
+                            const v = Number(e.currentTarget.value) || 0;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, sortOrder: v } : x)));
+                          }}
+                        />
+                      </td>
+                      <td style={{ ...thtd, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(row.enabled)}
+                          onChange={(e) => {
+                            const v = e.currentTarget.checked ? 1 : 0;
+                            setSiteItems((p) => p.map((x, j) => (j === idx ? { ...x, enabled: v } : x)));
+                          }}
+                        />
+                      </td>
+                      <td style={thtd}>
+                        <button
+                          type="button"
+                          style={{ ...btnPrimary, padding: '6px 10px', fontSize: '0.75rem' }}
+                          onClick={() => setSiteItems((p) => p.filter((_, j) => j !== idx))}
+                        >
+                          Entf.
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <button type="button" style={btnPrimary} onClick={addSiteItemRow}>
+              Zeile hinzufügen
+            </button>
+            <button type="submit" style={btnPrimary} disabled={siteItemsBusy}>
+              {siteItemsBusy ? 'Speichern…' : 'Katalog speichern'}
+            </button>
+            {siteItemsMsg ? <span style={okStyle}>{siteItemsMsg}</span> : null}
+          </div>
+        </form>
       </section>
       )}
 
@@ -1138,8 +1432,8 @@ export default function SuperSettings() {
       <section style={section} id="super-sec-graffiti">
         <h2 style={h2}>Graffiti</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
-          Zuletzt gespeicherte Graffiti-Striche mit Seitenpfad und Miniansicht. Nur hier kannst du einzelne Striche
-          manuell entfernen.
+          Pro Seite eine Karte mit Composite-Vorschau, Tile-Anzahl, Größe und letztem Update. Der Lösch-Button entfernt
+          alle Tiles dieser Seite.
         </p>
         {graffitiRows.length === 0 ? (
           <p style={{ fontSize: '0.85rem', opacity: 0.7 }}>Keine Graffiti-Einträge vorhanden.</p>
@@ -1147,7 +1441,7 @@ export default function SuperSettings() {
           <div style={{ display: 'grid', gap: 12 }}>
             {graffitiRows.map((row) => (
               <article
-                key={`graffiti-${row.id}`}
+                key={`graffiti-page-${row.pagePath}`}
                 style={{
                   border: '1px solid rgba(0,0,0,0.12)',
                   borderRadius: 10,
@@ -1155,36 +1449,24 @@ export default function SuperSettings() {
                   background: 'rgba(255,255,255,0.55)',
                 }}
               >
-                <div style={{ fontSize: '0.8rem', opacity: 0.75, marginBottom: 6 }}>
-                  <strong>{row.username}</strong> · {row.createdAt} · {row.mode}
-                  {row.isFunctional ? ' · funktional' : ''}
-                </div>
-                <div style={{ fontSize: '0.82rem', marginBottom: 8 }}>
+                <div style={{ fontSize: '0.82rem', marginBottom: 6 }}>
                   <a href={row.pagePath} target="_blank" rel="noreferrer">
                     {row.pagePath}
                   </a>
                 </div>
-                <img
-                  src={drawGraffitiPreview(row.points, row.mode)}
-                  alt={`Graffiti #${row.id}`}
-                  style={{
-                    width: '100%',
-                    maxWidth: 360,
-                    borderRadius: 8,
-                    border: '1px solid rgba(0,0,0,0.12)',
-                    background: 'rgba(0,0,0,0.04)',
-                    display: 'block',
-                  }}
-                  loading="lazy"
-                />
+                <div style={{ fontSize: '0.78rem', opacity: 0.7, marginBottom: 8 }}>
+                  {row.tileCount} Tiles · {formatBytes(row.totalBytes)} · letzter Update {row.lastUpdated}
+                  {row.previewTruncated ? ` · Vorschau zeigt nur die ersten ${row.previewTiles?.length ?? 0}` : ''}
+                </div>
+                <GraffitiTilePreview tiles={row.previewTiles || []} tileSize={graffitiTileSize} />
                 <div style={{ marginTop: 10 }}>
                   <button
                     type="button"
                     style={{ ...btnPrimary, padding: '7px 10px', fontSize: '0.75rem' }}
-                    disabled={graffitiBusyId === String(row.id)}
-                    onClick={() => void deleteGraffitiStroke(row.id)}
+                    disabled={graffitiBusyId === String(row.pagePath)}
+                    onClick={() => void deleteGraffitiPage(row.pagePath)}
                   >
-                    {graffitiBusyId === String(row.id) ? 'Lösche…' : 'Graffiti löschen'}
+                    {graffitiBusyId === String(row.pagePath) ? 'Lösche…' : 'Alle Tiles dieser Seite löschen'}
                   </button>
                 </div>
               </article>

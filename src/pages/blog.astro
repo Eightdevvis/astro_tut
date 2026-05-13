@@ -1,16 +1,50 @@
 ---
-import BlogPost from '../components/BlogPost.astro'
-import BaseLayout from '../layouts/BaseLayout.astro'
-const allPosts = Object.values(import.meta.glob('./posts/*.md', { eager: true }));
-const pageTitle = "My Astro Learning Blog";
+import BlogPost from '../components/BlogPost.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { ensureDbSchema, getDb } from '../lib/db.js';
+
+const pageTitle = 'My Astro Learning Blog';
+
+type DbBlogRow = {
+  id: number;
+  username: string;
+  content_text: string;
+  created_at: string;
+};
+
+let posts: DbBlogRow[] = [];
+try {
+  await ensureDbSchema();
+  const result = await getDb().execute({
+    sql: `SELECT id, username, content_text, created_at
+          FROM blog_posts
+          ORDER BY datetime(created_at) DESC, id DESC`,
+    args: [],
+  });
+  posts = (result.rows || []).map((row) => ({
+    id: Number(row.id ?? 0),
+    username: String(row.username ?? ''),
+    content_text: String(row.content_text ?? ''),
+    created_at: String(row.created_at ?? ''),
+  }));
+} catch (err) {
+  console.error('blog: failed to load db posts', err);
+}
+
+function titleFromText(text: string, id: number): string {
+  const firstLine = text
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return firstLine?.slice(0, 90) || `Post #${id}`;
+}
 ---
 
-<BaseLayout pageTitle = {pageTitle}>
-
+<BaseLayout pageTitle={pageTitle}>
   <p>This is where I will post about my journey learning Astro.</p>
   <ul>
-      
-    {allPosts.map((post: any) => <BlogPost url={post.url} title={post.frontmatter.title} />)}
-    </ul>
+    {posts.map((post) => (
+      <BlogPost url={`/posts/db/${post.id}`} title={titleFromText(post.content_text, post.id)} />
+    ))}
+  </ul>
 </BaseLayout>
-

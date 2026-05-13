@@ -216,6 +216,54 @@ const SCHEMA_DDL = `
   );
   CREATE INDEX IF NOT EXISTS idx_graffiti_tiles_page_updated ON graffiti_tiles (page_path, updated_at DESC);
 
+  -- Site-Objekt-Katalog (Phase 1): kanonische Liste aller "Dinge" die im
+  -- Frontend rumfliegen / nutzbar sind (Spraydosen, Stifte, Stempel, Sticker,
+  -- Schwämme, Schlüssel, Sammlerstücke, ...). STRIKT GETRENNT von rpg_*.
+  -- - kind: Kategorie für UI-Gruppierung (graffiti/pen/stamp/sticker/eraser/key/...)
+  -- - behavior: was die Engine damit anstellt
+  --     "draw"   = Werkzeug in GraffitiLayer (z.B. Spraydose, Marker, Schwamm)
+  --     "place"  = wird auf einer Seite platziert
+  --     "unlock" = schaltet etwas frei
+  --     "none"   = nur Sammlerstück / dekorativ
+  -- - config_json: typ-spezifische Werte (Farbe, strokeMode, imageUrl, ...).
+  CREATE TABLE IF NOT EXISTS site_item_catalog (
+    id           TEXT PRIMARY KEY,
+    kind         TEXT NOT NULL,
+    variant      TEXT NOT NULL DEFAULT '',
+    name         TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    behavior     TEXT NOT NULL DEFAULT 'none',
+    config_json  TEXT NOT NULL DEFAULT '{}',
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_site_item_catalog_kind_sort ON site_item_catalog (kind, sort_order, id);
+
+  -- Hand-Inventar pro User. slot = 'hand' (was der User gerade trägt) oder
+  -- 'slot0'..'slotN-1'. item_id ist FK auf site_item_catalog.id (kein hartes
+  -- FK weil libsql/turso, aber wir prüfen Existenz im Helper).
+  CREATE TABLE IF NOT EXISTS site_user_inventory (
+    username    TEXT NOT NULL,
+    slot        TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, slot)
+  );
+
+  -- Items die auf einer Seite liegen. Eine Instanz pro Drop — derselbe
+  -- Katalog-item_id kann mehrfach auf derselben Page rumliegen.
+  CREATE TABLE IF NOT EXISTS site_placed_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_path   TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    x           REAL NOT NULL,
+    y           REAL NOT NULL,
+    placed_by   TEXT NOT NULL,
+    placed_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_site_placed_items_page ON site_placed_items (page_path, id);
+
   CREATE TABLE IF NOT EXISTS user_feeds (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL,
