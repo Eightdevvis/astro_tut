@@ -3,6 +3,7 @@ import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import FraktaleSandbox from '../../components/FraktaleSandbox.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
@@ -39,6 +40,7 @@ if (!canUseMinigames) {
     <p class="fs-page-back">
       <a href="/minigames">← Alle Minigames</a>
     </p>
+    <BewareOfBugsBanner permission="minigames_access" />
   </body>
 </html>
 

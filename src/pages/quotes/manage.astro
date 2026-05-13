@@ -10,6 +10,7 @@ import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import '../../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -617,5 +618,6 @@ if (token) {
       </a>
     ) : null}
     <ThemeClient />
+    <BewareOfBugsBanner permission="quote_poster" />
   </body>
 </html>

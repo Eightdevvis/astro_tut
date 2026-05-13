@@ -3,6 +3,7 @@ import RpgQuestHub from '../../components/RpgQuestHub.jsx';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import TesterBugBar from '../../components/TesterBugBar.jsx';
+import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/themes.css';
@@ -34,6 +35,7 @@ if (!canUseRpg) {
     <RpgQuestHub client:load />
     <TesterBugBar client:load />
     <ThemeClient />
+    <BewareOfBugsBanner permission="rpg_access" />
   </body>
 </html>
 

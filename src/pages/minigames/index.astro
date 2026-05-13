@@ -3,6 +3,7 @@ import Nav2 from '../../components/Nav2.astro';
 import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
@@ -91,6 +92,7 @@ if (!canUseMinigames) {
       </p>
     </main>
     <ThemeClient />
+    <BewareOfBugsBanner permission="minigames_access" />
   </body>
 </html>
 

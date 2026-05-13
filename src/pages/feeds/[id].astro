@@ -4,6 +4,7 @@ import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import FeedDetailView from '../../components/FeedDetailView.jsx';
+import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
 import { getFeedDetailBundle } from '../../lib/feed-db.js';
@@ -50,5 +51,6 @@ const initial = {
     <Nav2 variant="home" />
     <FeedDetailView client:load feedId={feedId} initial={initial} />
     <ThemeClient />
+    <BewareOfBugsBanner permission="feed_access" />
   </body>
 </html>

@@ -6,6 +6,7 @@ import Nav2 from '../components/Nav2.astro';
 import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../components/BewareOfBugsBanner.astro';
 import '../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -675,5 +676,6 @@ if (token) {
       void loadPosts();
     </script>
     <ThemeClient />
+    <BewareOfBugsBanner permission="blogpost_poster" />
   </body>
 </html>
