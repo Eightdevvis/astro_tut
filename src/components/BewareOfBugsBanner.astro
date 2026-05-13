@@ -2,9 +2,9 @@
 /**
  * BewareOfBugsBanner.astro
  *
- * Diagonales Eck-Banner unten rechts (Ribbon-Style), das aktiv wird, wenn
- * fuer das gegebene Recht in der Super-Einstellungen-Tabelle die
- * "Beware of Bugs"-Zeile aktiviert ist.
+ * Diagonales Eck-Ribbon unten rechts, das aktiv wird, wenn fuer das gegebene
+ * Recht in der Super-Einstellungen-Tabelle die "Beware of Bugs"-Zeile
+ * aktiviert ist.
  *
  * Einbau pro Seite, z. B.:
  *   <BewareOfBugsBanner permission="rpg_access" />
@@ -30,30 +30,37 @@ const titleText = tooltip || 'Frisches Feature – Bugs sind sehr wahrscheinlich
 )}
 
 <style>
+  /* Container belegt das eckige Quadrat unten rechts. overflow: hidden clippt
+     die ueberlappenden Bandenden, sodass das Ribbon nur die Eck-Diagonale
+     zeigt. Geometrie ist so abgestimmt, dass die Ribbon-Bounding-Box nach
+     45deg-Rotate exakt in den Container passt. */
   .beware-of-bugs-corner {
     position: fixed;
     bottom: 0;
     right: 0;
-    width: 170px;
-    height: 170px;
+    width: 160px;
+    height: 160px;
     overflow: hidden;
     pointer-events: none;
-    z-index: 1000;
+    z-index: 9999;
   }
   .beware-of-bugs-ribbon {
     position: absolute;
-    /* Banner ist breiter als die Diagonale, damit beide Enden sicher
-       ausserhalb des Containers liegen — sieht nach echtem Stoff/Band aus. */
-    width: 260px;
-    bottom: 38px;
-    right: -65px;
+    /* zentriert im Container, dann gedreht. Width ~ Container-Diagonale,
+       sodass die Enden gerade ueber die Seiten ragen und sauber abgeschnitten
+       werden. */
+    left: 50%;
+    top: 50%;
+    width: 230px;
+    margin-left: -115px;
+    margin-top: -15px;
     transform: rotate(-45deg);
     transform-origin: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 8px 0;
+    gap: 6px;
+    padding: 6px 0;
     background: linear-gradient(180deg, #fde68a 0%, #facc15 50%, #eab308 100%);
     color: #1f1f1f;
     border-top: 1px solid rgba(180, 83, 9, 0.7);
@@ -71,15 +78,15 @@ const titleText = tooltip || 'Frisches Feature – Bugs sind sehr wahrscheinlich
   }
   @media (max-width: 480px) {
     .beware-of-bugs-corner {
-      width: 140px;
-      height: 140px;
+      width: 130px;
+      height: 130px;
     }
     .beware-of-bugs-ribbon {
-      width: 220px;
-      bottom: 30px;
-      right: -55px;
+      width: 190px;
+      margin-left: -95px;
+      margin-top: -13px;
       font-size: 0.7rem;
-      padding: 6px 0;
+      padding: 5px 0;
     }
   }
 </style>
