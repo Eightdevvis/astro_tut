@@ -82,8 +82,14 @@ try {
         --past-posts-offset: 8dvh;
         max-width: 100%;
         margin: 0 auto;
-        padding: max(1rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
-          max(0.5rem, env(safe-area-inset-left));
+        padding-top: max(1rem, env(safe-area-inset-top));
+        padding-right: max(0.5rem, env(safe-area-inset-right));
+        padding-bottom: max(4rem, env(safe-area-inset-bottom));
+        padding-left: max(0.5rem, env(safe-area-inset-left));
+      }
+      .page[data-mode="hub"] {
+        padding-left: 0;
+        padding-right: 0;
       }
       .page[data-mode="editor"] {
         max-width: 1100px;
@@ -345,8 +351,9 @@ try {
         text-decoration: none;
         color: inherit;
         background: transparent;
-        border: none;
-        padding: 0.25rem 0.45rem;
+        border: 1px solid rgba(0, 0, 0, 0.22);
+        border-radius: 0.2rem;
+        padding: 0.35rem 0.55rem;
         overflow: hidden;
         cursor: pointer;
         transform-origin: center;
@@ -356,6 +363,9 @@ try {
           transform 520ms cubic-bezier(0.34, 0.06, 0.46, 1);
         transition-delay: calc(var(--tile-i, 0) * 18ms);
       }
+      :global(html.dark) .hub-tile {
+        border-color: rgba(255, 255, 255, 0.22);
+      }
       .hub-tile--post {
         max-height: 320px;
         opacity: 0.92;
@@ -364,6 +374,7 @@ try {
       .hub-tile--post:focus-visible {
         outline: none;
         opacity: 1;
+        border-color: currentColor;
       }
       .hub-tile-date {
         display: none; /* Datum nicht anzeigen — fluttert das Layout zu sehr. */
@@ -457,30 +468,38 @@ try {
         .hub-tile { font-size: 0.66rem; padding: 0.45rem 0.5rem; }
       }
 
-      /* Auth-Hinweis-Toast wenn man nicht eingeloggt / kein Recht hat. */
-      .auth-toast {
-        margin: 0.4rem auto 0.6rem;
-        max-width: 480px;
-        padding: 0.55rem 0.85rem;
-        border-radius: 0.55rem;
-        background: rgba(252, 211, 77, 0.18);
-        border: 1px solid rgba(180, 83, 9, 0.6);
+      /* Auth-Hinweis: kleine Caption direkt unter dem +Tile (kein gelber
+         Balken mehr). Wird per data-Attribut & Klasse kurz eingeblendet. */
+      .hub-tile--editor[data-hint] {
+        position: absolute;
+      }
+      .hub-tile--editor[data-hint]::after {
+        content: attr(data-hint);
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 50%;
+        transform: translateX(-50%);
+        white-space: nowrap;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        animation: hub-hint-flash 2400ms ease both;
         color: var(--site-body-text);
-        font-size: 0.85rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.7rem;
-        animation: auth-toast-pop 240ms ease;
+        pointer-events: none;
       }
-      .auth-toast-link {
-        color: inherit;
-        text-decoration: underline;
-        opacity: 0.85;
+      @keyframes hub-hint-flash {
+        0%, 100% { opacity: 0; }
+        10%, 75% { opacity: 0.85; }
       }
-      @keyframes auth-toast-pop {
-        from { opacity: 0; transform: translateY(-4px); }
-        to { opacity: 1; transform: translateY(0); }
+      .hub-tile--editor.shake {
+        animation: hub-tile-shake 480ms ease;
+      }
+      @keyframes hub-tile-shake {
+        0%, 100% { transform: translate(-50%, -50%); }
+        20% { transform: translate(-54%, -50%); }
+        40% { transform: translate(-46%, -50%); }
+        60% { transform: translate(-54%, -50%); }
+        80% { transform: translate(-46%, -50%); }
       }
     </style>
   </head>
@@ -503,10 +522,6 @@ try {
           <span class="hub-tile-plus">+</span>
         </button>
       </section>
-
-      <div class="auth-toast" id="authToast" role="status" aria-live="polite" hidden>
-        <span id="authToastText"></span>
-      </div>
 
       <section class="editor-shell" aria-label="Blogpost Editor">
           <div class="editor-wrap" id="editorWrap">
@@ -552,8 +567,6 @@ try {
       const blogpostPage = document.getElementById('blogpostPage');
       const hubGrid = document.getElementById('hubGrid');
       const editorTile = document.getElementById('editorTile');
-      const authToast = document.getElementById('authToast');
-      const authToastText = document.getElementById('authToastText');
 
       // System-/Web-safe Fonts. KEINE der manuell hochgeladenen Custom-Fonts
       // (die liegen unter custom-* family-names) — die sind hier bewusst raus.
@@ -855,10 +868,24 @@ try {
         });
       }
 
-      function showAuthToast(text) {
-        if (!authToast || !authToastText) return;
-        authToastText.textContent = text || '';
-        authToast.hidden = false;
+      let authHintTimer = null;
+      function showAuthHint(text) {
+        if (!editorTile) return;
+        if (authHintTimer) {
+          clearTimeout(authHintTimer);
+          authHintTimer = null;
+          editorTile.removeAttribute('data-hint');
+          editorTile.classList.remove('shake');
+          // force reflow damit Animation neu startet
+          void editorTile.offsetWidth;
+        }
+        editorTile.dataset.hint = text || '';
+        editorTile.classList.add('shake');
+        authHintTimer = setTimeout(() => {
+          editorTile.removeAttribute('data-hint');
+          editorTile.classList.remove('shake');
+          authHintTimer = null;
+        }, 2400);
       }
 
       function enterEditorMode() {
@@ -879,14 +906,13 @@ try {
           const loggedIn = blogpostPage.dataset.loggedIn === 'true';
           const canPost = blogpostPage.dataset.canPost === 'true';
           if (!loggedIn) {
-            showAuthToast('Du musst eingeloggt sein, um einen Blogpost zu schreiben.');
+            showAuthHint('Bitte einloggen, um zu posten');
             return;
           }
           if (!canPost) {
-            showAuthToast('Dir fehlt das Recht für Blogposts.');
+            showAuthHint('Kein Recht für Blogposts');
             return;
           }
-          if (authToast) authToast.hidden = true;
           enterEditorMode();
         });
       }
