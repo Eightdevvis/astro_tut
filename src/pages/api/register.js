@@ -5,29 +5,58 @@ import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import { getSessionCookieOptions } from '../../lib/session-cookie.js';
 import { getPermissions } from '../../lib/permissions.js';
 import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
+import {
+  validateUserIdShape,
+  isUserIdFree,
+  findFreeUserId,
+  slugifyForUserId,
+} from '../../lib/user-id.js';
 
+/**
+ * POST /api/register
+ *
+ * Body: { name, loginId?, birthday, password }
+ *  - `name`: Wunsch-Anzeigename (display_name). Pflicht.
+ *  - `loginId`: optional vom User gewaehlte Login-ID. Wenn leer wird sie aus
+ *    name abgeleitet (slugify + Suffix bei Konflikt).
+ *  - `birthday`, `password`: wie gehabt.
+ */
 export async function POST({ request, cookies }) {
-  const { username, birthday, password } = await request.json();
+  const { name, loginId, birthday, password } = await request.json();
 
-  if (!username || !birthday || !password) {
-    return new Response(JSON.stringify({ error: 'Alle Felder ausfüllen' }), { status: 400 });
+  const displayName = String(name ?? '').trim();
+  if (!displayName) {
+    return new Response(JSON.stringify({ error: 'Name fehlt' }), { status: 400 });
+  }
+  if (!birthday || !password) {
+    return new Response(JSON.stringify({ error: 'Geburtstag und Passwort sind Pflicht' }), { status: 400 });
   }
 
   await ensureDbSchema();
   const db = getDb();
 
-  const exists = await db.execute({
-    sql: 'SELECT id FROM users WHERE username = ?',
-    args: [username]
-  });
-  if (exists.rows.length > 0) {
-    return new Response(JSON.stringify({ error: 'Username existiert schon' }), { status: 409 });
+  let username;
+  if (loginId && String(loginId).trim()) {
+    const candidate = String(loginId).trim().toLowerCase();
+    const shapeError = validateUserIdShape(candidate);
+    if (shapeError) {
+      return new Response(JSON.stringify({ error: shapeError }), { status: 400 });
+    }
+    if (!(await isUserIdFree(candidate))) {
+      return new Response(
+        JSON.stringify({ error: 'Login-ID schon vergeben', suggestion: await findFreeUserId(candidate) }),
+        { status: 409 }
+      );
+    }
+    username = candidate;
+  } else {
+    username = await findFreeUserId(slugifyForUserId(displayName));
   }
 
   const hash = await bcrypt.hash(password, 10);
   await db.execute({
-    sql: 'INSERT INTO users (username, birthday, password, "global") VALUES (?, ?, ?, 0)',
-    args: [username, birthday, hash]
+    sql: 'INSERT INTO users (username, display_name, birthday, password) VALUES (?, ?, ?, ?)',
+    args: [username, displayName, birthday, hash],
   });
 
   const token = await new SignJWT({ username, birthday })
@@ -46,12 +75,12 @@ export async function POST({ request, cookies }) {
       success: true,
       user: {
         username,
+        displayName,
         birthday,
         isSuperuser,
         permissions,
         isTester,
         canUseRpg: isSuperuser || permissions.includes('rpg_access'),
-        // Minigames vorerst nur Superuser (Architektur-Umbau).
         canUseMinigames: isSuperuser,
         testerUiEnabled,
       },

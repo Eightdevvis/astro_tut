@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'preact/hooks';
+import RegisterModal from './RegisterModal.jsx';
 
 
 function LoginWidget({ initialUser = null }) {
   const [user, setUser] = useState(initialUser);
   const [authResolved, setAuthResolved] = useState(Boolean(initialUser));
   const [open, setOpen] = useState(false);
-  const [registerMode, setRegisterMode] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', birthday: '', password2: '' });
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
 
   // Beim Laden: Session vom Backend prüfen
@@ -45,32 +46,6 @@ function LoginWidget({ initialUser = null }) {
     }
   }
 
-  async function handleRegister(e) {
-    e.preventDefault();
-    setError('');
-    if (!form.username || !form.birthday || !form.password || !form.password2) {
-      setError('Alle Felder ausfüllen');
-      return;
-    }
-    if (form.password !== form.password2) {
-      setError('Passwörter stimmen nicht überein');
-      return;
-    }
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: form.username, birthday: form.birthday, password: form.password })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      setUser(data.user);
-      setOpen(false);
-      setForm({ username: '', password: '', birthday: '', password2: '' });
-    } else {
-      setError(data.error || 'Registrierung fehlgeschlagen');
-    }
-  }
-
   async function handleLogout() {
     const res = await fetch('/api/logout', { method: 'POST' });
     if (res.ok) {
@@ -78,19 +53,27 @@ function LoginWidget({ initialUser = null }) {
       return;
     }
     setUser(null);
-    setForm({ username: '', password: '', birthday: '', password2: '' });
+    setForm({ username: '', password: '' });
     setError('');
   }
 
-  // Das ausgeklappte Popup — eingeloggt zeigt Konto-Infos, ausgeloggt zeigt Login/Register
+  const displayLabel = user ? (user.displayName || user.username) : '';
+  const showLoginId = user && user.displayName && user.displayName !== user.username;
+
+  // Das ausgeklappte Popup — eingeloggt zeigt Konto-Infos, ausgeloggt zeigt Login + Register-Link
   function renderPopup() {
     if (user) {
-      // Eingeloggt: Name, Geburtstag, Logout
+      // Eingeloggt: Display-Name (+ Login-ID wenn abweichend), Geburtstag, Logout
       return (
         <div style={popupStyle}>
           <div style={{ marginBottom: 12, textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: 'var(--site-soft-muted)' }}>EINGELOGGT ALS</div>
-            <div style={{ fontWeight: 'bold', fontSize: 16 }}>{user.username}</div>
+            <div style={{ fontWeight: 'bold', fontSize: 16 }}>{displayLabel}</div>
+            {showLoginId && (
+              <div style={{ fontSize: 11, color: 'var(--site-soft-muted)', fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                @{user.username}
+              </div>
+            )}
             <div style={{ fontSize: 13, color: 'var(--site-soft-muted)' }}>{user.birthday}</div>
           </div>
           <a
@@ -149,27 +132,17 @@ function LoginWidget({ initialUser = null }) {
     }
     return (
       <div style={popupStyle}>
-        <form onSubmit={registerMode ? handleRegister : handleLogin}>
+        <form onSubmit={handleLogin}>
           <div style={{ marginBottom: 8 }}>
             <input
               name="username"
-              placeholder="USERNAME"
+              placeholder="LOGIN-ID"
               value={form.username}
               onChange={handleChange}
               style={inputStyle}
+              autoComplete="username"
             />
           </div>
-          {registerMode && (
-            <div style={{ marginBottom: 8 }}>
-              <input
-                name="birthday"
-                placeholder="GEBURTSTAG (MM-TT)"
-                value={form.birthday}
-                onChange={handleChange}
-                style={inputStyle}
-              />
-            </div>
-          )}
           <div style={{ marginBottom: 8 }}>
             <input
               name="password"
@@ -178,35 +151,25 @@ function LoginWidget({ initialUser = null }) {
               value={form.password}
               onChange={handleChange}
               style={inputStyle}
+              autoComplete="current-password"
             />
           </div>
-          {registerMode && (
-            <div style={{ marginBottom: 8 }}>
-              <input
-                name="password2"
-                type="password"
-                placeholder="PASSWORT WIEDERHOLEN"
-                value={form.password2}
-                onChange={handleChange}
-                style={inputStyle}
-              />
-            </div>
-          )}
           {error && <div style={{ color: '#b00020', marginBottom: 8, fontSize: 12 }}>{error.toUpperCase()}</div>}
-          <button type="submit" style={submitStyle}>
-            {registerMode ? 'REGISTRIEREN' : 'LOGIN'}
-          </button>
+          <button type="submit" style={submitStyle}>LOGIN</button>
         </form>
         <div style={{ marginTop: 8, textAlign: 'center' }}>
-          {!registerMode ? (
-            <a href="#" style={linkStyle} onClick={e => { e.preventDefault(); setRegisterMode(true); setError(''); }}>
-              REGISTRIEREN
-            </a>
-          ) : (
-            <a href="#" style={linkStyle} onClick={e => { e.preventDefault(); setRegisterMode(false); setError(''); }}>
-              ZURÜCK ZUM LOGIN
-            </a>
-          )}
+          <a
+            href="#"
+            style={linkStyle}
+            onClick={(e) => {
+              e.preventDefault();
+              setRegisterOpen(true);
+              setError('');
+              setOpen(false);
+            }}
+          >
+            NEU HIER? REGISTRIEREN
+          </a>
         </div>
       </div>
     );
@@ -218,9 +181,9 @@ function LoginWidget({ initialUser = null }) {
       <button
         type="button"
         style={iconButtonStyle}
-        onClick={() => { setOpen(!open); setRegisterMode(false); setError(''); }}
-        aria-label={user ? `Konto (${user.username})` : 'Anmelden oder registrieren'}
-        title={user ? `Eingeloggt als ${user.username} — Konto öffnen` : 'Anmelden oder registrieren'}
+        onClick={() => { setOpen(!open); setError(''); }}
+        aria-label={user ? `Konto (${displayLabel})` : 'Anmelden oder registrieren'}
+        title={user ? `Eingeloggt als ${displayLabel} — Konto öffnen` : 'Anmelden oder registrieren'}
       >
         {/* SVG Human Head Icon */}
         <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -228,6 +191,16 @@ function LoginWidget({ initialUser = null }) {
         </svg>
       </button>
       {open && renderPopup()}
+      {registerOpen && (
+        <RegisterModal
+          onClose={() => setRegisterOpen(false)}
+          onRegistered={(u) => {
+            setUser(u);
+            setRegisterOpen(false);
+            setForm({ username: '', password: '' });
+          }}
+        />
+      )}
     </div>
   );
 }

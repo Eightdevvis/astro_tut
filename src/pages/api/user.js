@@ -2,6 +2,7 @@ import { jwtVerify } from 'jose';
 import { getJwtSecretBytes } from '../../lib/jwt-secret.js';
 import { getPermissions } from '../../lib/permissions.js';
 import { getTesterUiPreference } from '../../lib/tester-ui-preference.js';
+import { getDb, ensureDbSchema } from '../../lib/db.js';
 
 /**
  * API-Endpunkt: GET /api/user
@@ -30,6 +31,12 @@ export async function GET({ cookies }) {
     const { payload } = await jwtVerify(token, getJwtSecretBytes());
 
     const username = String(payload.username || '');
+    await ensureDbSchema();
+    const dbRes = await getDb().execute({
+      sql: 'SELECT display_name FROM users WHERE username = ? LIMIT 1',
+      args: [username],
+    });
+    const displayName = dbRes.rows[0]?.display_name || username;
     const permissions = await getPermissions(username);
     const isSuperuser = permissions.includes('super_access');
     const isTester = isSuperuser || permissions.includes('tester_access');
@@ -38,6 +45,7 @@ export async function GET({ cookies }) {
       JSON.stringify({
         user: {
           username,
+          displayName,
           birthday: payload.birthday,
           isSuperuser,
           permissions,

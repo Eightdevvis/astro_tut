@@ -57,10 +57,11 @@ function createDbClient() {
 /** Gleiche DDL wie scripts/init_turso.js / init_db.cjs — idempotent bei jedem Start. */
 const SCHEMA_DDL = `
   CREATE TABLE IF NOT EXISTS users (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    birthday TEXT NOT NULL,
-    password TEXT NOT NULL
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    birthday     TEXT NOT NULL,
+    password     TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS user_permissions (
@@ -198,17 +199,6 @@ const SCHEMA_DDL = `
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS graffiti_strokes (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    page_path     TEXT NOT NULL,
-    username      TEXT NOT NULL,
-    mode          TEXT NOT NULL DEFAULT 'tag',
-    points_json   TEXT NOT NULL,
-    is_functional INTEGER NOT NULL DEFAULT 0,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-  CREATE INDEX IF NOT EXISTS idx_graffiti_page_created ON graffiti_strokes (page_path, created_at DESC, id DESC);
-
   -- Tile-basierte Graffiti-Architektur (Phase 2):
   -- Pro Page wird der Canvas in 512x512-Kacheln unterteilt. Jede Kachel ist ein
   -- gerendertes PNG. Der Client malt, render lokal die betroffenen Kacheln neu
@@ -326,13 +316,13 @@ async function ensureUserFeedItemsImageUrlColumn() {
   }
 }
 
-async function ensureGraffitiFunctionalColumn() {
+async function dropLegacyGraffitiStrokesTable() {
   const db = createDbClient();
   try {
-    await db.execute('ALTER TABLE graffiti_strokes ADD COLUMN is_functional INTEGER NOT NULL DEFAULT 0');
+    await db.execute('DROP TABLE IF EXISTS graffiti_strokes');
   } catch (err) {
     const msg = err?.message ?? String(err);
-    if (!/duplicate column name/i.test(msg)) throw err;
+    if (!/no such table|does not exist/i.test(msg)) throw err;
   }
 }
 
@@ -356,6 +346,16 @@ async function dropUsersGlobalColumn() {
   }
 }
 
+async function ensureUsersDisplayNameColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE users ADD COLUMN display_name TEXT');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     const db = createDbClient();
@@ -367,9 +367,10 @@ export async function ensureDbSchema() {
   await schemaPromise;
   await ensureQuotesAuthorColumn();
   await ensureUserFeedItemsImageUrlColumn();
-  await ensureGraffitiFunctionalColumn();
+  await dropLegacyGraffitiStrokesTable();
   await ensureUserPermissionsStateColumn();
   await dropUsersGlobalColumn();
+  await ensureUsersDisplayNameColumn();
   const db = createDbClient();
   await seedFeedPolicyDefaults(db);
 }

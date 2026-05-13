@@ -16,10 +16,11 @@ const db = createClient({
 
 await db.executeMultiple(`
   CREATE TABLE IF NOT EXISTS users (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    birthday TEXT NOT NULL,
-    password TEXT NOT NULL
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT UNIQUE NOT NULL,
+    display_name TEXT,
+    birthday     TEXT NOT NULL,
+    password     TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS user_permissions (

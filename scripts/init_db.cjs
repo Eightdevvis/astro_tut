@@ -12,10 +12,11 @@ db.serialize(() => {
   // Speichert alle registrierten User.
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
-      id       INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      birthday TEXT NOT NULL,
-      password TEXT NOT NULL        -- bcrypt-Hash, nie Klartext
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      username     TEXT UNIQUE NOT NULL,    -- Login-ID, unique, never changes
+      display_name TEXT,                    -- frei waehlbar, kann sich ueberschneiden
+      birthday     TEXT NOT NULL,
+      password     TEXT NOT NULL            -- bcrypt-Hash, nie Klartext
     )
   `);
   console.log('✓ users-Tabelle bereit.');

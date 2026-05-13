@@ -135,6 +135,9 @@ export default function UserSettings() {
   const [testerMsg, setTesterMsg] = useState('');
   const [graffitiHotkey, setGraffitiHotkey] = useState(() => FGRAFFITI_DEFAULT_HOTKEY);
   const [graffitiMsg, setGraffitiMsg] = useState('');
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [displayNameBusy, setDisplayNameBusy] = useState(false);
+  const [displayNameMsg, setDisplayNameMsg] = useState('');
   const settingsLoadGen = useRef(0);
 
   useEffect(() => {
@@ -168,6 +171,7 @@ export default function UserSettings() {
         if (!cancelled && gen === settingsLoadGen.current) {
           setUser(uData.user);
           setTesterUiEnabled(Boolean(uData?.user?.testerUiEnabled));
+          setDisplayNameDraft(String(uData?.user?.displayName || uData?.user?.username || ''));
         }
       } catch {
         if (!cancelled && gen === settingsLoadGen.current) setErr('Daten konnten nicht geladen werden.');
@@ -217,12 +221,84 @@ export default function UserSettings() {
       {!userLoading && tab === 'account' && user && (
         <section style={section}>
           <h2 style={h2}>Konto</h2>
-          <p style={{ marginBottom: 8 }}>
-            <strong style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75 }}>
-              Nutzername
+          <div style={{ marginBottom: 14 }}>
+            <strong style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75, marginBottom: 4 }}>
+              Login-ID
             </strong>
-            {user.username}
-          </p>
+            <div
+              style={{
+                fontFamily: 'ui-monospace, Menlo, monospace',
+                fontSize: '0.95rem',
+                padding: '8px 10px',
+                borderRadius: 6,
+                background: 'rgba(0,0,0,0.05)',
+                border: '1px solid rgba(0,0,0,0.12)',
+                display: 'inline-block',
+                minWidth: 120,
+              }}
+            >
+              {user.username}
+            </div>
+            <p style={{ ...muted, marginTop: 6, marginBottom: 0 }}>
+              Eindeutig und nicht änderbar. Damit loggst du dich ein.
+            </p>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', marginBottom: 4 }}>
+              <strong style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75, marginBottom: 4 }}>
+                Anzeigename
+              </strong>
+              <input
+                value={displayNameDraft}
+                onInput={(e) => {
+                  setDisplayNameDraft(e.currentTarget.value);
+                  setDisplayNameMsg('');
+                }}
+                style={{ ...fieldInput, minWidth: 240 }}
+                maxLength={40}
+              />
+            </label>
+            <p style={{ ...muted, marginTop: 0, marginBottom: 6 }}>
+              So sehen dich andere. Darf alles sein, auch ein Name, den jemand anders schon hat.
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                disabled={displayNameBusy || !displayNameDraft.trim() || displayNameDraft.trim() === (user.displayName || user.username)}
+                onClick={async () => {
+                  setDisplayNameBusy(true);
+                  setDisplayNameMsg('');
+                  setErr('');
+                  try {
+                    const res = await fetch('/api/user/display-name', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'same-origin',
+                      body: JSON.stringify({ displayName: displayNameDraft.trim() }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Speichern fehlgeschlagen');
+                    setUser((prev) => (prev ? { ...prev, displayName: data.displayName } : prev));
+                    setDisplayNameMsg('Anzeigename aktualisiert.');
+                  } catch (e) {
+                    setErr(e?.message || 'Speichern fehlgeschlagen');
+                  } finally {
+                    setDisplayNameBusy(false);
+                  }
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(0,0,0,0.2)',
+                  background: 'rgba(255,255,255,0.65)',
+                  cursor: 'pointer',
+                }}
+              >
+                {displayNameBusy ? 'Speichere…' : 'Speichern'}
+              </button>
+              {displayNameMsg ? <span style={{ fontSize: '0.85rem', color: 'seagreen' }}>{displayNameMsg}</span> : null}
+            </div>
+          </div>
           <p style={{ marginBottom: 0 }}>
             <strong style={{ display: 'block', fontSize: '0.75rem', letterSpacing: '0.06em', opacity: 0.75 }}>
               Geburtstag

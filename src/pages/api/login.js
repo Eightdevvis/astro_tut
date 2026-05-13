@@ -47,6 +47,7 @@ export async function POST({ request, cookies }) {
       success: true,
       user: {
         username: un,
+        displayName: user.display_name || un,
         birthday: user.birthday,
         isSuperuser,
         permissions,
