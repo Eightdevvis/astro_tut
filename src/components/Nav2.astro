@@ -57,12 +57,12 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
           showBlogpostNav && (
             <a href="/blogpost" class="nav2-icon" aria-label="Blogpost erstellen" title="Blogpost erstellen">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                {/* Oberlippe: eckiger Cupid's Bow, gerade Unterkante, nur Outline */}
+                {/* Oberlippe: eckiger Cupid's Bow, gerade Unterkante */}
                 <path d="M 3 11 L 5 10 L 8 7 L 12 9.5 L 16 7 L 19 10 L 21 11 Z" />
-                {/* Zunge: zigzag-Spirale als langgezogenes Dreieck nach unten */}
-                <path
-                  d="M 10 11.5 L 14 11.5 L 11 14 L 13.4 16 L 11.3 18 L 12.9 20 L 11.8 22 L 12.4 23.4"
-                />
+                {/* Zunge: langgezogenes Dreieck-Outline, Spitze nach unten */}
+                <path d="M 10 11.5 L 14 11.5 L 12 23 Z" />
+                {/* Innere Spirale: dreieckig nach innen, drei Stufen — endet etwa in der Mitte */}
+                <path d="M 10.5 12.2 L 13.5 12.2 L 12 21 L 11 12.7 L 13 12.7 L 12 19 L 11.5 13.2 L 12.5 13.2 L 12 17" />
               </svg>
             </a>
           )

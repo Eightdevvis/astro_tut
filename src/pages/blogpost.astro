@@ -674,10 +674,11 @@ try {
           return best;
         }
 
-        // Phase 1: Styling + Width auf die zugewiesene Spaltenbreite setzen,
-        // dann Hoehe messen. WICHTIG: die Spalte wird hier bereits gewaehlt,
-        // damit width = colWidth(targetCol) korrekt ist, BEVOR wir messen.
-        const info = order.map((entry, i) => {
+        // Layout tile-fuer-tile: Spalte picken (mit aktuellem colHeights),
+        // Width setzen, Hoehe messen, Position setzen, colHeights updaten.
+        // Wichtig: colHeights muss zwischen Tiles aktualisiert sein, sonst
+        // landen alle Tiles in derselben Spalte.
+        order.forEach((entry, i) => {
           const { tile, isEditor } = entry;
           const targetCol = pickCol(isEditor);
           const widthPx = colWidths[targetCol];
@@ -702,13 +703,6 @@ try {
           tile.style.visibility = 'hidden';
           tile.style.display = '';
           if (!isEditor) tile.style.zIndex = '1';
-          return { tile, isEditor, targetCol };
-        });
-
-        // Phase 2: Hoehe messen, in Spalte stacken, naechstes Tile
-        // weiterschreiben.
-        info.forEach((entry) => {
-          const { tile, targetCol } = entry;
           const h = tile.offsetHeight || 80;
           tile.style.left = `${Math.round(colLefts[targetCol])}px`;
           tile.style.top = `${Math.round(colHeights[targetCol])}px`;
