@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
  * Eigenes Modal-Overlay fuer Registrierung. Felder:
  *  - Name (display_name, frei waehlbar, kann sich mit anderen ueberschneiden)
  *  - Login-ID (eindeutig, automatisch aus Name vorgeschlagen, editierbar)
- *  - Geburtstag (MM-TT)
+ *  - Geburtstag (TT-MM)
  *  - Passwort + Passwort wiederholen
  *
  * Live-Suggestion: jedesmal wenn Name oder ID geaendert wird, fragen wir
@@ -40,6 +40,10 @@ export default function RegisterModal({ onClose, onRegistered }) {
 
   // Wenn der User die ID NICHT manuell veraendert hat, wird sie aus dem Namen
   // abgeleitet (slugify + Auto-Suffix bei Konflikt, vom Server geprueft).
+  // Der Server-Response `data.available` bezieht sich auf den Slug aus dem
+  // Namen — wir uebernehmen aber `data.suggestion`, die per Definition frei
+  // ist. Darum hier `available: null` setzen und den Hint via `loginIdTouched`
+  // gesondert formulieren.
   useEffect(() => {
     if (loginIdTouched) return;
     if (!name.trim()) {
@@ -55,7 +59,7 @@ export default function RegisterModal({ onClose, onRegistered }) {
         .then((data) => {
           if (loginIdTouched) return;
           setLoginId(String(data.suggestion || ''));
-          setIdStatus({ checking: false, available: data.available, suggestion: data.suggestion });
+          setIdStatus({ checking: false, available: null, suggestion: data.suggestion });
         })
         .catch(() => {});
     }, 180);
@@ -146,6 +150,7 @@ export default function RegisterModal({ onClose, onRegistered }) {
     if (idStatus.shapeError) return { text: idStatus.shapeError, ok: false };
     if (idStatus.checking) return { text: 'Prüfe …', ok: null };
     if (!loginId) return { text: 'Wird aus dem Namen abgeleitet.', ok: null };
+    if (!loginIdTouched) return { text: 'Vorschlag aus deinem Namen — frei.', ok: null };
     if (idStatus.available === true) return { text: '✓ verfügbar', ok: true };
     if (idStatus.available === false) {
       const sug = idStatus.suggestion && idStatus.suggestion !== loginId ? ` — frei: ${idStatus.suggestion}` : '';
@@ -173,7 +178,7 @@ export default function RegisterModal({ onClose, onRegistered }) {
               type="text"
               value={name}
               onInput={(e) => setName(e.target.value)}
-              placeholder="Sarah"
+              placeholder="Name"
               style={inputStyle}
               autoComplete="off"
             />
@@ -185,7 +190,7 @@ export default function RegisterModal({ onClose, onRegistered }) {
               type="text"
               value={loginId}
               onInput={onIdInput}
-              placeholder="sarah"
+              placeholder="randomID"
               style={{
                 ...inputStyle,
                 fontFamily: 'ui-monospace, SF Mono, Menlo, monospace',
@@ -209,12 +214,12 @@ export default function RegisterModal({ onClose, onRegistered }) {
           </label>
 
           <label style={labelStyle}>
-            <span style={labelTextStyle}>Geburtstag (MM-TT)</span>
+            <span style={labelTextStyle}>Geburtstag (TT-MM)</span>
             <input
               type="text"
               value={birthday}
               onInput={(e) => setBirthday(e.target.value)}
-              placeholder="03-19"
+              placeholder="19-03"
               style={inputStyle}
               autoComplete="off"
             />
