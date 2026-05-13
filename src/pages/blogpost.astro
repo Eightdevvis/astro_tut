@@ -339,10 +339,9 @@ try {
       .hub-grid {
         position: relative;
         width: 100%;
-        height: clamp(700px, calc(100dvh - var(--nav-strip-h, 64px) - 1.5rem), 1700px);
+        /* Hoehe wird in JS gesetzt (max der Spalten-Hoehen). */
         margin: 0 auto;
         padding: 0;
-        overflow: hidden;
         transition: opacity 540ms ease;
       }
       .hub-tile {
@@ -351,11 +350,12 @@ try {
         text-decoration: none;
         color: inherit;
         background: transparent;
-        border: 1px solid rgba(0, 0, 0, 0.22);
-        border-radius: 0.2rem;
-        padding: 0.35rem 0.55rem;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 0;
+        padding: 0.5rem 0.65rem;
         overflow: hidden;
         cursor: pointer;
+        box-sizing: border-box;
         transform-origin: center;
         will-change: opacity, transform;
         transition:
@@ -364,10 +364,9 @@ try {
         transition-delay: calc(var(--tile-i, 0) * 18ms);
       }
       :global(html.dark) .hub-tile {
-        border-color: rgba(255, 255, 255, 0.22);
+        border-color: rgba(255, 255, 255, 0.18);
       }
       .hub-tile--post {
-        max-height: 320px;
         opacity: 0.92;
       }
       .hub-tile--post:hover,
@@ -375,6 +374,7 @@ try {
         outline: none;
         opacity: 1;
         border-color: currentColor;
+        z-index: 5;
       }
       .hub-tile-date {
         display: none; /* Datum nicht anzeigen — fluttert das Layout zu sehr. */
@@ -390,13 +390,17 @@ try {
         width: clamp(108px, 13vw, 150px);
         height: clamp(108px, 13vw, 150px);
         transform: translate(-50%, -50%);
-        border: 2px dashed var(--site-card-border);
-        border-radius: 0.7rem;
+        /* Selbe duenne Border wie die Post-Tiles. */
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 0;
         background: var(--site-card-bg);
         display: grid;
         place-items: center;
         z-index: 9000;
         max-height: none;
+      }
+      :global(html.dark) .hub-tile--editor {
+        border-color: rgba(255, 255, 255, 0.18);
       }
       .hub-tile-plus {
         font-size: clamp(2.4rem, 5vw, 3.4rem);
@@ -600,35 +604,26 @@ try {
         return arr[Math.floor(Math.random() * arr.length)];
       }
 
-      function rectsOverlap(a, b) {
-        return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
-      }
-
       function decorateHubTiles() {
         if (!hubGrid) return;
         const tiles = Array.from(hubGrid.querySelectorAll('.hub-tile--post'));
         if (tiles.length === 0) return;
-        const gridRect = hubGrid.getBoundingClientRect();
-        const gridW = Math.max(0, Math.floor(gridRect.width));
-        const gridH = Math.max(0, Math.floor(gridRect.height));
-        if (gridW < 80 || gridH < 80) return;
 
-        const PADDING = 6; // Mindestabstand zwischen Tiles
-        const centerX = gridW / 2;
-        const centerY = gridH / 2;
-        const editorSide = Math.max(108, Math.min(150, gridW * 0.13));
-        // Reserved block fuer das +Tile (inkl. Padding), damit Post-Tiles
-        // nicht direkt dran kleben oder es verdecken.
-        const placed = [{
-          x: centerX - editorSide / 2 - PADDING,
-          y: centerY - editorSide / 2 - PADDING,
-          w: editorSide + 2 * PADDING,
-          h: editorSide + 2 * PADDING,
-        }];
+        const gridW = Math.max(0, Math.floor(hubGrid.getBoundingClientRect().width));
+        if (gridW < 80) return;
+
+        // Spaltenanzahl basierend auf Viewport. Ziel: ~210 px breite Spalten,
+        // mindestens 2, maximal 8.
+        const targetCol = 210;
+        const colCount = Math.max(2, Math.min(8, Math.round(gridW / targetCol)));
+        const colW = gridW / colCount;
+
+        // Random Reihenfolge — sonst dominieren die letzten Posts oben links.
+        const order = tiles.map((tile, i) => ({ tile, i }));
+        order.sort(() => Math.random() - 0.5);
 
         // Phase 1: Styling + Width setzen, dann Hoehe messen.
-        const info = tiles.map((tile, i) => {
-          const w = Math.round(hubRand(110, 240));
+        const info = order.map(({ tile, i }) => {
           tile.style.fontFamily = hubPick(HUB_FONTS);
           tile.style.fontSize = `${hubRand(0.62, 1.4).toFixed(3)}rem`;
           tile.style.lineHeight = `${hubRand(1.0, 1.6).toFixed(2)}`;
@@ -636,53 +631,37 @@ try {
           tile.style.fontWeight = String(hubPick(HUB_WEIGHTS));
           tile.style.fontStyle = Math.random() < 0.35 ? 'italic' : 'normal';
           tile.style.textTransform = Math.random() < 0.2 ? 'uppercase' : 'none';
-          tile.style.opacity = `${hubRand(0.78, 1).toFixed(2)}`;
-          tile.style.zIndex = String(Math.floor(hubRand(1, 80)));
+          tile.style.opacity = `${hubRand(0.82, 1).toFixed(2)}`;
           tile.style.setProperty('--tile-i', String(i));
-          tile.style.width = `${w}px`;
+          tile.style.width = `${colW}px`;
           tile.style.left = '-9999px';
           tile.style.top = '0px';
           tile.style.visibility = 'hidden';
           tile.style.display = '';
-          return { tile, w, h: 0 };
+          tile.style.zIndex = '1';
+          return { tile, h: 0 };
         });
-        // Force layout so wir die Hoehen abgreifen koennen.
         info.forEach((entry) => {
-          entry.h = entry.tile.offsetHeight || 60;
+          entry.h = entry.tile.offsetHeight || 80;
         });
 
-        // Random Platzierungsreihenfolge — keine Bias auf DB-Reihenfolge.
-        info.sort(() => Math.random() - 0.5);
-
-        // Phase 2: kollisionsfreie Position suchen.
-        info.forEach((entry) => {
-          const { tile, w, h } = entry;
-          const boxW = w + 2 * PADDING;
-          const boxH = h + 2 * PADDING;
-          if (boxW >= gridW || boxH >= gridH) {
-            tile.style.display = 'none';
-            return;
+        // Phase 2: jedes Tile in die Spalte mit der momentan kleinsten Hoehe
+        // einsortieren (klassisches Masonry-Verfahren).
+        const colHeights = new Array(colCount).fill(0);
+        info.forEach(({ tile, h }) => {
+          let minIdx = 0;
+          for (let c = 1; c < colCount; c += 1) {
+            if (colHeights[c] < colHeights[minIdx]) minIdx = c;
           }
-          let chosen = null;
-          for (let attempt = 0; attempt < 120; attempt += 1) {
-            const bx = Math.round(hubRand(0, gridW - boxW));
-            const by = Math.round(hubRand(0, gridH - boxH));
-            const candidate = { x: bx, y: by, w: boxW, h: boxH };
-            if (!placed.some((r) => rectsOverlap(r, candidate))) {
-              chosen = candidate;
-              break;
-            }
-          }
-          if (!chosen) {
-            // Kein freier Platz — Tile rausnehmen.
-            tile.style.display = 'none';
-            return;
-          }
-          placed.push(chosen);
-          tile.style.left = `${chosen.x + PADDING}px`;
-          tile.style.top = `${chosen.y + PADDING}px`;
+          tile.style.left = `${Math.round(minIdx * colW)}px`;
+          tile.style.top = `${Math.round(colHeights[minIdx])}px`;
           tile.style.visibility = 'visible';
+          colHeights[minIdx] += h;
         });
+
+        // Container-Hoehe = hoechste Spalte. Damit reicht der Hub genau so
+        // weit, wie es Tiles braucht — keine leere Flaeche darunter.
+        hubGrid.style.height = `${Math.max(...colHeights, 320)}px`;
       }
 
       const activation = document.getElementById('editorActivation');
