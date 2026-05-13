@@ -59,11 +59,11 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 {/* Oberlippe: eckiger Cupid's Bow, gerade Unterkante */}
                 <path d="M 3 11 L 5 10 L 8 7 L 12 9.5 L 16 7 L 19 10 L 21 11 Z" />
-                {/* Zunge: drei verschachtelte Dreiecke — outer dockt an den
-                   Mundwinkeln (x=3 und x=21) an, Spitze nach unten */}
-                <path d="M 3 11 L 21 11 L 12 23 Z" />
-                <path d="M 6.6 13.4 L 17.4 13.4 L 12 20.6 Z" />
-                <path d="M 9.3 15.2 L 14.7 15.2 L 12 18.5 Z" />
+                {/* Zunge: drei klar separierte verschachtelte Dreiecke,
+                   Spitze jeweils nach unten */}
+                <path d="M 4 11 L 20 11 L 12 23 Z" />
+                <path d="M 7 13.4 L 17 13.4 L 12 20.6 Z" />
+                <path d="M 10 15.8 L 14 15.8 L 12 18.2 Z" />
               </svg>
             </a>
           )
@@ -123,9 +123,9 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
                 <span class="nav2-drawer-ic" aria-hidden="true">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg">
                     <path d="M 3 11 L 5 10 L 8 7 L 12 9.5 L 16 7 L 19 10 L 21 11 Z" />
-                    <path d="M 3 11 L 21 11 L 12 23 Z" />
-                    <path d="M 6.6 13.4 L 17.4 13.4 L 12 20.6 Z" />
-                    <path d="M 9.3 15.2 L 14.7 15.2 L 12 18.5 Z" />
+                    <path d="M 4 11 L 20 11 L 12 23 Z" />
+                    <path d="M 7 13.4 L 17 13.4 L 12 20.6 Z" />
+                    <path d="M 10 15.8 L 14 15.8 L 12 18.2 Z" />
                   </svg>
                 </span>
                 <span>Blogpost</span>
