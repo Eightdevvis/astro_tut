@@ -45,7 +45,7 @@ try {
   hubTiles = (r.rows || []).map((row) => {
     const id = Number(row.id ?? 0);
     const text = String(row.content_text || '').replace(/\s+/g, ' ').trim();
-    const span = Math.min(140, text.length);
+    const span = Math.min(380, text.length);
     const maxStart = Math.max(0, text.length - span);
     const start = maxStart > 0 ? Math.floor(Math.random() * (maxStart + 1)) : 0;
     const snippet = text.slice(start, start + span);
@@ -356,7 +356,7 @@ try {
         background: transparent;
         border: 1px solid rgba(0, 0, 0, 0.18);
         border-radius: 0;
-        padding: 0.5rem 0.65rem;
+        padding: 0;
         overflow: hidden;
         cursor: pointer;
         box-sizing: border-box;
