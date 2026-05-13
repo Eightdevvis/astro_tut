@@ -91,6 +91,9 @@ try {
       .page[data-mode="hub"] {
         padding-left: 0;
         padding-right: 0;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
       }
       .page[data-mode="editor"] {
         max-width: 1100px;
@@ -338,13 +341,12 @@ try {
          keine sauberen Reihen — und das `+` Tile in der Mitte als klare
          Einstiegs-Marke. */
       .hub-grid {
-        /* Full-bleed: zwingt auf 100vw, egal welche max-width der Parent
-           (.page) gerade hat — sonst landen die Tiles in einem schmalen
-           mittigen Streifen. */
+        /* Parent .page wird im hub-mode auf width:100% / margin:0 gezwungen,
+           also reicht hier 100% — kein vw-Breakout noetig (der wuerde mit
+           overflow-x:hidden + Scrollbar die linke Spalte abschneiden). */
         position: relative;
-        width: 100vw;
-        left: 50%;
-        margin-left: -50vw;
+        width: 100%;
+        margin: 0;
         padding: 0;
         transition: opacity 540ms ease;
       }
