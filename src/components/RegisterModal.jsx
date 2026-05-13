@@ -1,5 +1,14 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 
+const ID_MAX_LEN = 24;
+/** Mirror von slugifyForUserId aus src/lib/user-id.js — damit die ID-Anzeige
+ *  beim Tippen instant updated, ohne auf den Server zu warten. */
+function slugifyLocal(name) {
+  const cleaned = String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (!cleaned) return '';
+  return cleaned.slice(0, ID_MAX_LEN);
+}
+
 /**
  * RegisterModal
  *
@@ -9,9 +18,10 @@ import { useState, useEffect, useRef } from 'preact/hooks';
  *  - Geburtstag (TT-MM)
  *  - Passwort + Passwort wiederholen
  *
- * Live-Suggestion: jedesmal wenn Name oder ID geaendert wird, fragen wir
- * /api/auth/check-id, ob die ID frei ist und holen ggf. die naechste freie
- * Variante. Die User-Bearbeitung der ID wird respektiert (kein Auto-Reset).
+ * Auto-Suggest UX: beim Tippen des Namens wird die Login-ID lokal sofort
+ * gesetzt (slugifyLocal). Im Hintergrund fragt /api/auth/check-id ob der
+ * Slug frei ist — wenn nicht, wird die ID auf die Server-Suggestion
+ * (slug0, slug1, ...) upgegraded. So fuehlt sich das Feld instant an.
  *
  * Props:
  *  - onClose(): Modal schliessen
@@ -38,31 +48,32 @@ export default function RegisterModal({ onClose, onRegistered }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Wenn der User die ID NICHT manuell veraendert hat, wird sie aus dem Namen
-  // abgeleitet (slugify + Auto-Suffix bei Konflikt, vom Server geprueft).
-  // Der Server-Response `data.available` bezieht sich auf den Slug aus dem
-  // Namen — wir uebernehmen aber `data.suggestion`, die per Definition frei
-  // ist. Darum hier `available: null` setzen und den Hint via `loginIdTouched`
-  // gesondert formulieren.
+  // Auto-Suggest aus Name: Schritt 1 — lokal sofort slugifyen, damit das
+  // Feld ohne Server-Latenz aktualisiert. Schritt 2 — im Hintergrund pruefen,
+  // ob der Slug schon belegt ist; falls ja, Server-Suggestion uebernehmen.
   useEffect(() => {
     if (loginIdTouched) return;
-    if (!name.trim()) {
+    const slug = slugifyLocal(name);
+    if (!slug) {
       setLoginId('');
       setIdStatus({ checking: false, available: null, suggestion: '' });
       return;
     }
+    setLoginId(slug);
+    setIdStatus({ checking: true, available: null, suggestion: '' });
     const ctrl = new AbortController();
-    setIdStatus((s) => ({ ...s, checking: true }));
     const t = setTimeout(() => {
       fetch(`/api/auth/check-id?name=${encodeURIComponent(name)}`, { signal: ctrl.signal })
         .then((r) => r.json())
         .then((data) => {
           if (loginIdTouched) return;
-          setLoginId(String(data.suggestion || ''));
-          setIdStatus({ checking: false, available: null, suggestion: data.suggestion });
+          if (data?.suggestion && data.suggestion !== slug) {
+            setLoginId(String(data.suggestion));
+          }
+          setIdStatus({ checking: false, available: null, suggestion: data?.suggestion });
         })
         .catch(() => {});
-    }, 180);
+    }, 60);
     return () => {
       clearTimeout(t);
       ctrl.abort();
@@ -91,7 +102,7 @@ export default function RegisterModal({ onClose, onRegistered }) {
           });
         })
         .catch(() => {});
-    }, 180);
+    }, 80);
     return () => {
       clearTimeout(t);
       ctrl.abort();

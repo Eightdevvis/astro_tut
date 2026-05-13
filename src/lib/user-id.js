@@ -40,15 +40,24 @@ export async function isUserIdFree(id) {
  * Findet die naechste freie ID basierend auf base.
  *  - base selbst frei -> base
  *  - sonst base + 0, base + 1, ... bis frei.
+ *
+ * Eine einzige Query: alle bestehenden IDs die mit dem Slug starten werden
+ * geladen, der Rest wird lokal entschieden. Vorher: bis zu 10000 Roundtrips.
  */
 export async function findFreeUserId(base) {
   const slug = slugifyForUserId(base);
-  if (await isUserIdFree(slug)) return slug;
+  await ensureDbSchema();
+  const db = getDb();
+  const r = await db.execute({
+    sql: 'SELECT username FROM users WHERE username = ? OR username LIKE ?',
+    args: [slug, `${slug}%`],
+  });
+  const taken = new Set(r.rows.map((row) => String(row.username)));
+  if (!taken.has(slug)) return slug;
   for (let i = 0; i < 10000; i += 1) {
     const candidate = `${slug}${i}`.slice(0, MAX_ID_LEN);
-    if (await isUserIdFree(candidate)) return candidate;
+    if (!taken.has(candidate)) return candidate;
   }
-  // Fallback (sollte nie passieren) — Zeitstempel.
   return `${slug}${Date.now().toString(36)}`.slice(0, MAX_ID_LEN);
 }
 
