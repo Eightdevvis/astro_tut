@@ -80,10 +80,13 @@ try {
       }
       .page {
         --past-posts-offset: 8dvh;
-        max-width: 1100px;
+        max-width: 100%;
         margin: 0 auto;
-        padding: max(2rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
-          max(1rem, env(safe-area-inset-left));
+        padding: max(1rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(4rem, env(safe-area-inset-bottom))
+          max(0.5rem, env(safe-area-inset-left));
+      }
+      .page[data-mode="editor"] {
+        max-width: 1100px;
       }
       .no-permission {
         min-height: 100dvh;
@@ -329,8 +332,8 @@ try {
          Einstiegs-Marke. */
       .hub-grid {
         position: relative;
-        width: min(1100px, 100%);
-        height: clamp(720px, 92dvh, 1300px);
+        width: 100%;
+        height: clamp(700px, calc(100dvh - var(--nav-strip-h, 64px) - 1.5rem), 1700px);
         margin: 0 auto;
         padding: 0;
         overflow: hidden;
@@ -584,6 +587,10 @@ try {
         return arr[Math.floor(Math.random() * arr.length)];
       }
 
+      function rectsOverlap(a, b) {
+        return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+      }
+
       function decorateHubTiles() {
         if (!hubGrid) return;
         const tiles = Array.from(hubGrid.querySelectorAll('.hub-tile--post'));
@@ -592,38 +599,76 @@ try {
         const gridW = Math.max(0, Math.floor(gridRect.width));
         const gridH = Math.max(0, Math.floor(gridRect.height));
         if (gridW < 80 || gridH < 80) return;
-        // Sperrzone in der Mitte fuer das +Tile, damit das Plus immer
-        // sichtbar bleibt (nicht zugekleistert).
+
+        const PADDING = 6; // Mindestabstand zwischen Tiles
         const centerX = gridW / 2;
         const centerY = gridH / 2;
-        const exclusionR = Math.min(gridW, gridH) * 0.14;
-        tiles.forEach((tile, i) => {
-          const w = Math.round(hubRand(120, 280));
-          let x;
-          let y;
-          // Bis zu 8 Versuche, das Tile nicht direkt mittig zu droppen.
-          for (let attempt = 0; attempt < 8; attempt += 1) {
-            x = Math.round(hubRand(0, Math.max(0, gridW - w)));
-            y = Math.round(hubRand(0, Math.max(0, gridH - 80)));
-            const tileCx = x + w / 2;
-            const tileCy = y + 40;
-            if (Math.hypot(tileCx - centerX, tileCy - centerY) > exclusionR) break;
-          }
-          tile.style.left = `${x}px`;
-          tile.style.top = `${y}px`;
-          tile.style.width = `${w}px`;
+        const editorSide = Math.max(108, Math.min(150, gridW * 0.13));
+        // Reserved block fuer das +Tile (inkl. Padding), damit Post-Tiles
+        // nicht direkt dran kleben oder es verdecken.
+        const placed = [{
+          x: centerX - editorSide / 2 - PADDING,
+          y: centerY - editorSide / 2 - PADDING,
+          w: editorSide + 2 * PADDING,
+          h: editorSide + 2 * PADDING,
+        }];
+
+        // Phase 1: Styling + Width setzen, dann Hoehe messen.
+        const info = tiles.map((tile, i) => {
+          const w = Math.round(hubRand(110, 240));
           tile.style.fontFamily = hubPick(HUB_FONTS);
-          tile.style.fontSize = `${hubRand(0.62, 1.45).toFixed(3)}rem`;
-          tile.style.lineHeight = `${hubRand(0.95, 1.7).toFixed(2)}`;
-          tile.style.letterSpacing = `${hubRand(-0.04, 0.16).toFixed(3)}em`;
+          tile.style.fontSize = `${hubRand(0.62, 1.4).toFixed(3)}rem`;
+          tile.style.lineHeight = `${hubRand(1.0, 1.6).toFixed(2)}`;
+          tile.style.letterSpacing = `${hubRand(-0.03, 0.14).toFixed(3)}em`;
           tile.style.fontWeight = String(hubPick(HUB_WEIGHTS));
-          if (Math.random() < 0.35) tile.style.fontStyle = 'italic';
-          else tile.style.fontStyle = 'normal';
-          if (Math.random() < 0.2) tile.style.textTransform = 'uppercase';
-          else tile.style.textTransform = 'none';
-          tile.style.opacity = `${hubRand(0.75, 1).toFixed(2)}`;
+          tile.style.fontStyle = Math.random() < 0.35 ? 'italic' : 'normal';
+          tile.style.textTransform = Math.random() < 0.2 ? 'uppercase' : 'none';
+          tile.style.opacity = `${hubRand(0.78, 1).toFixed(2)}`;
           tile.style.zIndex = String(Math.floor(hubRand(1, 80)));
           tile.style.setProperty('--tile-i', String(i));
+          tile.style.width = `${w}px`;
+          tile.style.left = '-9999px';
+          tile.style.top = '0px';
+          tile.style.visibility = 'hidden';
+          tile.style.display = '';
+          return { tile, w, h: 0 };
+        });
+        // Force layout so wir die Hoehen abgreifen koennen.
+        info.forEach((entry) => {
+          entry.h = entry.tile.offsetHeight || 60;
+        });
+
+        // Random Platzierungsreihenfolge — keine Bias auf DB-Reihenfolge.
+        info.sort(() => Math.random() - 0.5);
+
+        // Phase 2: kollisionsfreie Position suchen.
+        info.forEach((entry) => {
+          const { tile, w, h } = entry;
+          const boxW = w + 2 * PADDING;
+          const boxH = h + 2 * PADDING;
+          if (boxW >= gridW || boxH >= gridH) {
+            tile.style.display = 'none';
+            return;
+          }
+          let chosen = null;
+          for (let attempt = 0; attempt < 120; attempt += 1) {
+            const bx = Math.round(hubRand(0, gridW - boxW));
+            const by = Math.round(hubRand(0, gridH - boxH));
+            const candidate = { x: bx, y: by, w: boxW, h: boxH };
+            if (!placed.some((r) => rectsOverlap(r, candidate))) {
+              chosen = candidate;
+              break;
+            }
+          }
+          if (!chosen) {
+            // Kein freier Platz — Tile rausnehmen.
+            tile.style.display = 'none';
+            return;
+          }
+          placed.push(chosen);
+          tile.style.left = `${chosen.x + PADDING}px`;
+          tile.style.top = `${chosen.y + PADDING}px`;
+          tile.style.visibility = 'visible';
         });
       }
 
