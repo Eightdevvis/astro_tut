@@ -1,0 +1,111 @@
+---
+import Nav2 from '../components/Nav2.astro';
+import SiteFontOverrides from '../components/SiteFontOverrides.astro';
+import ThemeInit from '../components/ThemeInit.astro';
+import ThemeClient from '../components/ThemeClient.astro';
+import TesterBugBar from '../components/TesterBugBar.jsx';
+import GraffitiLayer from '../components/GraffitiLayer.jsx';
+import { getSessionUserFromCookies } from '../lib/session.js';
+import '../styles/global.css';
+
+const sessionUser = await getSessionUserFromCookies(Astro.cookies);
+if (!sessionUser) {
+  return Astro.redirect('/');
+}
+const username = sessionUser.username;
+---
+
+<html lang="de" class="home">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>{username} — Deine Seite</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="home" />
+    <header class="me-hero">
+      <svg
+        class="me-hero-icon"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+      </svg>
+      <h1 class="me-hero-name">{username}</h1>
+    </header>
+    <GraffitiLayer client:load />
+    <TesterBugBar client:load />
+    <ThemeClient />
+  </body>
+</html>
+
+<style is:global>
+  html.home {
+    background-color: var(--home-page-bg);
+  }
+  html.home body {
+    background-color: var(--home-page-bg);
+    margin: 0;
+    padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+  }
+  html.home .me-hero-name {
+    margin: 0;
+    font-weight: normal;
+  }
+</style>
+<style>
+  /* Hero-Block fuer die persoenliche Seite — gleiche Optik wie der "SaSh"
+     Titel auf der Hauptseite, nur dass ueber dem Namen das User-Icon haengt. */
+  .me-hero {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+    overflow-x: clip;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: calc(1rem + 4vh);
+    gap: 1vh;
+  }
+
+  .me-hero-icon {
+    width: clamp(120px, 22vh, 320px);
+    height: clamp(120px, 22vh, 320px);
+    color: var(--home-hero-text);
+    display: block;
+  }
+
+  .me-hero-name {
+    font-family: var(--font-hero, 'Protest Demo');
+    font-size: clamp(2rem, 10vh, 8rem);
+    color: var(--home-hero-text);
+    line-height: 1;
+    text-align: center;
+    transform: scaleX(0.6);
+    transform-origin: center top;
+    width: max-content;
+    max-width: min(100%, 100vw - 1.5rem);
+  }
+
+  @media screen and (max-width: 767px) {
+    .me-hero-icon {
+      width: clamp(96px, 16vh, 200px);
+      height: clamp(96px, 16vh, 200px);
+    }
+    .me-hero-name {
+      font-size: clamp(1.75rem, min(9vh, 11vw), 3.25rem);
+    }
+  }
+</style>

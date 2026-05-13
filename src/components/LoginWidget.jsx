@@ -94,6 +94,19 @@ function LoginWidget({ initialUser = null }) {
             <div style={{ fontSize: 13, color: 'var(--site-soft-muted)' }}>{user.birthday}</div>
           </div>
           <a
+            href="/me"
+            style={{
+              ...linkStyle,
+              display: 'block',
+              textAlign: 'center',
+              marginBottom: 10,
+              fontSize: 13,
+              textDecoration: 'none',
+            }}
+          >
+            DEINE SEITE
+          </a>
+          <a
             href="/settings"
             style={{
               ...linkStyle,
