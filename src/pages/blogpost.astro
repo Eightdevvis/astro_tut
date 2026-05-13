@@ -385,18 +385,13 @@ try {
       /* Das Editor-Tile bleibt fest in der Mitte — z-index ueber allem,
          damit es nicht von einem Post-Schnipsel verdeckt wird. */
       .hub-tile--editor {
-        left: 50%;
-        top: 50%;
-        width: clamp(108px, 13vw, 150px);
-        height: clamp(108px, 13vw, 150px);
-        transform: translate(-50%, -50%);
-        /* Selbe duenne Border wie die Post-Tiles. */
+        /* Position/Hoehe/Breite werden vom Masonry-JS gesetzt. */
         border: 1px solid rgba(0, 0, 0, 0.18);
         border-radius: 0;
         background: var(--site-card-bg);
         display: grid;
         place-items: center;
-        z-index: 9000;
+        z-index: 50;
         max-height: none;
       }
       :global(html.dark) .hub-tile--editor {
@@ -438,7 +433,7 @@ try {
       }
       .page[data-mode="editor"] .hub-tile--editor {
         opacity: 0;
-        transform: translate(-50%, -50%) scale(2.4);
+        transform: scale(2.4);
         pointer-events: none;
         transition-delay: 0ms;
       }
@@ -499,11 +494,11 @@ try {
         animation: hub-tile-shake 480ms ease;
       }
       @keyframes hub-tile-shake {
-        0%, 100% { transform: translate(-50%, -50%); }
-        20% { transform: translate(-54%, -50%); }
-        40% { transform: translate(-46%, -50%); }
-        60% { transform: translate(-54%, -50%); }
-        80% { transform: translate(-46%, -50%); }
+        0%, 100% { transform: none; }
+        20% { transform: translateX(-5px); }
+        40% { transform: translateX(5px); }
+        60% { transform: translateX(-5px); }
+        80% { transform: translateX(5px); }
       }
     </style>
   </head>
@@ -606,8 +601,9 @@ try {
 
       function decorateHubTiles() {
         if (!hubGrid) return;
-        const tiles = Array.from(hubGrid.querySelectorAll('.hub-tile--post'));
-        if (tiles.length === 0) return;
+        const postTiles = Array.from(hubGrid.querySelectorAll('.hub-tile--post'));
+        const editorTileEl = hubGrid.querySelector('.hub-tile--editor');
+        if (postTiles.length === 0 && !editorTileEl) return;
 
         const gridW = Math.max(0, Math.floor(hubGrid.getBoundingClientRect().width));
         if (gridW < 80) return;
@@ -618,49 +614,75 @@ try {
         const colCount = Math.max(2, Math.min(8, Math.round(gridW / targetCol)));
         const colW = gridW / colCount;
 
-        // Random Reihenfolge — sonst dominieren die letzten Posts oben links.
-        const order = tiles.map((tile, i) => ({ tile, i }));
-        order.sort(() => Math.random() - 0.5);
+        // Reihenfolge: alle Post-Tiles random, das +-Tile etwa in der Mitte
+        // der Liste — so landet es ungefaehr mittig in seiner Spalte.
+        const postOrder = postTiles.map((tile) => ({ tile, isEditor: false }));
+        postOrder.sort(() => Math.random() - 0.5);
+        const order = postOrder.slice();
+        if (editorTileEl) {
+          const insertIdx = Math.floor(order.length / 2);
+          order.splice(insertIdx, 0, { tile: editorTileEl, isEditor: true });
+        }
 
-        // Phase 1: Styling + Width setzen, dann Hoehe messen.
-        const info = order.map(({ tile, i }) => {
-          tile.style.fontFamily = hubPick(HUB_FONTS);
-          tile.style.fontSize = `${hubRand(0.62, 1.4).toFixed(3)}rem`;
-          tile.style.lineHeight = `${hubRand(1.0, 1.6).toFixed(2)}`;
-          tile.style.letterSpacing = `${hubRand(-0.03, 0.14).toFixed(3)}em`;
-          tile.style.fontWeight = String(hubPick(HUB_WEIGHTS));
-          tile.style.fontStyle = Math.random() < 0.35 ? 'italic' : 'normal';
-          tile.style.textTransform = Math.random() < 0.2 ? 'uppercase' : 'none';
-          tile.style.opacity = `${hubRand(0.82, 1).toFixed(2)}`;
+        // Phase 1: Styling + Width setzen, dann Hoehe messen. Das +-Tile
+        // bekommt eine feste quadratische Hoehe und keine Schrift-Random.
+        const info = order.map((entry, i) => {
+          const { tile, isEditor } = entry;
+          if (isEditor) {
+            tile.style.width = `${colW}px`;
+            tile.style.height = `${colW}px`;
+          } else {
+            tile.style.fontFamily = hubPick(HUB_FONTS);
+            tile.style.fontSize = `${hubRand(0.62, 1.4).toFixed(3)}rem`;
+            tile.style.lineHeight = `${hubRand(1.0, 1.6).toFixed(2)}`;
+            tile.style.letterSpacing = `${hubRand(-0.03, 0.14).toFixed(3)}em`;
+            tile.style.fontWeight = String(hubPick(HUB_WEIGHTS));
+            tile.style.fontStyle = Math.random() < 0.35 ? 'italic' : 'normal';
+            tile.style.textTransform = Math.random() < 0.2 ? 'uppercase' : 'none';
+            tile.style.opacity = `${hubRand(0.82, 1).toFixed(2)}`;
+            tile.style.width = `${colW}px`;
+            tile.style.height = '';
+          }
           tile.style.setProperty('--tile-i', String(i));
-          tile.style.width = `${colW}px`;
           tile.style.left = '-9999px';
           tile.style.top = '0px';
           tile.style.visibility = 'hidden';
           tile.style.display = '';
-          tile.style.zIndex = '1';
-          return { tile, h: 0 };
+          if (!isEditor) tile.style.zIndex = '1';
+          return { tile, isEditor, h: 0 };
         });
         info.forEach((entry) => {
           entry.h = entry.tile.offsetHeight || 80;
         });
 
-        // Phase 2: jedes Tile in die Spalte mit der momentan kleinsten Hoehe
-        // einsortieren (klassisches Masonry-Verfahren).
+        // Phase 2: Masonry — jedes Tile geht in die Spalte mit der momentan
+        // kleinsten Hoehe. Das +-Tile bevorzugt die mittlere Spalte (oder
+        // eine der mittleren bei gerader Spaltenzahl), damit es trotz
+        // Stack-Logik einigermassen mittig sichtbar bleibt.
         const colHeights = new Array(colCount).fill(0);
-        info.forEach(({ tile, h }) => {
-          let minIdx = 0;
-          for (let c = 1; c < colCount; c += 1) {
-            if (colHeights[c] < colHeights[minIdx]) minIdx = c;
+        const centerCols = colCount % 2 === 1
+          ? [Math.floor(colCount / 2)]
+          : [colCount / 2 - 1, colCount / 2];
+        info.forEach(({ tile, isEditor, h }) => {
+          let targetCol;
+          if (isEditor) {
+            // unter den mittleren Spalten die nehmen, die am wenigsten voll ist
+            targetCol = centerCols[0];
+            for (const c of centerCols) {
+              if (colHeights[c] < colHeights[targetCol]) targetCol = c;
+            }
+          } else {
+            targetCol = 0;
+            for (let c = 1; c < colCount; c += 1) {
+              if (colHeights[c] < colHeights[targetCol]) targetCol = c;
+            }
           }
-          tile.style.left = `${Math.round(minIdx * colW)}px`;
-          tile.style.top = `${Math.round(colHeights[minIdx])}px`;
+          tile.style.left = `${Math.round(targetCol * colW)}px`;
+          tile.style.top = `${Math.round(colHeights[targetCol])}px`;
           tile.style.visibility = 'visible';
-          colHeights[minIdx] += h;
+          colHeights[targetCol] += h;
         });
 
-        // Container-Hoehe = hoechste Spalte. Damit reicht der Hub genau so
-        // weit, wie es Tiles braucht — keine leere Flaeche darunter.
         hubGrid.style.height = `${Math.max(...colHeights, 320)}px`;
       }
 
