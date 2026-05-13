@@ -12,7 +12,10 @@ if (!username || !(await hasPermission(username, 'super_access'))) {
 
 <BaseLayout pageTitle="Super-Einstellungen">
   <style>
-    :global(html.site-subpage .subpage-main) {
+    /* Specificity um eine Stufe hoeher als die Default-Regel in global.css,
+       damit der Override unabhaengig von der CSS-Bundle-Reihenfolge greift
+       (Astro packt globale Imports im Production-Build hinter Page-Styles). */
+    :global(html.site-subpage main.subpage-main) {
       max-width: none;
       margin: 0;
       width: 100%;
