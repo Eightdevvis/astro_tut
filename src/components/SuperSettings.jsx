@@ -264,7 +264,7 @@ function mergeCatalogOptions(saved, options) {
 }
 
 export default function SuperSettings() {
-  const [activeSection, setActiveSection] = useState('permissions');
+  const [activeSection, setActiveSection] = useState('notes');
   const [users, setUsers] = useState([]);
   const [knownPermissions, setKnownPermissions] = useState([]);
   const [globalPermissions, setGlobalPermissions] = useState([]);
@@ -307,6 +307,14 @@ export default function SuperSettings() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
   const [bugsLoaded, setBugsLoaded] = useState(false);
   const [qmLoaded, setQmLoaded] = useState(false);
+
+  const [notesValue, setNotesValue] = useState('');
+  const [notesHistory, setNotesHistory] = useState([]);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesMsg, setNotesMsg] = useState('');
+  const [notesHistoryOpen, setNotesHistoryOpen] = useState(false);
 
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
@@ -356,6 +364,47 @@ export default function SuperSettings() {
     }
   }
 
+  async function loadNotesPayload() {
+    if (notesLoaded) return;
+    setNotesLoading(true);
+    try {
+      const res = await fetch('/api/admin/super-notes', { credentials: 'same-origin', cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Notizen laden fehlgeschlagen');
+      setNotesValue(typeof data?.note === 'string' ? data.note : '');
+      setNotesHistory(Array.isArray(data?.history) ? data.history : []);
+      setNotesLoaded(true);
+    } catch (e) {
+      setError(e?.message || 'Notizen laden fehlgeschlagen');
+    } finally {
+      setNotesLoading(false);
+    }
+  }
+
+  async function saveNotes(e) {
+    e?.preventDefault?.();
+    setNotesMsg('');
+    setError('');
+    setNotesSaving(true);
+    try {
+      const res = await fetch('/api/admin/super-notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ note: notesValue }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Notizen speichern fehlgeschlagen');
+      setNotesValue(typeof data?.note === 'string' ? data.note : notesValue);
+      setNotesHistory(Array.isArray(data?.history) ? data.history : []);
+      setNotesMsg('Notizen gespeichert.');
+    } catch (err) {
+      setError(err?.message || 'Notizen speichern fehlgeschlagen');
+    } finally {
+      setNotesSaving(false);
+    }
+  }
+
   async function loadQmItemsPayload() {
     if (qmLoaded) return;
     try {
@@ -387,6 +436,7 @@ export default function SuperSettings() {
   // Lazy: wenn der User in einen Tab springt, laden wir die Daten dafuer sofort.
   useEffect(() => {
     if (loading) return;
+    if (activeSection === 'notes') void loadNotesPayload();
     if (activeSection === 'fonts') void loadFontsPayload();
     if (activeSection === 'tester-bugs') void loadTesterBugsPayload();
     if (activeSection === 'questmaker') void loadQmItemsPayload();
@@ -723,6 +773,7 @@ export default function SuperSettings() {
   }
 
   const sections = [
+    { id: 'notes', label: 'Notizen' },
     { id: 'permissions', label: 'Nutzer-Rechte' },
     { id: 'tester-ui', label: 'Eigene Testeroberfläche' },
     { id: 'graffiti', label: 'Graffiti' },
@@ -792,6 +843,108 @@ export default function SuperSettings() {
         </aside>
 
         <main style={panelContent} className="super-panel-content">
+      {activeSection === 'notes' && (
+      <section style={section} id="super-sec-notes">
+        <h2 style={h2}>Notizen</h2>
+        <p style={{ fontSize: '0.85rem', opacity: 0.78, marginBottom: '1rem' }}>
+          Privater Notizblock — nur für dich sichtbar. Die letzten {5} Speicherstände werden als Verlauf aufgehoben.
+        </p>
+        {notesMsg ? <p style={okStyle}>{notesMsg}</p> : null}
+        <form onSubmit={saveNotes}>
+          <textarea
+            value={notesValue}
+            onInput={(e) => setNotesValue(e.currentTarget.value)}
+            placeholder={notesLoading ? 'Lade…' : 'Hier können deine Notizen rein…'}
+            disabled={notesLoading || notesSaving}
+            rows={14}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '10px 12px',
+              borderRadius: 6,
+              border: '1px solid rgba(0,0,0,0.2)',
+              fontSize: '0.95rem',
+              fontFamily: 'inherit',
+              resize: 'vertical',
+              background: 'rgba(255,255,255,0.92)',
+              marginBottom: 12,
+            }}
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+            <button type="submit" style={btnPrimary} disabled={notesLoading || notesSaving}>
+              {notesSaving ? 'Speichern…' : 'Notizen speichern'}
+            </button>
+          </div>
+        </form>
+        {notesHistory.length > 1 && (
+          <div style={{ marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                opacity: 0.8,
+                padding: 0,
+              }}
+              onClick={() => setNotesHistoryOpen((v) => !v)}
+            >
+              {notesHistoryOpen ? '▾' : '▸'} Verlauf ({notesHistory.length - 1} ältere Version
+              {notesHistory.length - 1 !== 1 ? 'en' : ''})
+            </button>
+            {notesHistoryOpen && (
+              <ul style={{ listStyle: 'none', padding: 0, margin: '0.75rem 0 0' }}>
+                {notesHistory.slice(1).map((entry, i) => {
+                  const dateLabel = (() => {
+                    if (!entry?.savedAt || entry.savedAt === 'migriert') return 'migriert';
+                    try {
+                      const d = new Date(entry.savedAt);
+                      const day = String(d.getDate()).padStart(2, '0');
+                      const mon = String(d.getMonth() + 1).padStart(2, '0');
+                      const h = String(d.getHours()).padStart(2, '0');
+                      const m = String(d.getMinutes()).padStart(2, '0');
+                      return `${day}.${mon}. ${h}:${m}`;
+                    } catch {
+                      return entry.savedAt;
+                    }
+                  })();
+                  const preview = (entry?.note || '').slice(0, 80);
+                  return (
+                    <li
+                      key={`note-hist-${i}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '6px 0',
+                        borderTop: '1px solid rgba(0,0,0,0.08)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      <span style={{ opacity: 0.7, minWidth: 110 }}>{dateLabel}</span>
+                      <span style={{ flex: 1, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {preview}
+                        {(entry?.note || '').length > 80 ? '…' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        style={{ ...btnPrimary, padding: '5px 10px', fontSize: '0.72rem' }}
+                        onClick={() => setNotesValue(entry?.note || '')}
+                        disabled={notesSaving}
+                      >
+                        Laden
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+      )}
+
       {activeSection === 'permissions' && (
       <section style={section} id="super-sec-permissions">
         <h2 style={h2}>Nutzer-Rechte</h2>
@@ -857,13 +1010,18 @@ export default function SuperSettings() {
                 {knownPermissions.map((p) => {
                   const active = permissionWarnings.includes(p);
                   const busy = permBusy === `warn:${p}`;
+                  const nonBannerable = p === SUPER_PERM || p === 'tester_access';
                   return (
                     <td key={p} style={{ ...thtd, textAlign: 'center' }}>
                       <input
                         type="checkbox"
                         checked={active}
-                        disabled={busy}
-                        title={'Wenn aktiv: Seiten mit diesem Recht zeigen einen gelben „Beware of Bugs“-Banner unten rechts'}
+                        disabled={busy || nonBannerable}
+                        title={
+                          nonBannerable
+                            ? `${p} hat keine Feature-Page — Banner wäre nirgends sichtbar`
+                            : 'Wenn aktiv: Seiten mit diesem Recht zeigen einen gelben „Beware of Bugs“-Banner unten rechts'
+                        }
                         onChange={() => toggleWarning(p, active)}
                       />
                     </td>
