@@ -8,6 +8,7 @@ import {
   getStrokeBounds,
   loadTileImageFromBase64,
 } from '../lib/graffiti-client.js';
+import { enqueueTileUpload } from '../lib/graffiti-upload-queue.js';
 
 /** Schwamm-Radius in CSS-Pixeln. Muss konsistent mit Server-/Tile-Render-Logik sein. */
 const ERASE_RADIUS = 26;
@@ -102,9 +103,6 @@ export default function GraffitiLayer() {
   const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
   /** Letzter Tap-Up-Zeitpunkt für Doppel-Tap-Drop auf Mobile. */
   const lastTapAtRef = useRef(0);
-  // Generations-Counter fuer Tile-Sync. Wird bei jedem pointerup/Reload erhoeht;
-  // alte in-flight-Responses (zu kleinerer Gen) werden ignoriert.
-  const tileSyncGenRef = useRef(0);
   // Abort-Controller fuer den initialen Tile-Fetch (wird beim Unmount gecancelt).
   const tilesFetchAbortRef = useRef(/** @type {AbortController | null} */ (null));
 
@@ -129,14 +127,13 @@ export default function GraffitiLayer() {
   }, [mode]);
 
   useEffect(() => {
+    // Beim Verlassen des Schwamm-Modus den incremental-counter zurücksetzen.
+    // KEIN baseDirty=true hier — sonst wird das Base aus tilesRef rebuilt
+    // bevor der Erase-Upload durchgekommen ist, und der User sieht kurz die
+    // un-erased Version flackern. Aktive nicht-comittete Pixel werden
+    // ohnehin von pointercancel/pointerup sauber abgeräumt.
     if (mode !== 'erase') {
-      // Beim Verlassen des Schwamm-Modus: Counter resetten und Base neu malen.
-      // Sonst bleiben evtl. waehrend eines aktiven Erase-Strichs angesammelte
-      // destination-out-Pixel im Base-Canvas sichtbar, obwohl der Stroke nie
-      // gepostet wurde.
       eraseCommittedUpToRef.current = 0;
-      baseDirtyRef.current = true;
-      schedulePaint();
     }
   }, [mode]);
 
@@ -209,6 +206,8 @@ export default function GraffitiLayer() {
         if (cancelled) return;
         const map = new Map();
         for (const t of list) map.set(`${t.x}:${t.y}`, t);
+        // Synchron + State, damit alles aus dem gleichen Map liest.
+        tilesRef.current = map;
         setTiles(map);
       } catch (err) {
         if (err?.name === 'AbortError') return;
@@ -339,61 +338,54 @@ export default function GraffitiLayer() {
     const bctx = base.getContext('2d');
     if (!bctx) return;
 
+    const dr = drawRef.current;
+    const m = modeRef.current;
+
+    // ─── Base-Canvas aktualisieren BEVOR wir komponieren ──────────────────
+    // Bewusste Konvention: ein einzelner Tap (points.length === 1) wird NICHT
+    // committed — sonst muesste der no-drag-pointerup-Pfad mit baseDirty=true
+    // wieder rueckgaengig machen, und das wiederum baut base aus tilesRef neu
+    // auf, was bei noch-laufenden Uploads zu stale Tiles fuehrt (Flicker beim
+    // Sponge-Drop). Erst ab dem ersten pointermove (length > 1) gilt's als Drag.
     if (baseDirtyRef.current) {
       bctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       bctx.clearRect(0, 0, docWidth, docHeight);
-      // Tiles vom Server in ihrer Zielposition aufs Base malen.
       drawTilesOntoContext(bctx, tilesRef.current);
-      // Falls gerade ein Schwamm-Stroke aktiv ist, MUSS die bisherige Spur erneut
-      // ins frisch gemalte Base committeted werden — sonst wuerde sie bei einem
-      // Resize / Tile-Resync mid-stroke einfach verschwinden, der User sieht
-      // ploetzlich wieder alles was er gerade weggewischt hat.
-      if (drawRef.current.active && modeRef.current === 'erase' && drawRef.current.points.length) {
-        commitErasePoints(bctx, drawRef.current.points);
-        eraseCommittedUpToRef.current = drawRef.current.points.length;
+      if (dr.active && m === 'erase' && dr.points.length > 1) {
+        commitErasePoints(bctx, dr.points);
+        eraseCommittedUpToRef.current = dr.points.length;
       } else {
         eraseCommittedUpToRef.current = 0;
       }
       baseDirtyRef.current = false;
+    } else if (dr.active && m === 'erase' && dr.points.length > 1) {
+      // Inkrementeller Schwamm-Commit auf das (bereits aktuelle) Base.
+      const total = dr.points.length;
+      const upTo = eraseCommittedUpToRef.current;
+      if (total > upTo) {
+        commitErasePoints(bctx, dr.points.slice(upTo));
+        eraseCommittedUpToRef.current = total;
+      }
     }
 
+    // ─── Composite-Canvas neu zusammensetzen — EINE drawImage pro Frame ──
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, docWidth, docHeight);
     ctx.drawImage(base, 0, 0, docWidth, docHeight);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
 
-    const dr = drawRef.current;
-    const m = modeRef.current;
-
     // Live-Vorschau Tag: pixel-identisch zum spaeteren commitTagStroke.
     if (dr.active && m === 'tag') {
       commitTagStroke(ctx, dr.points, currentColor('#111'));
     }
-
     // Live-Vorschau Spray: seedBase=0 — der spaetere finale Commit verwendet
     // dasselbe Seed-Schema, damit kein Sprung beim pointerup entsteht.
     if (dr.active && m === 'spray') {
       commitSprayStroke(ctx, dr.points, 0, currentColor('#101010'));
     }
-
+    // Cursor-Outline beim Schwamm — nur im Composite, pro Frame neu.
     if (dr.active && m === 'erase' && dr.points.length) {
-      // Inkrementeller Commit: nur die Punkte ab eraseCommittedUpToRef sind neu.
-      // Bei einem typischen Move-Frame ist das genau 1 Punkt — ein einziger
-      // destination-out-Arc statt n*destination-out wie vorher.
-      const total = dr.points.length;
-      const upTo = eraseCommittedUpToRef.current;
-      if (total > upTo) {
-        const newPts = dr.points.slice(upTo);
-        commitErasePoints(bctx, newPts);
-        eraseCommittedUpToRef.current = total;
-        // Base hat sich gerade geaendert -> Composite muss neu daraus gezogen werden.
-        ctx.clearRect(0, 0, docWidth, docHeight);
-        ctx.drawImage(base, 0, 0, docWidth, docHeight);
-      }
-      // Cursor-Outline am aktuellen Punkt: lebt nur im Composite, wird pro Frame
-      // neu gezeichnet — KEIN Commit ins Base. Das ist der visuelle Indikator
-      // damit der User sieht "hier waere meine naechste Loesch-Region".
       drawEraseCursor(ctx, dr.points[dr.points.length - 1]);
     }
   }
@@ -404,14 +396,6 @@ export default function GraffitiLayer() {
       rafRef.current = 0;
       paintComposite();
     });
-  }
-
-  function flushPaintComposite() {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
-    paintComposite();
   }
 
   function drawSprayCloud(ctx, strokeId, x, y, alpha, color) {
@@ -515,9 +499,12 @@ export default function GraffitiLayer() {
           //   (wird als erster Tap einer möglichen Doppel-Tap-Sequenz vermerkt)
           if (!strokeBboxIsDrag(points)) {
             drawRef.current.active = false;
-            // Live-Vorschau-Punkt wegzeichnen.
+            // Counter zurücksetzen (Punkt wurde nicht commited, weil
+            // paintComposite single-taps explizit ueberspringt). KEIN
+            // baseDirty=true — sonst wuerde base aus tilesRef neu gebaut,
+            // und falls der vorige Erase-Upload noch laeuft, blitzt kurz
+            // die un-erased Version durch (genau der Sponge-Drop-Flicker).
             if (strokeMode === 'erase') {
-              baseDirtyRef.current = true;
               eraseCommittedUpToRef.current = 0;
             }
             schedulePaint();
@@ -565,83 +552,77 @@ export default function GraffitiLayer() {
 
           const dpr = window.devicePixelRatio || 1;
           const pagePath = location.pathname;
-          // Generation-Counter: spaetere Stroke-Uploads invalidieren in-flight Responses
-          // dieses hier (z.B. wenn der User schnell mehrere Strokes hintereinander
-          // macht und der erste noch nicht ge-acked ist).
-          const myGen = ++tileSyncGenRef.current;
 
-          // 3) Pro betroffenem Tile parallel: Region aus Base extrahieren und uploaden.
-          const results = await Promise.all(
-            affected.map(async ({ x: tx, y: ty }) => {
-              try {
-                const pngBase64 = await extractTilePngBase64(base, tx, ty, dpr);
-                const key = `${tx}:${ty}`;
-                const known = tilesRef.current.get(key);
-                const baseVersion = known?.version || 0;
-                const upload = await uploadTile({
-                  pagePath,
-                  tileX: tx,
-                  tileY: ty,
-                  baseVersion,
-                  pngBase64,
-                  strokeBounds: bounds,
-                });
-                return { tx, ty, pngBase64, upload };
-              } catch (err) {
-                return { tx, ty, error: err };
-              }
-            })
-          );
-          if (myGen !== tileSyncGenRef.current) return;
+          // 3) Upload-Batch durch die SERIELLE Queue. Ein zweiter Stroke wartet
+          //    auf die Acks dieses hier — die `version` im tilesRef ist dann
+          //    aktuell, kein 409-Race.
+          void enqueueTileUpload(async () => {
+            // Pro betroffenem Tile: Region aus Base extrahieren + uploaden.
+            // Bei 409 (Conflict): einmal retryen mit der vom Server zurück-
+            // gemeldeten currentVersion. Die Base hat die User-Erase noch
+            // drin (wir clobbern sie NICHT mit fetchTilesForPage).
+            const results = await Promise.all(
+              affected.map(async ({ x: tx, y: ty }) => {
+                try {
+                  const pngBase64 = await extractTilePngBase64(base, tx, ty, dpr);
+                  const key = `${tx}:${ty}`;
+                  const known = tilesRef.current.get(key);
+                  const baseVersion = known?.version || 0;
+                  let upload = await uploadTile({
+                    pagePath, tileX: tx, tileY: ty, baseVersion, pngBase64, strokeBounds: bounds,
+                  });
+                  if (!upload.ok && upload.conflict && typeof upload.currentVersion === 'number') {
+                    // Server hat schon eine neuere Version (z.B. Mehrbenutzer).
+                    // Re-Upload mit currentVersion — das aktuelle Base-PNG enthält
+                    // ja eh die ganze User-Erase, also kein Datenverlust.
+                    upload = await uploadTile({
+                      pagePath, tileX: tx, tileY: ty,
+                      baseVersion: upload.currentVersion,
+                      pngBase64, strokeBounds: bounds,
+                    });
+                  }
+                  return { tx, ty, pngBase64, upload };
+                } catch (err) {
+                  return { tx, ty, error: err };
+                }
+              })
+            );
 
-          // 4) Auswerten. Bei IRGENDEINEM Conflict / Fehler: Hard-Reload aller Tiles
-          //    von der Server-Truth — der lokale Strich geht dabei verloren.
-          //    Fuer Phase 2 die pragmatische Konfliktloesung; ein granulares Retry
-          //    pro Tile waere praeziser, aber deutlich mehr Code.
-          const anyFailure = results.some((r) => r.error || !r.upload?.ok);
-          if (anyFailure) {
-            try {
-              const fresh = await fetchTilesForPage(pagePath);
-              if (myGen !== tileSyncGenRef.current) return;
-              const map = new Map();
-              for (const t of fresh.tiles) map.set(`${t.x}:${t.y}`, t);
-              setTiles(map);
-              // baseDirty triggert Repaint aus Server-Truth -> lokale destination-out
-              // / tag / spray Pixel verschwinden, Server-Stand wird sichtbar.
-              baseDirtyRef.current = true;
-              eraseCommittedUpToRef.current = 0;
-              flushPaintComposite();
-            } catch (err) {
-              console.warn('[graffiti] Tile-Reload nach Fehler fehlgeschlagen', err);
+            // 4) Lokale Tile-Map mit erfolgreich uploadeten Tiles updaten.
+            //    Fehlgeschlagene Tiles lassen wir in Ruhe — kein Hard-Reload mehr,
+            //    sonst geht die lokale Erase wieder verloren. Die nächste
+            //    erfolgreiche Operation auf demselben Tile wird's wieder
+            //    konsistent ziehen.
+            const successful = results.filter((r) => !r.error && r.upload?.ok);
+            if (successful.length === 0) {
+              console.warn('[graffiti] alle Tile-Uploads fehlgeschlagen', results);
+              return;
             }
-            return;
-          }
-
-          // 5) Alles OK: lokale tile-Map mit neuen Versionen + Images aktualisieren.
-          //    Wir laden das exportierte PNG nochmal als Image-Element, damit ein
-          //    spaeterer baseDirty (Resize, Mode-Wechsel) den frischen Strich
-          //    wieder rendern kann statt das alte Tile-Image zu nehmen.
-          const nextMap = new Map(tilesRef.current);
-          await Promise.all(
-            results.map(async (r) => {
-              try {
-                const img = await loadTileImageFromBase64(r.pngBase64);
-                nextMap.set(`${r.tx}:${r.ty}`, {
-                  x: r.tx,
-                  y: r.ty,
-                  version: r.upload.version,
-                  image: img,
-                });
-              } catch {
-                // Wenn der eigene PNG-Decode failed haben wir ein groesseres Problem,
-                // aber serverseitig ist das Tile bereits gespeichert -> beim naechsten
-                // Page-Load wird's korrekt geladen.
-              }
-            })
-          );
-          if (myGen !== tileSyncGenRef.current) return;
-          eraseCommittedUpToRef.current = 0;
-          setTiles(nextMap);
+            const nextMap = new Map(tilesRef.current);
+            await Promise.all(
+              successful.map(async (r) => {
+                try {
+                  const img = await loadTileImageFromBase64(r.pngBase64);
+                  nextMap.set(`${r.tx}:${r.ty}`, {
+                    x: r.tx,
+                    y: r.ty,
+                    version: r.upload.version,
+                    image: img,
+                  });
+                } catch {
+                  // PNG-Decode failed — Server hat trotzdem die Daten, beim
+                  // nächsten Page-Load wird's korrekt geladen.
+                }
+              })
+            );
+            // tilesRef SYNCHRON aktualisieren, damit der nächste Queue-Task
+            // in seinem Microtask die frische Map sieht. Der useEffect mit
+            // [tiles]-Dep läuft erst nach React's Commit-Phase — bis dahin
+            // sähen Folge-Tasks alte Daten und würden Stroke N's neue Tile
+            // beim Bauen ihres nextMap aus tilesRef wegwerfen.
+            tilesRef.current = nextMap;
+            setTiles(nextMap);
+          });
         }}
         onPointerCancel={() => {
           // Echter Abbruch: System hat das Pointer-Tracking unterbrochen

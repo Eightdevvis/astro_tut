@@ -59,9 +59,17 @@ export function loadTileImageFromBase64(pngBase64) {
       return;
     }
     const img = new Image();
-    img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('PNG-Decode fehlgeschlagen'));
     img.src = `data:image/png;base64,${pngBase64}`;
+    // img.decode() resolved erst wenn das Bild vollständig dekodiert UND
+    // drawImage-ready ist. img.onload reicht in manchen Browsern nicht —
+    // direkt nach onload kann drawImage transient blank rendern. Fallback
+    // auf onload falls decode() nicht verfügbar (alte Browser).
+    if (typeof img.decode === 'function') {
+      img.decode().then(() => resolve(img)).catch(() => resolve(img));
+    } else {
+      img.onload = () => resolve(img);
+    }
   });
 }
 
