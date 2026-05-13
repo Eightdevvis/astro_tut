@@ -77,6 +77,7 @@ try {
         color: var(--site-body-text);
         font-family: var(--font-family);
         padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+        overflow-x: hidden;
       }
       .page {
         --past-posts-offset: 8dvh;
@@ -337,10 +338,13 @@ try {
          keine sauberen Reihen — und das `+` Tile in der Mitte als klare
          Einstiegs-Marke. */
       .hub-grid {
+        /* Full-bleed: zwingt auf 100vw, egal welche max-width der Parent
+           (.page) gerade hat — sonst landen die Tiles in einem schmalen
+           mittigen Streifen. */
         position: relative;
-        width: 100%;
-        /* Hoehe wird in JS gesetzt (max der Spalten-Hoehen). */
-        margin: 0 auto;
+        width: 100vw;
+        left: 50%;
+        margin-left: -50vw;
         padding: 0;
         transition: opacity 540ms ease;
       }
@@ -1060,6 +1064,16 @@ try {
       applyColor();
       decorateHubTiles();
       void loadPosts();
+
+      // Beim Resize Layout neu rechnen — Spaltenanzahl passt sich an,
+      // damit auch nach Browser-Resize keine schmale Mittel-Spur entsteht.
+      let hubResizeTimer = null;
+      window.addEventListener('resize', () => {
+        if (hubResizeTimer) clearTimeout(hubResizeTimer);
+        hubResizeTimer = setTimeout(() => {
+          decorateHubTiles();
+        }, 180);
+      });
     </script>
     <ThemeClient />
     <BewareOfBugsBanner permission="blogpost_poster" />
