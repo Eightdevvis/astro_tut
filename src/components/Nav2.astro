@@ -56,9 +56,13 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
         {
           showBlogpostNav && (
             <a href="/blogpost" class="nav2-icon" aria-label="Blogpost erstellen" title="Blogpost erstellen">
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M3 11 Q 4 7 9 8 Q 12 10 15 8 Q 20 7 21 11 Q 18 13 12 13 Q 6 13 3 11 Z" />
-                <path d="M10 12.5 Q 9.5 17 11 20 Q 12 21.2 13 20 Q 14.5 17 14 12.5 Q 13 13.5 12 13.5 Q 11 13.5 10 12.5 Z" />
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                {/* Oberlippe: eckiger Cupid's Bow, gerade Unterkante, nur Outline */}
+                <path d="M 3 11 L 5 10 L 8 7 L 12 9.5 L 16 7 L 19 10 L 21 11 Z" />
+                {/* Zunge: zigzag-Spirale als langgezogenes Dreieck nach unten */}
+                <path
+                  d="M 10 11.5 L 14 11.5 L 11 14 L 13.4 16 L 11.3 18 L 12.9 20 L 11.8 22 L 12.4 23.4"
+                />
               </svg>
             </a>
           )
@@ -116,9 +120,9 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
             showBlogpostNav && (
               <a href="/blogpost" class="nav2-drawer-link" title="Blogpost erstellen">
                 <span class="nav2-drawer-ic" aria-hidden="true">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 11 Q 4 7 9 8 Q 12 10 15 8 Q 20 7 21 11 Q 18 13 12 13 Q 6 13 3 11 Z" />
-                    <path d="M10 12.5 Q 9.5 17 11 20 Q 12 21.2 13 20 Q 14.5 17 14 12.5 Q 13 13.5 12 13.5 Q 11 13.5 10 12.5 Z" />
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="miter" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 3 11 L 5 10 L 8 7 L 12 9.5 L 16 7 L 19 10 L 21 11 Z" />
+                    <path d="M 10 11.5 L 14 11.5 L 11 14 L 13.4 16 L 11.3 18 L 12.9 20 L 11.8 22 L 12.4 23.4" />
                   </svg>
                 </span>
                 <span>Blogpost</span>

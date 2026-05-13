@@ -614,39 +614,76 @@ try {
         const gridW = Math.max(0, Math.floor(hubGrid.getBoundingClientRect().width));
         if (gridW < 80) return;
 
-        // Spaltenanzahl basierend auf Viewport. Ziel: ~280 px breite Spalten,
-        // mindestens 2, maximal 6.
-        const targetCol = 280;
-        const colCount = Math.max(2, Math.min(6, Math.round(gridW / targetCol)));
-        const colW = gridW / colCount;
-        // Etwa ein Viertel der Tiles bekommt 2-Spalten-Breite (nur wenn das
-        // ueberhaupt geht), damit Groessenvariation entsteht.
-        const allowWide = colCount >= 3;
-        const WIDE_CHANCE = 0.28;
+        // Spaltenanzahl basierend auf Viewport. Pro Page gewuerfelt — manche
+        // Spalten breiter, andere schmaler. Tiles in einer Spalte erben
+        // die Spaltenbreite (= alle Tiles einer Spalte sind gleich breit).
+        const targetCol = 320;
+        const colCount = Math.max(2, Math.min(5, Math.round(gridW / targetCol)));
+
+        // Random Gewicht pro Spalte (0.85..1.7). Mind. eine Spalte soll
+        // deutlich breiter sein als der Schnitt — sonst sehen alle gleich
+        // aus. Falls die Zufallsverteilung das nicht hergibt, hieven wir
+        // eine zufaellige Spalte hoch.
+        const weights = [];
+        for (let c = 0; c < colCount; c += 1) {
+          weights.push(hubRand(0.85, 1.7));
+        }
+        if (Math.max(...weights) < 1.45) {
+          weights[Math.floor(Math.random() * colCount)] = hubRand(1.6, 2.0);
+        }
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        const colWidths = weights.map((w) => (w / totalWeight) * gridW);
+        const colLefts = [];
+        let leftAcc = 0;
+        for (let c = 0; c < colCount; c += 1) {
+          colLefts.push(leftAcc);
+          leftAcc += colWidths[c];
+        }
 
         // Reihenfolge: alle Post-Tiles random, das +-Tile etwa in der Mitte
         // der Liste — so landet es ungefaehr mittig in seiner Spalte.
-        const postOrder = postTiles.map((tile) => ({
-          tile,
-          isEditor: false,
-          isWide: allowWide && Math.random() < WIDE_CHANCE,
-        }));
+        const postOrder = postTiles.map((tile) => ({ tile, isEditor: false }));
         postOrder.sort(() => Math.random() - 0.5);
         const order = postOrder.slice();
         if (editorTileEl) {
           const insertIdx = Math.floor(order.length / 2);
-          order.splice(insertIdx, 0, { tile: editorTileEl, isEditor: true, isWide: false });
+          order.splice(insertIdx, 0, { tile: editorTileEl, isEditor: true });
         }
 
-        // Phase 1: Styling + Width setzen, dann Hoehe messen. Das +-Tile
-        // bekommt eine feste quadratische Hoehe und keine Schrift-Random.
-        const info = order.map((entry, i) => {
-          const { tile, isEditor, isWide } = entry;
-          const span = isWide ? 2 : 1;
-          const widthPx = span * colW;
+        // Hilfsfunktion: aktuelle Spalte fuer dieses Tile bestimmen.
+        // Editor-Tile bevorzugt eine mittlere Spalte (oder die kuerzeste
+        // davon bei gerader Spaltenzahl). Post-Tiles gehen in die kuerzeste
+        // Spalte.
+        const centerCols = colCount % 2 === 1
+          ? [Math.floor(colCount / 2)]
+          : [colCount / 2 - 1, colCount / 2];
+        const colHeights = new Array(colCount).fill(0);
+
+        function pickCol(isEditor) {
           if (isEditor) {
-            tile.style.width = `${colW}px`;
-            tile.style.height = `${colW}px`;
+            let best = centerCols[0];
+            for (const c of centerCols) {
+              if (colHeights[c] < colHeights[best]) best = c;
+            }
+            return best;
+          }
+          let best = 0;
+          for (let c = 1; c < colCount; c += 1) {
+            if (colHeights[c] < colHeights[best]) best = c;
+          }
+          return best;
+        }
+
+        // Phase 1: Styling + Width auf die zugewiesene Spaltenbreite setzen,
+        // dann Hoehe messen. WICHTIG: die Spalte wird hier bereits gewaehlt,
+        // damit width = colWidth(targetCol) korrekt ist, BEVOR wir messen.
+        const info = order.map((entry, i) => {
+          const { tile, isEditor } = entry;
+          const targetCol = pickCol(isEditor);
+          const widthPx = colWidths[targetCol];
+          if (isEditor) {
+            tile.style.width = `${widthPx}px`;
+            tile.style.height = `${widthPx}px`;
           } else {
             tile.style.fontFamily = hubPick(HUB_FONTS);
             tile.style.fontSize = `${hubRand(0.62, 1.4).toFixed(3)}rem`;
@@ -665,51 +702,15 @@ try {
           tile.style.visibility = 'hidden';
           tile.style.display = '';
           if (!isEditor) tile.style.zIndex = '1';
-          return { tile, isEditor, isWide, span, h: 0 };
-        });
-        info.forEach((entry) => {
-          entry.h = entry.tile.offsetHeight || 80;
+          return { tile, isEditor, targetCol };
         });
 
-        // Phase 2: Masonry. 1-Spalten-Tiles gehen in die kuerzeste Spalte.
-        // 2-Spalten-Tiles finden 2 benachbarte Spalten mit minimalem max(h)
-        // und richten beide auf max(h) aus.
-        const colHeights = new Array(colCount).fill(0);
-        const centerCols = colCount % 2 === 1
-          ? [Math.floor(colCount / 2)]
-          : [colCount / 2 - 1, colCount / 2];
-        info.forEach(({ tile, isEditor, span, h }) => {
-          if (span === 2) {
-            let bestStart = 0;
-            let bestMaxH = Infinity;
-            for (let c = 0; c <= colCount - 2; c += 1) {
-              const m = Math.max(colHeights[c], colHeights[c + 1]);
-              if (m < bestMaxH) {
-                bestMaxH = m;
-                bestStart = c;
-              }
-            }
-            tile.style.left = `${Math.round(bestStart * colW)}px`;
-            tile.style.top = `${Math.round(bestMaxH)}px`;
-            tile.style.visibility = 'visible';
-            const newH = bestMaxH + h;
-            colHeights[bestStart] = newH;
-            colHeights[bestStart + 1] = newH;
-            return;
-          }
-          let targetCol;
-          if (isEditor) {
-            targetCol = centerCols[0];
-            for (const c of centerCols) {
-              if (colHeights[c] < colHeights[targetCol]) targetCol = c;
-            }
-          } else {
-            targetCol = 0;
-            for (let c = 1; c < colCount; c += 1) {
-              if (colHeights[c] < colHeights[targetCol]) targetCol = c;
-            }
-          }
-          tile.style.left = `${Math.round(targetCol * colW)}px`;
+        // Phase 2: Hoehe messen, in Spalte stacken, naechstes Tile
+        // weiterschreiben.
+        info.forEach((entry) => {
+          const { tile, targetCol } = entry;
+          const h = tile.offsetHeight || 80;
+          tile.style.left = `${Math.round(colLefts[targetCol])}px`;
           tile.style.top = `${Math.round(colHeights[targetCol])}px`;
           tile.style.visibility = 'visible';
           colHeights[targetCol] += h;
