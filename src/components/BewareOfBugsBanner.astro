@@ -1,0 +1,63 @@
+---
+/**
+ * BewareOfBugsBanner.astro
+ *
+ * Zeigt unten rechts einen gelben Hinweis-Banner, wenn fuer das gegebene Recht
+ * in der Super-Einstellungen-Tabelle die "Beware of Bugs"-Zeile aktiviert ist.
+ *
+ * Einbau pro Seite, z. B.:
+ *   <BewareOfBugsBanner permission="rpg_access" />
+ *
+ * Server-side gerendert (Astro-Frontmatter) -> kein Flash beim Page-Load,
+ * keine Client-DB-Calls noetig.
+ */
+import { hasPermissionWarning } from '../lib/permissions.js';
+
+const { permission, label } = Astro.props;
+const show = permission ? await hasPermissionWarning(permission) : false;
+const text = label || 'Frisches Feature – Bugs sind sehr wahrscheinlich. Wenn du etwas merkst: bitte melden.';
+---
+
+{show && (
+  <aside class="beware-of-bugs-banner" role="status" aria-label="Bug-Warnung">
+    <span class="beware-of-bugs-banner__icon" aria-hidden="true">⚠️</span>
+    <span class="beware-of-bugs-banner__text">{text}</span>
+  </aside>
+)}
+
+<style>
+  .beware-of-bugs-banner {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 300px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #fcd34d;
+    color: #1f1f1f;
+    border: 1px solid #b45309;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    font-size: 0.82rem;
+    line-height: 1.35;
+    pointer-events: none;
+  }
+  .beware-of-bugs-banner__icon {
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+  .beware-of-bugs-banner__text {
+    flex: 1;
+  }
+  @media (max-width: 480px) {
+    .beware-of-bugs-banner {
+      bottom: 12px;
+      right: 12px;
+      max-width: calc(100vw - 24px);
+      font-size: 0.78rem;
+    }
+  }
+</style>

@@ -20,6 +20,54 @@ function effectivePerm(perms, p) {
   return arr.includes(SUPER_PERM) || arr.includes(p);
 }
 
+/**
+ * Spiegelt die Backend-Logik aus permissions.js#hasPermission im Frontend,
+ * damit optimistic Updates die effektive Permission-Liste eines Users
+ * neu berechnen koennen, ohne den Panel-Endpoint zu pollen.
+ */
+function deriveEffectivePermissions(states, globalList, knownList) {
+  const out = [];
+  const supState = states?.[SUPER_PERM] ?? null;
+  const supGlobal = globalList.includes(SUPER_PERM);
+  for (const p of knownList) {
+    const own = states?.[p] ?? null;
+    if (own === 'granted') {
+      out.push(p);
+      continue;
+    }
+    if (own === 'revoked') continue;
+    if (p !== SUPER_PERM) {
+      if (supState === 'granted') {
+        out.push(p);
+        continue;
+      }
+      if (supState !== 'revoked' && supGlobal) {
+        out.push(p);
+        continue;
+      }
+    }
+    if (globalList.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+function applyUserPermissionToggle(user, permission, nextHas, globalList, knownList) {
+  const ns = { ...(user?.permissionStates || {}) };
+  const globallyActive = globalList.includes(permission);
+  if (nextHas) {
+    if (globallyActive) delete ns[permission];
+    else ns[permission] = 'granted';
+  } else {
+    if (globallyActive) ns[permission] = 'revoked';
+    else delete ns[permission];
+  }
+  return {
+    ...user,
+    permissionStates: ns,
+    permissions: deriveEffectivePermissions(ns, globalList, knownList),
+  };
+}
+
 const box = {
   width: '100%',
   padding: '0 1rem 3rem',
@@ -219,6 +267,8 @@ export default function SuperSettings() {
   const [activeSection, setActiveSection] = useState('permissions');
   const [users, setUsers] = useState([]);
   const [knownPermissions, setKnownPermissions] = useState([]);
+  const [globalPermissions, setGlobalPermissions] = useState([]);
+  const [permissionWarnings, setPermissionWarnings] = useState([]);
   const [fonts, setFonts] = useState(() => {
     const o = {};
     for (const k of [...FONT_FAMILY_KEYS, ...FONT_WEIGHT_KEYS]) o[k] = '';
@@ -254,6 +304,10 @@ export default function SuperSettings() {
   const [graffitiRows, setGraffitiRows] = useState([]);
   const [graffitiBusyId, setGraffitiBusyId] = useState(null);
 
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [bugsLoaded, setBugsLoaded] = useState(false);
+  const [qmLoaded, setQmLoaded] = useState(false);
+
   function loadPanel() {
     return fetch('/api/admin/panel', { credentials: 'same-origin' })
       .then(async (res) => {
@@ -264,17 +318,64 @@ export default function SuperSettings() {
       .then((data) => {
         setUsers(data.users || []);
         setKnownPermissions(data.knownPermissions || []);
-        setTesterBugReports(data.testerBugReports || []);
+        setGlobalPermissions(Array.isArray(data.globalPermissions) ? data.globalPermissions : []);
+        setPermissionWarnings(Array.isArray(data.permissionWarnings) ? data.permissionWarnings : []);
         setTesterUiEnabled(Boolean(data.testerUiEnabled));
-        setFontCatalog(data.fontCatalog || { options: [], weightOptions: [] });
-        setFontPreviewCss(data.fontPreviewCss || '');
-        const next = {};
-        for (const k of [...FONT_FAMILY_KEYS, ...FONT_WEIGHT_KEYS]) {
-          next[k] =
-            data.fonts && data.fonts[k] != null ? String(data.fonts[k]) : '';
-        }
-        setFonts(next);
       });
+  }
+
+  async function loadFontsPayload() {
+    if (fontsLoaded) return;
+    try {
+      const res = await fetch('/api/admin/panel-fonts', { credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Fonts laden fehlgeschlagen');
+      setFontCatalog(data.fontCatalog || { options: [], weightOptions: [] });
+      setFontPreviewCss(data.fontPreviewCss || '');
+      const next = {};
+      for (const k of [...FONT_FAMILY_KEYS, ...FONT_WEIGHT_KEYS]) {
+        next[k] = data.fonts && data.fonts[k] != null ? String(data.fonts[k]) : '';
+      }
+      setFonts(next);
+      setFontsLoaded(true);
+    } catch (e) {
+      setError(e?.message || 'Fonts laden fehlgeschlagen');
+    }
+  }
+
+  async function loadTesterBugsPayload() {
+    if (bugsLoaded) return;
+    try {
+      const res = await fetch('/api/admin/panel-tester-bugs', { credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Bug-Reports laden fehlgeschlagen');
+      setTesterBugReports(data.testerBugReports || []);
+      setBugsLoaded(true);
+    } catch (e) {
+      setError(e?.message || 'Bug-Reports laden fehlgeschlagen');
+    }
+  }
+
+  async function loadQmItemsPayload() {
+    if (qmLoaded) return;
+    try {
+      const res = await fetch('/api/rpg/questmaker-items', { credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Questmaker-Katalog');
+      const rows = Array.isArray(data.items) ? data.items : [];
+      setQmItems(
+        rows.map((r, i) => ({
+          id: String(r.id ?? ''),
+          category: String(r.category ?? 'sonstiges'),
+          title: String(r.title ?? ''),
+          description: String(r.description ?? ''),
+          _key: `qm-${i}-${r.id}`,
+        }))
+      );
+      setQmLoaded(true);
+    } catch {
+      /* optional */
+    }
   }
 
   useEffect(() => {
@@ -282,6 +383,28 @@ export default function SuperSettings() {
       .catch((e) => setError(e.message || String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Lazy: wenn der User in einen Tab springt, laden wir die Daten dafuer sofort.
+  useEffect(() => {
+    if (loading) return;
+    if (activeSection === 'fonts') void loadFontsPayload();
+    if (activeSection === 'tester-bugs') void loadTesterBugsPayload();
+    if (activeSection === 'questmaker') void loadQmItemsPayload();
+  }, [loading, activeSection]);
+
+  // Background-Prefetch: kurze Zeit nach dem ersten Render holen wir die teuren
+  // Sub-Daten im Hintergrund nach, damit Tab-Wechsel danach instant sind.
+  // Wenn ein Tab vor Ablauf des Timers schon aktiviert wird, hat der Lazy-Effect oben
+  // bereits geladen und die `*Loaded`-Guards machen den zweiten Call zum No-Op.
+  useEffect(() => {
+    if (loading) return;
+    const id = setTimeout(() => {
+      void loadFontsPayload();
+      void loadTesterBugsPayload();
+      void loadQmItemsPayload();
+    }, 800);
+    return () => clearTimeout(id);
+  }, [loading]);
 
   useEffect(() => {
     if (loading || activeSection !== 'feed-policy') return;
@@ -325,36 +448,6 @@ export default function SuperSettings() {
       cancelled = true;
     };
   }, [loading, activeSection]);
-
-  useEffect(() => {
-    if (loading) return;
-    let cancelled = false;
-    fetch('/api/rpg/questmaker-items', { credentials: 'same-origin' })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Questmaker-Katalog');
-        return data;
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const rows = Array.isArray(data.items) ? data.items : [];
-        setQmItems(
-          rows.map((r, i) => ({
-            id: String(r.id ?? ''),
-            category: String(r.category ?? 'sonstiges'),
-            title: String(r.title ?? ''),
-            description: String(r.description ?? ''),
-            _key: `qm-${i}-${r.id}`,
-          }))
-        );
-      })
-      .catch(() => {
-        /* optional */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loading]);
 
   function setFontField(key, value) {
     setFonts((f) => ({ ...f, [key]: value }));
@@ -494,25 +587,100 @@ export default function SuperSettings() {
       setError('Zuerst super_access entfernen, um einzelne Rechte zu ändern.');
       return;
     }
-    setPermBusy(`${username}:${permission}`);
     setError('');
-    const url = currentlyHas ? '/api/admin/revoke' : '/api/admin/grant';
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ username, permission }),
-    });
-    const data = await res.json().catch(() => ({}));
-    setPermBusy(null);
-    if (!res.ok) {
-      setError(data.error || 'Recht konnte nicht geändert werden');
-      return;
-    }
+    const prevUsers = users;
+    const nextHas = !currentlyHas;
+    setUsers((p) =>
+      p.map((uu) =>
+        uu.username === username
+          ? applyUserPermissionToggle(uu, permission, nextHas, globalPermissions, knownPermissions)
+          : uu
+      )
+    );
+    setPermBusy(`${username}:${permission}`);
     try {
-      await loadPanel();
+      const url = currentlyHas ? '/api/admin/revoke' : '/api/admin/grant';
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username, permission }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setUsers(prevUsers);
+        setError(data.error || 'Recht konnte nicht geändert werden');
+      }
     } catch (e) {
-      setError(e?.message || 'Tabelle konnte nicht aktualisiert werden');
+      setUsers(prevUsers);
+      setError(e?.message || 'Recht konnte nicht geändert werden');
+    } finally {
+      setPermBusy(null);
+    }
+  }
+
+  async function toggleGlobalPermission(permission, currentlyActive) {
+    setError('');
+    const prevGlobal = globalPermissions;
+    const prevUsers = users;
+    const nextGlobal = currentlyActive
+      ? globalPermissions.filter((p) => p !== permission)
+      : [...globalPermissions, permission];
+    setGlobalPermissions(nextGlobal);
+    setUsers((p) =>
+      p.map((uu) => ({
+        ...uu,
+        permissions: deriveEffectivePermissions(uu.permissionStates || {}, nextGlobal, knownPermissions),
+      }))
+    );
+    setPermBusy(`*:${permission}`);
+    try {
+      const res = await fetch('/api/admin/global-permission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ permission, active: !currentlyActive }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setGlobalPermissions(prevGlobal);
+        setUsers(prevUsers);
+        setError(data.error || 'Global konnte nicht geändert werden');
+      }
+    } catch (e) {
+      setGlobalPermissions(prevGlobal);
+      setUsers(prevUsers);
+      setError(e?.message || 'Global konnte nicht geändert werden');
+    } finally {
+      setPermBusy(null);
+    }
+  }
+
+  async function toggleWarning(permission, currentlyActive) {
+    setError('');
+    const prev = permissionWarnings;
+    const next = currentlyActive
+      ? permissionWarnings.filter((p) => p !== permission)
+      : [...permissionWarnings, permission];
+    setPermissionWarnings(next);
+    setPermBusy(`warn:${permission}`);
+    try {
+      const res = await fetch('/api/admin/permission-warning', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ permission, active: !currentlyActive }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPermissionWarnings(prev);
+        setError(data.error || 'Banner-Status konnte nicht geändert werden');
+      }
+    } catch (e) {
+      setPermissionWarnings(prev);
+      setError(e?.message || 'Banner-Status konnte nicht geändert werden');
+    } finally {
+      setPermBusy(null);
     }
   }
 
@@ -566,9 +734,7 @@ export default function SuperSettings() {
 
   function jumpToSection(id) {
     setActiveSection(id);
-    const el = document.getElementById(`super-sec-${id}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
   if (loading) {
@@ -626,6 +792,7 @@ export default function SuperSettings() {
         </aside>
 
         <main style={panelContent} className="super-panel-content">
+      {activeSection === 'permissions' && (
       <section style={section} id="super-sec-permissions">
         <h2 style={h2}>Nutzer-Rechte</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
@@ -634,12 +801,16 @@ export default function SuperSettings() {
           <code>rpg_access</code> erlaubt das RPG inkl. Questmaker.{' '}
           <code>minigames_access</code> ist derzeit ohne Wirkung — Minigames sind voruebergehend nur fuer Superuser sichtbar (Architektur-Umbau).
         </p>
+        <p style={{ fontSize: '0.82rem', opacity: 0.72, marginTop: '-0.4rem', marginBottom: '0.6rem' }}>
+          Die Zeile <strong>Global</strong> setzt den Standardwert für ALLE Nutzer (auch neue). Einzelne Nutzer können
+          den globalen Default durch Klicken auf ihre Checkbox überschreiben — kursiv markierte Häkchen zeigen Werte,
+          die vom globalen Default abweichen.
+        </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={tableStyle}>
             <thead>
               <tr>
                 <th style={thtd}>User</th>
-                <th style={thtd}>Global</th>
                 {knownPermissions.map((p) => (
                   <th key={p} style={thtd}>
                     {p}
@@ -648,7 +819,65 @@ export default function SuperSettings() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              <tr style={{ background: 'rgba(0,0,0,0.045)' }}>
+                <td style={thtd}>
+                  <strong>Global</strong>
+                  <span style={{ display: 'block', fontSize: 11, opacity: 0.65 }}>
+                    Standard für alle Nutzer
+                  </span>
+                </td>
+                {knownPermissions.map((p) => {
+                  const active = globalPermissions.includes(p);
+                  const busy = permBusy === `*:${p}`;
+                  const disabled = busy || p === SUPER_PERM;
+                  return (
+                    <td key={p} style={{ ...thtd, textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        disabled={disabled}
+                        title={
+                          p === SUPER_PERM
+                            ? 'super_access kann nicht global aktiviert werden'
+                            : 'Wenn aktiv: Recht gilt automatisch für jeden Nutzer, außer manuell ausgesetzt'
+                        }
+                        onChange={() => toggleGlobalPermission(p, active)}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+              <tr style={{ background: 'rgba(252, 211, 77, 0.18)' }}>
+                <td style={thtd}>
+                  <strong>Beware of Bugs</strong>
+                  <span style={{ display: 'block', fontSize: 11, opacity: 0.65 }}>
+                    Gelbes Hinweis-Banner auf der Feature-Seite
+                  </span>
+                </td>
+                {knownPermissions.map((p) => {
+                  const active = permissionWarnings.includes(p);
+                  const busy = permBusy === `warn:${p}`;
+                  return (
+                    <td key={p} style={{ ...thtd, textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        disabled={busy}
+                        title={'Wenn aktiv: Seiten mit diesem Recht zeigen einen gelben „Beware of Bugs“-Banner unten rechts'}
+                        onChange={() => toggleWarning(p, active)}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+              {[...users]
+                .sort((a, b) => {
+                  const aSuper = (a.permissions || []).includes(SUPER_PERM);
+                  const bSuper = (b.permissions || []).includes(SUPER_PERM);
+                  if (aSuper !== bSuper) return aSuper ? -1 : 1;
+                  return String(a.username || '').localeCompare(String(b.username || ''));
+                })
+                .map((u) => (
                 <tr key={u.username}>
                   <td style={thtd}>
                     <strong>{u.username}</strong>
@@ -658,11 +887,12 @@ export default function SuperSettings() {
                       </span>
                     ) : null}
                   </td>
-                  <td style={{ ...thtd, textAlign: 'center' }}>{u.global ? 'Ja' : 'Nein'}</td>
                   {knownPermissions.map((p) => {
                     const has = effectivePerm(u.permissions, p);
                     const lockedBySuper = p !== SUPER_PERM && (u.permissions || []).includes(SUPER_PERM);
                     const busy = permBusy === `${u.username}:${p}`;
+                    const globallyActive = globalPermissions.includes(p);
+                    const deviates = p !== SUPER_PERM && has !== globallyActive;
                     return (
                       <td key={p} style={{ ...thtd, textAlign: 'center' }}>
                         <input
@@ -672,7 +902,20 @@ export default function SuperSettings() {
                           title={
                             lockedBySuper
                               ? 'Zuerst super_access entfernen, um einzelne Rechte zu ändern'
-                              : ''
+                              : deviates
+                                ? globallyActive
+                                  ? 'Override: für diesen User ausgesetzt'
+                                  : 'Override: für diesen User aktiviert'
+                                : globallyActive
+                                  ? 'Folgt globalem Default (an)'
+                                  : ''
+                          }
+                          style={
+                            deviates
+                              ? { outline: '2px dashed rgba(180,90,0,0.55)', outlineOffset: 1 }
+                              : globallyActive && !deviates
+                                ? { opacity: 0.72 }
+                                : undefined
                           }
                           onChange={() => togglePermission(u.username, p, has)}
                         />
@@ -685,7 +928,9 @@ export default function SuperSettings() {
           </table>
         </div>
       </section>
+      )}
 
+      {activeSection === 'tester-ui' && (
       <section style={section} id="super-sec-tester-ui">
         <h2 style={h2}>Eigene Testeroberfläche</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
@@ -729,7 +974,9 @@ export default function SuperSettings() {
         </button>
         {testerUiMsg ? <p style={{ ...okStyle, marginTop: 10 }}>{testerUiMsg}</p> : null}
       </section>
+      )}
 
+      {activeSection === 'graffiti' && (
       <section style={section} id="super-sec-graffiti">
         <h2 style={h2}>Graffiti</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
@@ -787,7 +1034,9 @@ export default function SuperSettings() {
           </div>
         )}
       </section>
+      )}
 
+      {activeSection === 'tester-bugs' && (
       <section style={section} id="super-sec-tester-bugs">
         <h2 style={h2}>Tester-Übersicht & Bug-Screenshots</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78 }}>
@@ -859,7 +1108,9 @@ export default function SuperSettings() {
           </div>
         )}
       </section>
+      )}
 
+      {activeSection === 'questmaker' && (
       <section style={section} id="super-sec-questmaker">
         <h2 style={h2}>Questmaker — Item-Katalog</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1rem' }}>
@@ -976,7 +1227,9 @@ export default function SuperSettings() {
           {rpgNormMsg ? <span style={okStyle}>{rpgNormMsg}</span> : null}
         </div>
       </section>
+      )}
 
+      {activeSection === 'feed-policy' && (
       <section style={section} id="super-sec-feed-policy">
         <h2 style={h2}>Topic-Feed Vertrauen</h2>
         <p style={{ fontSize: '0.85rem', opacity: 0.78, marginBottom: '1rem' }}>
@@ -1175,7 +1428,9 @@ export default function SuperSettings() {
           </div>
         </div>
       </section>
+      )}
 
+      {activeSection === 'fonts' && (
       <section style={section} id="super-sec-fonts">
         <h2 style={h2}>Schriften (global)</h2>
         <p style={{ fontSize: '0.88rem', opacity: 0.8, marginBottom: '1.2rem' }}>
@@ -1281,6 +1536,7 @@ export default function SuperSettings() {
           {uploadMsg ? <p style={{ ...okStyle, marginTop: 12 }}>{uploadMsg}</p> : null}
         </div>
       </section>
+      )}
         </main>
       </div>
     </div>

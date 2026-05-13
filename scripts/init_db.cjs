@@ -36,11 +36,28 @@ db.serialize(() => {
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       username   TEXT NOT NULL,
       permission TEXT NOT NULL,
+      state      TEXT NOT NULL DEFAULT 'granted', -- 'granted' | 'revoked' (Override gegen Global-Default)
       granted_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(username, permission)              -- kein Recht doppelt vergeben
     )
   `);
   console.log('✓ user_permissions-Tabelle bereit.');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS global_permissions (
+      permission TEXT PRIMARY KEY,
+      granted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ global_permissions-Tabelle bereit.');
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS permission_warnings (
+      permission TEXT PRIMARY KEY,
+      activated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  console.log('✓ permission_warnings-Tabelle bereit.');
 
   // --- Tabelle: quotes ---
   // Speichert alle eingereichten Zitate.

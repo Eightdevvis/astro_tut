@@ -60,16 +60,26 @@ const SCHEMA_DDL = `
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     birthday TEXT NOT NULL,
-    password TEXT NOT NULL,
-    "global" INTEGER NOT NULL DEFAULT 0
+    password TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS user_permissions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT NOT NULL,
     permission TEXT NOT NULL,
+    state      TEXT NOT NULL DEFAULT 'granted',
     granted_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(username, permission)
+  );
+
+  CREATE TABLE IF NOT EXISTS global_permissions (
+    permission TEXT PRIMARY KEY,
+    granted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS permission_warnings (
+    permission TEXT PRIMARY KEY,
+    activated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS quotes (
@@ -326,13 +336,23 @@ async function ensureGraffitiFunctionalColumn() {
   }
 }
 
-async function ensureUsersGlobalColumn() {
+async function ensureUserPermissionsStateColumn() {
   const db = createDbClient();
   try {
-    await db.execute('ALTER TABLE users ADD COLUMN "global" INTEGER NOT NULL DEFAULT 0');
+    await db.execute("ALTER TABLE user_permissions ADD COLUMN state TEXT NOT NULL DEFAULT 'granted'");
   } catch (err) {
     const msg = err?.message ?? String(err);
     if (!/duplicate column name/i.test(msg)) throw err;
+  }
+}
+
+async function dropUsersGlobalColumn() {
+  const db = createDbClient();
+  try {
+    await db.execute('ALTER TABLE users DROP COLUMN "global"');
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/no such column|cannot drop|does not exist/i.test(msg)) throw err;
   }
 }
 
@@ -348,7 +368,8 @@ export async function ensureDbSchema() {
   await ensureQuotesAuthorColumn();
   await ensureUserFeedItemsImageUrlColumn();
   await ensureGraffitiFunctionalColumn();
-  await ensureUsersGlobalColumn();
+  await ensureUserPermissionsStateColumn();
+  await dropUsersGlobalColumn();
   const db = createDbClient();
   await seedFeedPolicyDefaults(db);
 }

@@ -26,8 +26,19 @@ await db.executeMultiple(`
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     username   TEXT NOT NULL,
     permission TEXT NOT NULL,
+    state      TEXT NOT NULL DEFAULT 'granted',
     granted_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(username, permission)
+  );
+
+  CREATE TABLE IF NOT EXISTS global_permissions (
+    permission TEXT PRIMARY KEY,
+    granted_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS permission_warnings (
+    permission TEXT PRIMARY KEY,
+    activated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS quotes (
