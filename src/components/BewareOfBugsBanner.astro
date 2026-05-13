@@ -16,15 +16,21 @@ import { hasPermissionWarning } from '../lib/permissions.js';
 
 const { permission, label, tooltip } = Astro.props;
 const show = permission ? await hasPermissionWarning(permission) : false;
-const ribbonText = label || 'Beware of bugs';
 const titleText = tooltip || 'Frisches Feature – Bugs sind sehr wahrscheinlich. Wenn du etwas merkst: bitte melden.';
 ---
 
 {show && (
   <aside class="beware-of-bugs-corner" role="status" aria-label="Bug-Warnung" title={titleText}>
     <div class="beware-of-bugs-ribbon">
-      <span class="beware-of-bugs-ribbon__icon" aria-hidden="true">⚠</span>
-      <span class="beware-of-bugs-ribbon__text">{ribbonText}</span>
+      {label ? (
+        <span class="beware-of-bugs-ribbon__text">{label}</span>
+      ) : (
+        <>
+          <span class="beware-of-bugs-ribbon__text">Fresh Feature</span>
+          <span class="beware-of-bugs-ribbon__icon" aria-hidden="true">⚠</span>
+          <span class="beware-of-bugs-ribbon__text">Beware of Bugs</span>
+        </>
+      )}
     </div>
   </aside>
 )}
@@ -38,55 +44,54 @@ const titleText = tooltip || 'Frisches Feature – Bugs sind sehr wahrscheinlich
     position: fixed;
     bottom: 0;
     right: 0;
-    width: 160px;
-    height: 160px;
+    width: 220px;
+    height: 220px;
     overflow: hidden;
     pointer-events: none;
     z-index: 9999;
   }
   .beware-of-bugs-ribbon {
     position: absolute;
-    /* zentriert im Container, dann gedreht. Width ~ Container-Diagonale,
-       sodass die Enden gerade ueber die Seiten ragen und sauber abgeschnitten
-       werden. */
+    /* zentriert im Container, dann gedreht. Width < Container-Diagonale,
+       sodass die Enden nur leicht in die Container-Kanten clippen. */
     left: 50%;
     top: 50%;
-    width: 230px;
-    margin-left: -115px;
-    margin-top: -15px;
+    width: 300px;
+    margin-left: -150px;
+    margin-top: -19px;
     transform: rotate(-45deg);
     transform-origin: center;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 6px 0;
+    gap: 8px;
+    padding: 7px 0;
     background: linear-gradient(180deg, #fde68a 0%, #facc15 50%, #eab308 100%);
     color: #1f1f1f;
     border-top: 1px solid rgba(180, 83, 9, 0.7);
     border-bottom: 1px solid rgba(180, 83, 9, 0.7);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     white-space: nowrap;
   }
   .beware-of-bugs-ribbon__icon {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     line-height: 1;
   }
   @media (max-width: 480px) {
     .beware-of-bugs-corner {
-      width: 130px;
-      height: 130px;
+      width: 170px;
+      height: 170px;
     }
     .beware-of-bugs-ribbon {
-      width: 190px;
-      margin-left: -95px;
-      margin-top: -13px;
-      font-size: 0.7rem;
-      padding: 5px 0;
+      width: 235px;
+      margin-left: -117px;
+      margin-top: -16px;
+      font-size: 0.74rem;
+      padding: 6px 0;
     }
   }
 </style>
