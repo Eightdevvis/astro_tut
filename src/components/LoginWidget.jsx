@@ -168,7 +168,7 @@ function LoginWidget({ initialUser = null }) {
               setOpen(false);
             }}
           >
-            NEU HIER? REGISTRIEREN
+            REGISTRIEREN
           </a>
         </div>
       </div>
