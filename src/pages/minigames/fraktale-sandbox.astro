@@ -4,6 +4,7 @@ import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../../components/PageFavicon.astro';
 import FraktaleSandbox from '../../components/FraktaleSandbox.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
@@ -21,7 +22,7 @@ if (!canUseMinigames) {
   <head>
     <meta charset="utf-8" />
     <ThemeInit />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <PageFavicon icon="minigames" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f1ea" />
     <title>Fraktale Sandbox · Minigames</title>

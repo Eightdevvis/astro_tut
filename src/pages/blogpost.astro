@@ -7,6 +7,7 @@ import SiteFontOverrides from '../components/SiteFontOverrides.astro';
 import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../components/PageFavicon.astro';
 import { ensureDbSchema, getDb } from '../lib/db.js';
 import '../styles/global.css';
 
@@ -64,6 +65,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f1ea" />
     <title>BLOGPOST</title>
+    <PageFavicon icon="blogpost" />
     <SiteFontOverrides />
     <style>
       html {

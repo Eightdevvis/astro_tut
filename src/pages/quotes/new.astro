@@ -17,6 +17,7 @@ import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
 import ThemeInit from '../../components/ThemeInit.astro';
 import ThemeClient from '../../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../../components/PageFavicon.astro';
 import '../../styles/global.css';
 
 // Session aus Cookie lesen
@@ -42,6 +43,7 @@ if (token) {
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f1ea" />
     <title>ZITAT EINREICHEN</title>
+    <PageFavicon icon="quotes" />
     <SiteFontOverrides />
     <style>
       html {
