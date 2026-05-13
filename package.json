@@ -11,7 +11,8 @@
     "test:rpg": "node --test tests/rpg-consistency.test.js",
     "test:quality": "node --test 'tests/*.test.js'",
     "db:init-turso": "node scripts/init_turso.js",
-    "rpg:check-migration": "node scripts/check_rpg_tree_migration.js"
+    "rpg:check-migration": "node scripts/check_rpg_tree_migration.js",
+    "debug:mb": "node scripts/debug-mikrobiologie.mjs"
   },
   "dependencies": {
     "@astrojs/node": "^9.5.3",
@@ -26,11 +27,16 @@
     "isomorphic-dompurify": "^3.9.0",
     "jose": "^6.2.1",
     "katex": "^0.16.45",
+    "ketcher-react": "^3.12.0",
+    "ketcher-standalone": "^3.12.0",
     "marked": "^18.0.2",
     "preact": "^10.28.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "rss-parser": "^3.13.0",
     "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
   }
 }
