@@ -9,6 +9,7 @@
  * den Klick stillschweigend für Anonyme).
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { enqueueInventoryOp } from '../lib/site-inventory-queue.js';
 
 function iconForItem(item) {
   if (!item) return '📦';
@@ -84,12 +85,12 @@ export default function SitePlacedItemsLayer() {
     };
   }, []);
 
-  async function onItemClick(placedItemId, e) {
-    e.stopPropagation();
-    e.preventDefault();
-    // Vollständig optimistisch: Item lokal entfernen UND SiteInventory sofort
-    // mitteilen, dass die Hand jetzt belegt ist — Cursor-Follower + Body-Class
-    // greifen instant, ohne auf den Turso-Roundtrip zu warten.
+  function onItemClick(placedItemId) {
+    // Temp-Items (negative ID, noch nicht vom Server bestätigt) sind nicht
+    // aufhebbar — sonst gibt der Server 404, weil die ID nicht existiert.
+    if (typeof placedItemId !== 'number' || placedItemId <= 0) return;
+
+    // Optimistisch: Item lokal entfernen + Hand belegen. UI reagiert instant.
     let removed = null;
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.placedItemId === placedItemId);
@@ -102,55 +103,58 @@ export default function SitePlacedItemsLayer() {
       new CustomEvent('site-inventory-patch', { detail: { patch: { hand: removed.item } } })
     );
 
-    try {
-      const res = await fetch('/api/site-inventory/me', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ action: 'pickup', placedItemId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // 401 (anonym) / 409 (Hand voll auf Server) / 404 (Item nicht mehr da)
-        // → optimistischen Stand zurückrollen.
+    // Server-Call durch die globale Inventar-Queue — verhindert Race mit
+    // einem nachfolgenden Drop. Optimistic UI rollbackt bei Server-Error.
+    void enqueueInventoryOp(async () => {
+      try {
+        const res = await fetch('/api/site-inventory/me', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ action: 'pickup', placedItemId }),
+        });
+        if (!res.ok) {
+          // 401 anonym / 409 Hand voll / 404 Item weg — rollback
+          setItems((prev) => [...prev, removed]);
+          window.dispatchEvent(
+            new CustomEvent('site-inventory-patch', { detail: { patch: { hand: null } } })
+          );
+        }
+      } catch (err) {
+        console.warn('[site-placed-items] pickup error', err);
         setItems((prev) => [...prev, removed]);
         window.dispatchEvent(
           new CustomEvent('site-inventory-patch', { detail: { patch: { hand: null } } })
         );
-        return;
       }
-      // Bewusst KEIN site-inventory-update bei Erfolg: der optimistische
-      // Patch ist bereits die UI-Wahrheit. Würden wir hier den Server-Stand
-      // dispatchen, könnte eine verzögerte Pickup-Response nach einem
-      // schnellen Drop das Inventar überschreiben (Race-Condition: User sieht
-      // erst Hand leer, dann plötzlich wieder voll).
-      void data;
-    } catch (err) {
-      console.warn('[site-placed-items] pickup error', err);
-      setItems((prev) => [...prev, removed]);
-      window.dispatchEvent(
-        new CustomEvent('site-inventory-patch', { detail: { patch: { hand: null } } })
-      );
-    }
+    });
   }
 
   if (items.length === 0) return null;
 
   return (
     <>
-      {items.map((it) => (
-        <button
-          key={`placed-${it.placedItemId}`}
-          type="button"
-          class="site-placed-item"
-          style={{ left: `${it.x}px`, top: `${it.y}px` }}
-          aria-label={`${it.item?.name || 'Item'} aufheben`}
-          title={it.item?.name || ''}
-          onPointerDown={(e) => onItemClick(it.placedItemId, e)}
-        >
-          <span aria-hidden="true">{iconForItem(it.item)}</span>
-        </button>
-      ))}
+      {items.map((it) => {
+        const isTemp = typeof it.placedItemId !== 'number' || it.placedItemId <= 0;
+        return (
+          <button
+            key={`placed-${it.placedItemId}`}
+            type="button"
+            class={`site-placed-item${isTemp ? ' is-pending' : ''}`}
+            style={{ left: `${it.x}px`, top: `${it.y}px` }}
+            aria-label={`${it.item?.name || 'Item'} aufheben`}
+            title={it.item?.name || ''}
+            disabled={isTemp}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onItemClick(it.placedItemId);
+            }}
+          >
+            <span aria-hidden="true">{iconForItem(it.item)}</span>
+          </button>
+        );
+      })}
       <style>{`
         .site-placed-item {
           position: absolute;
@@ -162,13 +166,27 @@ export default function SitePlacedItemsLayer() {
           cursor: pointer;
           font-size: 1.6rem;
           line-height: 1;
-          z-index: 396;
+          /* Über dem Graffiti-Canvas (z=398), damit gemaltes nicht das Item
+             überdeckt. Cursor-Follower (z=500) bleibt darüber. */
+          z-index: 410;
           transition: transform 0.15s ease;
         }
         .site-placed-item:hover,
         .site-placed-item:focus-visible {
           transform: translate(-50%, -55%);
           outline: none;
+        }
+        /* Optimistisch gerade gedropte Items (Temp-ID, Server-Call läuft).
+           Nicht klickbar bis die echte ID da ist — sonst 404 vom Server. */
+        .site-placed-item.is-pending {
+          opacity: 0.55;
+          cursor: default;
+        }
+        /* Hand belegt → man kann ohnehin nichts aufheben (409 vom Server),
+           also lassen wir die pointer durch aufs Canvas, damit man durch
+           liegende Items hindurch malen kann. */
+        body.site-holding-item .site-placed-item {
+          pointer-events: none;
         }
       `}</style>
     </>

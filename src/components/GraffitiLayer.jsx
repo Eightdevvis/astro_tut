@@ -11,6 +11,26 @@ import {
 
 /** Schwamm-Radius in CSS-Pixeln. Muss konsistent mit Server-/Tile-Render-Logik sein. */
 const ERASE_RADIUS = 26;
+/** Bounding-Box-Schwelle (CSS-Pixel) ab der ein pointerdown→up als Drag und
+ *  nicht als Klick zählt. Drag → Stroke committen, Klick → Drop-Request. */
+const DRAG_BBOX_PX = 6;
+/** Maximaler Abstand zweier Taps für Doppel-Tap-Erkennung auf dem Canvas. */
+const CANVAS_DOUBLE_TAP_MS = 350;
+
+function strokeBboxIsDrag(points) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return maxX - minX > DRAG_BBOX_PX || maxY - minY > DRAG_BBOX_PX;
+}
 
 /**
  * Fallback-Werkzeuge falls /api/site-items/active nicht erreichbar ist.
@@ -80,6 +100,8 @@ export default function GraffitiLayer() {
   // damit nicht jeder Frame die ganze Schwamm-Spur neu malt.
   const eraseCommittedUpToRef = useRef(0);
   const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
+  /** Letzter Tap-Up-Zeitpunkt für Doppel-Tap-Drop auf Mobile. */
+  const lastTapAtRef = useRef(0);
   // Generations-Counter fuer Tile-Sync. Wird bei jedem pointerup/Reload erhoeht;
   // alte in-flight-Responses (zu kleinerer Gen) werden ignoriert.
   const tileSyncGenRef = useRef(0);
@@ -119,11 +141,10 @@ export default function GraffitiLayer() {
   }, [mode]);
 
 
-  // Long-Press auf ein Hand-Item (gefeuert von SiteInventory) aktiviert
-  // GraffitiLayer mit diesem Item als Werkzeug — Voraussetzung: behavior=draw
-  // und Item ist im aktuellen drawItems-Katalog. Phase 2a: User muss nach dem
-  // Long-Press neu pointer-downen um zu malen (Pointer-Capture-Konflikt mit
-  // dem SiteInventory-Drop-Overlay erlaubt kein nahtloses Weiter-Malen).
+  // SiteInventory schaltet bei jedem Hand-Wechsel den Modus für uns:
+  // - 'site-tool-use' (Hand belegt mit draw-Item) → enable + Tool auswählen.
+  //   Kein Long-Press mehr nötig — "in der Hand" === "aktives Werkzeug".
+  // - 'site-tool-deactivate' (Hand leer oder Non-Draw-Item) → enable raus.
   useEffect(() => {
     function onSiteToolUse(e) {
       const item = e?.detail?.item;
@@ -133,8 +154,15 @@ export default function GraffitiLayer() {
       setSelectedItemId(item.id);
       setEnabled(true);
     }
+    function onSiteToolDeactivate() {
+      setEnabled(false);
+    }
     window.addEventListener('site-tool-use', onSiteToolUse);
-    return () => window.removeEventListener('site-tool-use', onSiteToolUse);
+    window.addEventListener('site-tool-deactivate', onSiteToolDeactivate);
+    return () => {
+      window.removeEventListener('site-tool-use', onSiteToolUse);
+      window.removeEventListener('site-tool-deactivate', onSiteToolDeactivate);
+    };
   }, []);
 
   // Werkzeug-Katalog vom Server laden (behavior=draw). Fehler/leer → Fallback bleibt.
@@ -472,13 +500,50 @@ export default function GraffitiLayer() {
           }
           schedulePaint();
         }}
-        onPointerUp={async () => {
+        onPointerUp={async (e) => {
           if (!drawRef.current.active) return;
           // Snapshot der Stroke-Punkte — drawRef.points wird ggf. spaeter resettet.
           const points = drawRef.current.points.slice();
           const strokeMode = modeRef.current;
           const base = baseCanvasRef.current;
           const bctx = base?.getContext('2d');
+
+          // Drag-vs-Klick-Erkennung: ein kurzer Klick ohne Bewegung ist KEIN
+          // Stroke, sondern eine Drop-Geste (Item aus der Hand legen).
+          // - PC: Linksklick ohne Drag → Drop
+          // - Mobile: Doppel-Tap ohne Drag → Drop; einzelner Tap = nichts
+          //   (wird als erster Tap einer möglichen Doppel-Tap-Sequenz vermerkt)
+          if (!strokeBboxIsDrag(points)) {
+            drawRef.current.active = false;
+            // Live-Vorschau-Punkt wegzeichnen.
+            if (strokeMode === 'erase') {
+              baseDirtyRef.current = true;
+              eraseCommittedUpToRef.current = 0;
+            }
+            schedulePaint();
+
+            const isTouch = e.pointerType === 'touch';
+            if (isTouch) {
+              const isDoubleTap = Date.now() - lastTapAtRef.current < CANVAS_DOUBLE_TAP_MS;
+              if (isDoubleTap) {
+                lastTapAtRef.current = 0;
+                window.dispatchEvent(
+                  new CustomEvent('site-inventory-request-drop', {
+                    detail: { x: e.pageX, y: e.pageY },
+                  })
+                );
+              } else {
+                lastTapAtRef.current = Date.now();
+              }
+            } else {
+              window.dispatchEvent(
+                new CustomEvent('site-inventory-request-drop', {
+                  detail: { x: e.pageX, y: e.pageY },
+                })
+              );
+            }
+            return;
+          }
 
           // 1) Stroke permanent ins Base committen.
           //    Erase ist durch Phase-1 inkrementell schon committed; tag/spray

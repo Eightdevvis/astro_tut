@@ -12,6 +12,7 @@
  * Nicht eingeloggte User sehen das Inventar nicht (GET /me → 401).
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { enqueueInventoryOp } from '../lib/site-inventory-queue.js';
 
 const SLOT_KEYS = ['slot0', 'slot1', 'slot2', 'slot3', 'slot4', 'slot5'];
 const LONG_PRESS_MS = 280;
@@ -65,6 +66,10 @@ export default function SiteInventory() {
   );
   /** Zeitstempel des letzten Touch-Tap-Ups, für Doppel-Tap-Erkennung. */
   const lastTapAtRef = useRef(0);
+  /** Verhindert dass zwei schnell aufeinanderfolgende Drop-Events (z.B. zwei
+   *  Canvas-Klicks deren Listener noch denselben handItem-Closure sehen) zwei
+   *  Items absetzen. Wird auf true gesetzt während dropAtPoint läuft. */
+  const dropInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,24 +148,84 @@ export default function SiteInventory() {
     };
   }, [handItem]);
 
+  // Hand belegt mit draw-Tool → GraffitiLayer sofort aktivieren, ohne Long-
+  // Press. Beim Wechsel zu leerer Hand (oder Non-Draw) wird der Tool-Mode
+  // explizit beendet. Damit ist "Item in der Hand" === "Tool aktiv" —
+  // ein einziger State statt zwei sich beißender.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (handItem && handItem.behavior === 'draw') {
+      window.dispatchEvent(
+        new CustomEvent('site-tool-use', { detail: { item: handItem } })
+      );
+    } else {
+      window.dispatchEvent(new CustomEvent('site-tool-deactivate'));
+    }
+  }, [handItem?.id, handItem?.behavior]);
+
+  // GraffitiLayer ruft Drop an wenn der User mit dem aktiven Tool nur klickt
+  // ohne zu malen (PC: Linksklick, Mobile: Doppel-Tap). Wir machen daraus
+  // ein ganz normales dropAtPoint im aktuellen pagePath.
+  useEffect(() => {
+    function onDropRequest(e) {
+      const { x, y } = e?.detail || {};
+      if (typeof x !== 'number' || typeof y !== 'number') return;
+      if (!handItem) return;
+      void dropAtPoint(x, y);
+    }
+    window.addEventListener('site-inventory-request-drop', onDropRequest);
+    return () => window.removeEventListener('site-inventory-request-drop', onDropRequest);
+    // dropAtPoint Closure liest handItem live — deps reichen leer.
+  }, [handItem]);
+
+  /**
+   * Schickt eine Inventar-Mutation an den Server. WIRD durch enqueueInventoryOp
+   * von außen serialisiert, damit pickup/drop/swap nicht parallel laufen und
+   * Server-State-Races (z.B. Drop sieht hand=null weil Pickup noch nicht
+   * durch ist → 409) ausgeschlossen sind.
+   */
   async function postAction(body) {
-    const res = await fetch('/api/site-inventory/me', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      console.warn('[site-inventory] action failed', body, data);
+    try {
+      const res = await fetch('/api/site-inventory/me', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn('[site-inventory] action failed', body, data);
+        return null;
+      }
+      // Bewusst KEIN setInventory(data.inventory) bei Erfolg — alle Caller
+      // machen optimistic-UI, und der späte Server-Stand würde sonst eine
+      // jüngere optimistic-Änderung wieder überschreiben.
+      return data;
+    } catch (err) {
+      console.warn('[site-inventory] action error', body, err);
       return null;
     }
-    if (data?.inventory) setInventory(data.inventory);
-    return data;
   }
 
   function handleSlotClick(slotKey) {
-    void postAction({ action: 'swap', from: 'hand', to: slotKey });
+    if (!inventory) return;
+    const prevHand = inventory.hand || null;
+    const prevSlot = inventory[slotKey] || null;
+    if (!prevHand && !prevSlot) return; // beide leer → nichts zu tun
+    // Optimistisch hand ↔ slot tauschen, damit der User sofort sieht wie das
+    // Item rauswandert. Server-Call durch die Inventar-Queue (kein Konflikt
+    // mit gleichzeitigem pickup/drop). Rollback bei Fehler.
+    setInventory((prev) =>
+      prev ? { ...prev, hand: prevSlot, [slotKey]: prevHand } : prev
+    );
+    void enqueueInventoryOp(async () => {
+      const data = await postAction({ action: 'swap', from: 'hand', to: slotKey });
+      if (!data) {
+        setInventory((prev) =>
+          prev ? { ...prev, hand: prevHand, [slotKey]: prevSlot } : prev
+        );
+      }
+    });
   }
 
   function clearLongPress() {
@@ -170,15 +235,19 @@ export default function SiteInventory() {
     pressRef.current = null;
   }
 
-  async function dropAtPoint(pageX, pageY) {
+  function dropAtPoint(pageX, pageY) {
+    // Synchroner Doppel-Drop-Schutz: wenn die optimistische Phase schon
+    // läuft (Hand grad geleert + temp-Add dispatched), ignoriere weitere
+    // Aufrufe bis sie verarbeitet sind. Schützt vor zwei rapid pointer-ups.
+    if (dropInFlightRef.current) return;
     const dropped = handItem;
     if (!dropped) return;
+    dropInFlightRef.current = true;
     const pagePath = typeof location !== 'undefined' ? location.pathname : '/';
     // Temp-ID: negativ damit klar von echten Server-IDs (positiv) unterscheidbar.
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
 
     // Optimistisch: Hand leeren + placed-item sofort an die Drop-Position legen.
-    // Der User sieht das Item ohne Server-Roundtrip-Lag.
     setInventory((prev) => (prev ? { ...prev, hand: null } : prev));
     window.dispatchEvent(
       new CustomEvent('site-placed-items-add', {
@@ -195,22 +264,31 @@ export default function SiteInventory() {
       })
     );
 
-    const data = await postAction({ action: 'drop', pagePath, x: pageX, y: pageY });
-    if (data?.placedItemId) {
-      // Server hat die echte ID — Temp-ID austauschen, damit ein direktes
-      // Wieder-Aufheben (Klick auf das frisch gedroppte Item) funktioniert.
-      window.dispatchEvent(
-        new CustomEvent('site-placed-items-replace-id', {
-          detail: { tempId, realId: data.placedItemId },
-        })
-      );
-    } else {
-      // Server-Fehler → Rollback: Item wieder in die Hand, optimistic-placed weg.
-      setInventory((prev) => (prev ? { ...prev, hand: dropped } : prev));
-      window.dispatchEvent(
-        new CustomEvent('site-placed-items-remove', { detail: { placedItemId: tempId } })
-      );
-    }
+    // Server-Call durch die Inventar-Queue — pickup/drop/swap laufen
+    // serialisiert, niemals parallel. Damit kann kein Drop server-seitig
+    // einen noch nicht durchgelaufenen Pickup sehen ("hand=null → 409").
+    void enqueueInventoryOp(async () => {
+      try {
+        const data = await postAction({ action: 'drop', pagePath, x: pageX, y: pageY });
+        if (data?.placedItemId) {
+          // Temp-ID gegen Server-ID austauschen, damit das frisch gedropte
+          // Item wieder aufhebbar ist (sonst 404 wegen Temp-ID).
+          window.dispatchEvent(
+            new CustomEvent('site-placed-items-replace-id', {
+              detail: { tempId, realId: data.placedItemId },
+            })
+          );
+        } else {
+          // Server-Fehler → Rollback: Item zurück in Hand, optimistic-placed weg.
+          setInventory((prev) => (prev ? { ...prev, hand: dropped } : prev));
+          window.dispatchEvent(
+            new CustomEvent('site-placed-items-remove', { detail: { placedItemId: tempId } })
+          );
+        }
+      } finally {
+        dropInFlightRef.current = false;
+      }
+    });
   }
 
   function onOverlayPointerDown(e) {
@@ -277,7 +355,11 @@ export default function SiteInventory() {
 
   return (
     <>
-      {handItem && (
+      {/* Drop-Overlay nur noch für Non-Draw-Items. Bei draw-Tools übernimmt
+          GraffitiLayer das Canvas und meldet Drop-Wünsche via Custom-Event
+          (site-inventory-request-drop), sodass es keinen Pointer-Konflikt
+          zwischen Overlay und Mal-Canvas mehr gibt. */}
+      {handItem && handItem.behavior !== 'draw' && (
         <div
           class="site-inventory-drop-overlay"
           onPointerDown={onOverlayPointerDown}
@@ -436,6 +518,13 @@ export default function SiteInventory() {
         body.site-holding-item,
         body.site-holding-item * {
           cursor: none !important;
+        }
+        /* Während Hand belegt: Text-Selektion deaktivieren, sonst flackert
+           der Browser zwischen "ich klicke ein Tool an" und "ich markiere
+           Text auf der Seite" (sichtbar als blauer Selection-Highlight). */
+        body.site-holding-item {
+          user-select: none;
+          -webkit-user-select: none;
         }
       `}</style>
     </>
