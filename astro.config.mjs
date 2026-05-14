@@ -19,15 +19,25 @@ export default defineConfig({
   adapter: vercel(),
   integrations: [preact()],
   vite: {
-    // Ketcher zieht Node-Polyfills wie `util` rein, die `process.env.NODE_DEBUG`
-    // & Co. erwarten. Im Build replacet Vite `process.env.NODE_ENV` automatisch;
-    // im Dev-Server muss `process` als Browser-Stub explizit existieren, sonst
-    // crashes mit `ReferenceError: process is not defined` aus chunk-YZF324B4.
+    // Ketcher (Browser) referenziert nur statische Keys (`process.env.NODE_ENV`,
+    // `process.env.BUILD_DATE` etc.). Wir defaulten die einzeln — KEIN pauschales
+    // `'process.env': '{}'`, weil das auch im SSR-Bundle alle process.env-Zugriffe
+    // killt (z. B. TURSO_URL aus Vercel) und die Function dann ohne Env-Vars läuft.
+    // `process.platform` / `process.version` bleiben als Browser-Stubs für Node-
+    // Polyfills (util etc.), die Ketcher transitiv reinzieht.
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
       'process.platform': '"browser"',
       'process.version': '"v22.0.0"',
-      'process.env': '{}',
+      'process.env.BUILD_DATE': '""',
+      'process.env.BUILD_NUMBER': '""',
+      'process.env.HELP_LINK': '""',
+      'process.env.INDIGO_MACHINE': '""',
+      'process.env.INDIGO_VERSION': '""',
+      'process.env.KETCHER_ENABLE_REDUX_LOGGER': 'false',
+      'process.env.NODE_DEBUG': '""',
+      'process.env.SEPARATE_INDIGO_RENDER': 'false',
+      'process.env.VERSION': '""',
       global: 'globalThis',
     },
     optimizeDeps: {
@@ -36,6 +46,15 @@ export default defineConfig({
           'process.env.NODE_ENV': '"development"',
           'process.platform': '"browser"',
           'process.version': '"v22.0.0"',
+          'process.env.BUILD_DATE': '""',
+          'process.env.BUILD_NUMBER': '""',
+          'process.env.HELP_LINK': '""',
+          'process.env.INDIGO_MACHINE': '""',
+          'process.env.INDIGO_VERSION': '""',
+          'process.env.KETCHER_ENABLE_REDUX_LOGGER': 'false',
+          'process.env.NODE_DEBUG': '""',
+          'process.env.SEPARATE_INDIGO_RENDER': 'false',
+          'process.env.VERSION': '""',
           global: 'globalThis',
         },
       },
