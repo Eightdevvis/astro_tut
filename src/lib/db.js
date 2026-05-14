@@ -58,6 +58,33 @@ function resolveDbUrl() {
     return 'file:users.db';
   }
 
+  // Diagnose-Hilfe: wenn wir hier landen, dump wir die Form (NICHT die Werte!)
+  // der env-Sicht der Runtime einmal pro Crash. Sehen ob TURSO_URL da ist und
+  // wie er heisst.
+  try {
+    const proc = typeof process !== 'undefined' && process.env ? process.env : null;
+    const meta = (() => { try { return import.meta.env || null; } catch { return null; } })();
+    const procKeys = proc ? Object.keys(proc).sort() : null;
+    const metaKeys = meta ? Object.keys(meta).sort() : null;
+    const procTursoKeys = procKeys ? procKeys.filter((k) => /turso/i.test(k)) : null;
+    const metaTursoKeys = metaKeys ? metaKeys.filter((k) => /turso/i.test(k)) : null;
+    const sample = (vKey) => {
+      const v = proc?.[vKey];
+      return v == null ? '<null>' : v === '' ? '<empty>' : `<len=${v.length}>`;
+    };
+    console.error('[db][diag] process.env keys:', procKeys?.length, 'sample:', procKeys?.slice(0, 30));
+    console.error('[db][diag] process.env turso keys:', procTursoKeys, {
+      TURSO_URL: sample('TURSO_URL'),
+      TURSO_AUTH_TOKEN: sample('TURSO_AUTH_TOKEN'),
+      NODE_ENV: sample('NODE_ENV'),
+      VERCEL: sample('VERCEL'),
+      VERCEL_ENV: sample('VERCEL_ENV'),
+    });
+    console.error('[db][diag] import.meta.env keys:', metaKeys?.length, 'turso keys:', metaTursoKeys);
+  } catch (e) {
+    console.error('[db][diag] dump failed:', e?.message);
+  }
+
   throw new Error(
     '[db] TURSO_URL fehlt oder ist ungueltig. Setze TURSO_URL/TURSO_AUTH_TOKEN (z. B. via Vercel env pull) oder erlaube lokal explizit ALLOW_LOCAL_FILE_DB_FALLBACK=1.'
   );
