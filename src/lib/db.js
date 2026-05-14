@@ -28,13 +28,30 @@ function readBooleanFlag(value) {
   return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
 
+// Vite inlinet `import.meta.env` build-time als statisches Objekt — auf Vercel
+// landen Server-Secrets dort u.U. NICHT (nur PUBLIC_-Prefix wird zuverlaessig
+// gebaked). Deshalb: zur Laufzeit erst `process.env` lesen, `import.meta.env`
+// nur als Backup. Ein einzelnes Object-`??` wuerde nie auf process.env fallen,
+// weil import.meta.env als (leeres) Objekt truthy ist.
+function readEnv(key) {
+  if (typeof process !== 'undefined' && process.env) {
+    const v = process.env[key];
+    if (v != null && v !== '') return v;
+  }
+  try {
+    const v = import.meta.env?.[key];
+    if (v != null && v !== '') return v;
+  } catch {}
+  return undefined;
+}
+
 function resolveDbUrl() {
-  const env = import.meta.env ?? process.env ?? {};
-  const tursoUrl = env.TURSO_URL;
+  const tursoUrl = readEnv('TURSO_URL');
   if (isValidDbUrl(tursoUrl)) return tursoUrl;
 
-  const isDev = readBooleanFlag(env.DEV) || String(env.NODE_ENV || '').toLowerCase() !== 'production';
-  const allowLocalFallback = readBooleanFlag(env.ALLOW_LOCAL_FILE_DB_FALLBACK);
+  const nodeEnv = readEnv('NODE_ENV') ?? '';
+  const isDev = readBooleanFlag(readEnv('DEV')) || nodeEnv.toLowerCase() !== 'production';
+  const allowLocalFallback = readBooleanFlag(readEnv('ALLOW_LOCAL_FILE_DB_FALLBACK'));
   if (allowLocalFallback || isDev) {
     const reason = allowLocalFallback ? 'ALLOW_LOCAL_FILE_DB_FALLBACK=1' : 'dev-mode';
     console.warn(`[db] TURSO_URL fehlt/ungueltig -> verwende lokale file:users.db (${reason}).`);
@@ -47,10 +64,9 @@ function resolveDbUrl() {
 }
 
 function createDbClient() {
-  const env = import.meta.env ?? process.env ?? {};
   return createClient({
     url: resolveDbUrl(),
-    authToken: env.TURSO_AUTH_TOKEN,
+    authToken: readEnv('TURSO_AUTH_TOKEN'),
   });
 }
 
