@@ -126,6 +126,30 @@ export default function GraffitiLayer() {
     modeRef.current = mode;
   }, [mode]);
 
+  // Dokument-weiter Scroll-Lock waehrend ein Draw-Tool aktiv ist.
+  // Hintergrund: Auf Android Chrome reicht `touch-action: none` allein auf
+  // dem Canvas nicht zuverlaessig — der Browser interpretiert den ersten
+  // Drag immer noch als Scroll-Geste (vermutlich Chromium-Hitting-Race wenn
+  // die Klasse `.is-active` simultan mit dem Touch geaendert wird). Solange
+  // ein Tool in der Hand ist, ist Scroll konzeptuell ohnehin gesperrt:
+  // jeder Touch wird zur Mal-Aktion, nicht zu Pan/Zoom. PC-aequivalent: Klick
+  // = Stroke/Drop, niemals Scroll. Beim Tool-Ablegen Original-Style restoren,
+  // damit wir keine fremde Komponente uebersteuern, die touchAction vielleicht
+  // legitim auf etwas anderes setzt.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    if (!enabled) return undefined;
+    const docEl = document.documentElement;
+    const prevDocTouch = docEl.style.touchAction;
+    const prevBodyTouch = document.body.style.touchAction;
+    docEl.style.touchAction = 'none';
+    document.body.style.touchAction = 'none';
+    return () => {
+      docEl.style.touchAction = prevDocTouch;
+      document.body.style.touchAction = prevBodyTouch;
+    };
+  }, [enabled]);
+
   useEffect(() => {
     // Beim Verlassen des Schwamm-Modus den incremental-counter zurücksetzen.
     // KEIN baseDirty=true hier — sonst wird das Base aus tilesRef rebuilt
@@ -658,6 +682,10 @@ export default function GraffitiLayer() {
         .fgraffiti-canvas.is-active {
           pointer-events: auto;
           cursor: crosshair;
+          /* Ohne touch-action:none klaut der Browser den ersten Touch-Drag fuer
+             Scroll/Pinch — Stroke bricht mit pointercancel ab, bevor er anfaengt.
+             Nur im aktiven Modus, damit Scrollen ueber der Canvas normal bleibt. */
+          touch-action: none;
         }
         .fgraffiti-canvas.is-active.is-erase {
           cursor: cell;
