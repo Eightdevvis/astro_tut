@@ -232,41 +232,58 @@ export default function ExtremophileGame({ mode = 'play' }) {
             )}
           </div>
 
-          {!quizDone && (
-            <div className="ex-question-block">
-              <p className="ex-question-counter">
-                Frage {qIdx + 1} von {QUESTIONS.length}
-              </p>
-              <p className="ex-question">{QUESTIONS[qIdx].prompt}</p>
-              <div className="ex-input-row">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="ex-input"
-                  value={input}
-                  disabled={marker !== null}
-                  autoComplete="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  onInput={(e) => setInput(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && marker === null && input.trim()) {
-                      handleCheck();
-                    }
-                  }}
-                  placeholder="Antwort tippen…"
-                />
-                <button
-                  type="button"
-                  className="ex-check"
-                  onClick={handleCheck}
-                  disabled={!input.trim() || marker !== null}
-                >
-                  Pruefen
-                </button>
+          {!quizDone && (() => {
+            const currentResult = results[qIdx];
+            const showWrongReveal = currentResult && !currentResult.correct;
+            const isSpeciesQ = QUESTIONS[qIdx].id === 'species';
+            return (
+              <div className="ex-question-block">
+                <p className="ex-question-counter">
+                  Frage {qIdx + 1} von {QUESTIONS.length}
+                </p>
+                <p className="ex-question">{QUESTIONS[qIdx].prompt}</p>
+                {showWrongReveal ? (
+                  <div className="ex-input-reveal" role="status" aria-live="polite">
+                    <span className="ex-input-reveal-wrong">
+                      {isSpeciesQ ? <em>{currentResult.userAnswer}</em> : currentResult.userAnswer}
+                    </span>
+                    <span className="ex-input-reveal-arrow" aria-hidden="true">→</span>
+                    <span className="ex-input-reveal-correct">
+                      {isSpeciesQ ? <em>{currentResult.correctAnswer}</em> : currentResult.correctAnswer}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="ex-input-row">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      className="ex-input"
+                      value={input}
+                      disabled={marker !== null}
+                      autoComplete="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      onInput={(e) => setInput(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && marker === null && input.trim()) {
+                          handleCheck();
+                        }
+                      }}
+                      placeholder="Antwort tippen…"
+                    />
+                    <button
+                      type="button"
+                      className="ex-check"
+                      onClick={handleCheck}
+                      disabled={!input.trim() || marker !== null}
+                    >
+                      Pruefen
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {quizDone && (
             <div className="ex-summary">
@@ -623,6 +640,30 @@ function Styles() {
       }
       .ex-check--secondary {
         margin-top: 0.6rem;
+      }
+
+      .ex-input-reveal {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.6rem;
+        padding: 0.6rem 0.85rem;
+        border: 1px solid rgba(208, 69, 69, 0.4);
+        background: rgba(208, 69, 69, 0.07);
+        border-radius: 0.6rem;
+        font-size: 1.1rem;
+        min-height: 2.3rem;
+      }
+      .ex-input-reveal-wrong {
+        text-decoration: line-through;
+        color: #b94b4b;
+      }
+      .ex-input-reveal-arrow {
+        color: var(--site-soft-muted);
+      }
+      .ex-input-reveal-correct {
+        font-weight: 700;
+        color: #2f7449;
       }
 
       .ex-summary {
