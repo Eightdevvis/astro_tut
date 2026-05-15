@@ -54,6 +54,22 @@ function Lab() {
   const placedReportRef = useRef({});
 
   const mood = computeMood(idleActions);
+  // Mood-Tracking ins Debug-Log: bei jedem Render zeigen wir den aktuellen
+  // Idle-Counter, den daraus berechneten Mood-Wert (-3..+3) und den daraus
+  // resultierenden Smiley-Mund-Kontrollpunkt. Damit kannst du im Panel sehen,
+  // ob die Skala richtig kippt.
+  useEffect(() => {
+    const happy = Math.max(-1, Math.min(1, mood / 3));
+    dbg('mood', {
+      idleActions,
+      mood,
+      happy: Number(happy.toFixed(2)),
+      mouthCtrlY: 36 + happy * 8,
+      // Erwartet: happy=+1 -> mouthCtrlY=44 (unter Endpunkten=36) -> LAECHELN.
+      //           happy=-1 -> mouthCtrlY=28 (ueber Endpunkten)   -> FROWN.
+      expects: happy > 0 ? 'smile' : happy < 0 ? 'frown' : 'flat',
+    });
+  }, [mood, idleActions]);
 
   function award(event) {
     setProgress((prev) => {
