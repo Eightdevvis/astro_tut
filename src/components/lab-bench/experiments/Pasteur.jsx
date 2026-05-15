@@ -96,17 +96,18 @@ function Lab() {
       { type: 'bottle_sterile',    x: 800, y: 210 },
       { type: 'bottle_unsterile',  x: 870, y: 210 },
 
-      // Schublade
-      { type: 'stand',             x: 160, y: 435 },  // 110x180
-      { type: 'bunsen',            x: 290, y: 495 },  // 70x120
-      { type: 'flask_pasteur',     x: 380, y: 465 },  // 100x150
-      { type: 'flask_round',       x: 500, y: 515 },  // 70x100
-      { type: 'flask_erlenmeyer',  x: 590, y: 515 },  // 70x100
-      { type: 'beaker',            x: 680, y: 535 },  // 60x80
-      { type: 'tongs',             x: 755, y: 525 },  // 40x90
-      { type: 'test_tube',         x: 810, y: 525 },
-      { type: 'test_tube',         x: 842, y: 525 },
-      { type: 'petri_dish',        x: 870, y: 595 },  // 60x20
+      // Schublade — fuer Pasteurs Experiment relevant ist nur der Erlenmeyer.
+      // Den Schwanenhalskolben sollst du selbst herstellen (durch Heizen +
+      // Glas-Ziehen). Andere Kolben-Typen liegen nicht rum, damit man nicht
+      // versehentlich den Sinn umgeht.
+      { type: 'stand',             x: 180, y: 435 },  // 110x180
+      { type: 'bunsen',            x: 330, y: 495 },  // 70x120
+      { type: 'flask_erlenmeyer',  x: 440, y: 515 },  // 70x100
+      { type: 'beaker',            x: 530, y: 535 },  // 60x80
+      { type: 'tongs',             x: 610, y: 525 },  // 40x90
+      { type: 'test_tube',         x: 670, y: 525 },
+      { type: 'test_tube',         x: 702, y: 525 },
+      { type: 'petri_dish',        x: 740, y: 595 },  // 60x20
     ],
     [],
   );
@@ -127,39 +128,54 @@ function Lab() {
 
   // Aktionen je nach Item-Typ + State + Nachbarn.
   function actionsForItem(item, placed) {
+    let list = null;
     if (item.type === 'flask_erlenmeyer') {
       const s = item.state || {};
       const onStand = isOnStand(item, placed);
-      const list = [];
+      const tongsHere = hasPlacedTongs(placed);
+      list = [];
       if (!onStand) {
-        list.push({ id: 'note_off_stand', label: 'Erst aufs Stativ stellen' });
-        return list;
+        list.push({ id: 'note_off_stand', label: '↪ Erst auf das Stativ stellen' });
+        // Sonst keine weiteren Aktionen — Stativ ist Pflicht.
+      } else {
+        if (!s.liquid) {
+          list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
+          list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
+        }
+        if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
+        if (!s.bunsenAtNeck && s.neck !== 'swan')
+          list.push({ id: 'bunsen_at_neck', label: 'Bunsen an Hals halten' });
+        if (s.bunsenBelow && s.liquid && !s.sterilized)
+          list.push({ id: 'sterilize', label: 'Anzuenden + Sterilisieren' });
+        // Glas-Ziehen: zeigen sobald Bunsen am Hals ist. Wenn die Zange noch
+        // nicht da ist, eine sichtbare Hinweis-Zeile statt der Aktion zu
+        // verstecken (vorher: schweigend weg, User wusste nicht woran's lag).
+        if (s.bunsenAtNeck && s.neck !== 'swan') {
+          if (tongsHere) {
+            list.push({ id: 'pull_neck', label: 'Glas ziehen (mit Zange)' });
+          } else {
+            list.push({
+              id: 'note_need_tongs',
+              label: '↪ Zange erst auf den Tisch ziehen',
+            });
+          }
+        }
+        if (s.liquid && !s.tipped)
+          list.push({ id: 'tip', label: 'Flasche kippen' });
+        if (s.bunsenBelow || s.bunsenAtNeck) {
+          list.push({ id: 'clear_actions', label: '— Bunsen/Zange abnehmen —' });
+        }
       }
-      if (!s.liquid) {
-        list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
-        list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
-      }
-      if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
-      if (!s.bunsenAtNeck && s.neck !== 'swan')
-        list.push({ id: 'bunsen_at_neck', label: 'Bunsen an Hals halten' });
-      if (s.bunsenBelow && s.liquid && !s.sterilized)
-        list.push({ id: 'sterilize', label: 'Anzuenden + Sterilisieren' });
-      if (s.bunsenAtNeck && s.neck !== 'swan' && hasPlacedTongs(placed))
-        list.push({ id: 'pull_neck', label: 'Glas ziehen (mit Zange)' });
-      if (s.liquid && !s.tipped)
-        list.push({ id: 'tip', label: 'Flasche kippen' });
-      list.push({ id: 'clear_actions', label: '— Bunsen/Zange abnehmen —' });
-      return list;
+    } else if (item.type === 'bunsen') {
+      list = [{ id: 'toggle_on', label: item.state?.on ? 'Ausmachen' : 'Anzuenden' }];
     }
-    if (item.type === 'bunsen') {
-      return [
-        { id: 'toggle_on', label: item.state?.on ? 'Ausmachen' : 'Anzuenden' },
-      ];
-    }
-    if (item.type === 'flask_pasteur' || item.type === 'flask_round') {
-      return [{ id: 'note_use_erlenmeyer', label: 'Pasteur arbeitet mit dem Erlenmeyer' }];
-    }
-    return null;
+    dbg('actions-for', {
+      itemType: item.type,
+      itemId: item.id,
+      state: item.state || null,
+      offered: list?.map((a) => a.id) || null,
+    });
+    return list;
   }
 
   function handleAction(actionId, item, helpers) {
@@ -184,7 +200,8 @@ function Lab() {
         helpers.update({ sterilized: true });
         award('sterilized');
         return;
-      case 'pull_neck':
+      case 'pull_neck': {
+        dbg('pull-neck-start', { itemId: item.id, x: item.x, y: item.y });
         helpers.runPullAnimation(
           {
             bunsen: { x: item.x - 60, y: item.y - 30 },
@@ -193,10 +210,12 @@ function Lab() {
           1500,
         );
         setTimeout(() => {
+          dbg('pull-neck-complete', { itemId: item.id });
           helpers.update({ neck: 'swan', bunsenAtNeck: false });
           award('neck_pulled');
         }, 1400);
         return;
+      }
       case 'tip':
         helpers.update({
           tipped: true,
