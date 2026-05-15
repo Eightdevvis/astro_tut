@@ -84,12 +84,39 @@ function similarityScore(userAtoms, targetAtoms) {
   return Math.round((weighted / weightSum) * 100);
 }
 
-// L1-Prompt-Bilder: Simolecule CDK Depict gibt fertige SVGs fuer einen SMILES.
-// Browser cached die Antworten anhand der URL. Reicht, weil unsere drei Lipide
-// fix sind. Vorher lief das ueber `ketcher.generateImage` — Ketcher mountet
-// aber im Preact-Compat-Setup nicht sauber, siehe enterL1-Kommentar.
-function lipidImageUrl(smiles) {
-  return `https://www.simolecule.com/cdkdepict/depict/bow/svg?smi=${encodeURIComponent(smiles)}&abbr=on&disp=bridgehead&zoom=1.0&hdisp=provided&showtitle=false`;
+// L1-Prompt-Bilder: zuerst lokales SVG aus `/public/lipids/<id>.svg` versuchen
+// (handgemalte Lehrbuch-Darstellung mit gefalteten Ketten — Auto-Renderer
+// koennen das nicht), per <img onError> auf Simolecule CDK Depict zurueckfallen.
+// So koennen SVGs Stueck fuer Stueck nachgezogen werden, der Game laeuft eh.
+const LOCAL_LIPID_URL = (id) => `/lipids/${id}.svg`;
+const SIMOLECULE_URL = (smiles) =>
+  `https://www.simolecule.com/cdkdepict/depict/bow/svg?smi=${encodeURIComponent(smiles)}&abbr=on&disp=bridgehead&zoom=1.0&hdisp=provided&showtitle=false`;
+
+function lipidImageUrl(lipid) {
+  return LOCAL_LIPID_URL(lipid.id);
+}
+function lipidImageFallbackUrl(lipid) {
+  return SIMOLECULE_URL(lipid.smiles);
+}
+
+// <img> mit automatischem Fallback: zuerst local SVG, bei 404/Fehler einmal
+// auf Simolecule umschalten. `data-fallback="1"` verhindert Endlos-Loop, falls
+// auch der Fallback fehlschlaegt.
+function LipidImage({ lipid, alt, className }) {
+  if (!lipid) return null;
+  return (
+    <img
+      className={className}
+      src={lipidImageUrl(lipid)}
+      alt={alt}
+      onError={(e) => {
+        const img = e.currentTarget;
+        if (img.dataset.fallback === '1') return;
+        img.dataset.fallback = '1';
+        img.src = lipidImageFallbackUrl(lipid);
+      }}
+    />
+  );
 }
 
 function useKetcherReady() {
@@ -145,18 +172,19 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     pushToServer(GAME_ID, updated);
   };
 
-  // Bilder pro Lipid kommen jetzt extern (Simolecule CDK Depict, siehe
-  // `lipidImageUrl`) — kein Ketcher-Render-Loop mehr. Browser-Cache haelt
-  // die drei URLs nach dem ersten Laden.
+  // Bilder pro Lipid: erst lokales SVG aus /public/lipids/<id>.svg, sonst
+  // Simolecule-Fallback (siehe `lipidImageUrl` / `lipidImageFallbackUrl`).
+  // Views holen sich pro Lipid die URLs direkt aus dem Lipid-Objekt; kein
+  // dynamischer State noetig.
   const targetAtoms = LIPID_TARGET_ATOMS;
   // Targets sind bereit, sobald Ketcher mountet — Atomzaehlungen brauchen ihn nicht.
   const targetsReady = Boolean(ketcher);
-  // Dummy fuer kompatible View-Props (Practice/L2-Reveal greifen weiterhin
-  // auf "lipidImages" zu, holen sich aber per lipidImageUrl).
+  // Map fuer alte View-Props (lipidImages[id]). Werte sind Primary-URLs;
+  // im <img>-Tag setzt onError den Fallback.
   const lipidImages = useMemo(
     () =>
       Object.fromEntries(
-        ARCHAEA_LIPIDS.map((l) => [l.id, lipidImageUrl(l.smiles)]),
+        ARCHAEA_LIPIDS.map((l) => [l.id, lipidImageUrl(l)]),
       ),
     [],
   );
@@ -351,7 +379,6 @@ function Level1View({ ketcher, lipidImages, targetsReady, onBack, onProgress }) 
   const [confetti, setConfetti] = useState({ tier: 'none', runId: 0 });
 
   const lipid = ARCHAEA_LIPIDS[idx];
-  const imageUrl = lipidImages[lipid?.id];
 
   const done = idx >= ARCHAEA_LIPIDS.length;
 
@@ -405,11 +432,11 @@ function Level1View({ ketcher, lipidImages, targetsReady, onBack, onProgress }) 
       </div>
       <h2 className="alg-level-title">Level&nbsp;1 — Namen tippen</h2>
       <div className="alg-l1-imagewrap">
-        {imageUrl ? (
-          <img className="alg-l1-image" src={imageUrl} alt="Lipid-Struktur" />
-        ) : (
-          <p className="alg-l1-imagewait">Struktur wird gerendert…</p>
-        )}
+        <LipidImage
+          lipid={lipid}
+          className="alg-l1-image"
+          alt="Lipid-Struktur"
+        />
       </div>
       <div className="alg-l1-input-row">
         <label className="alg-l1-label" htmlFor="alg-l1-input">
@@ -491,7 +518,6 @@ function Level2View({
   const [checking, setChecking] = useState(false);
 
   const lipid = ARCHAEA_LIPIDS[idx];
-  const correctImageUrl = lipidImages[lipid?.id];
 
   const done = idx >= ARCHAEA_LIPIDS.length;
 
@@ -573,14 +599,14 @@ function Level2View({
       </div>
       <h2 className="alg-level-title">Level&nbsp;2 — Strukturen bauen</h2>
       <div className="alg-l2-namebar">
-        {feedback && !feedback.ok && correctImageUrl ? (
+        {feedback && !feedback.ok && lipid ? (
           <div className="alg-l2-reveal">
             <p className="alg-l2-reveal-caption">
               Falsch &mdash; <strong>{lipid.name}</strong> sieht so aus:
             </p>
-            <img
+            <LipidImage
+              lipid={lipid}
               className="alg-l2-reveal-image"
-              src={correctImageUrl}
               alt={`${lipid.name} (Loesung)`}
             />
           </div>
@@ -645,17 +671,11 @@ function PracticeView({ lipidImages, targetsReady }) {
           <h2 className="alg-practice-name">{lipid.name}</h2>
           <p className="alg-practice-hint-text">{lipid.hint}</p>
           <div className="alg-practice-imagewrap">
-            {lipidImages[lipid.id] ? (
-              <img
-                className="alg-practice-image"
-                src={lipidImages[lipid.id]}
-                alt={`Struktur: ${lipid.name}`}
-              />
-            ) : (
-              <p className="alg-practice-imagewait">
-                {targetsReady ? 'Bild fehlt.' : 'Struktur wird gerendert…'}
-              </p>
-            )}
+            <LipidImage
+              lipid={lipid}
+              className="alg-practice-image"
+              alt={`Struktur: ${lipid.name}`}
+            />
           </div>
         </article>
       ))}
