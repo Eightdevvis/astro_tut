@@ -1,20 +1,21 @@
 ---
-import Nav2 from '../../../components/Nav2.astro';
-import SiteFontOverrides from '../../../components/SiteFontOverrides.astro';
-import ThemeInit from '../../../components/ThemeInit.astro';
-import ThemeClient from '../../../components/ThemeClient.astro';
-import BewareOfBugsBanner from '../../../components/BewareOfBugsBanner.astro';
-import PageFavicon from '../../../components/PageFavicon.astro';
-import LabBench from '../../../components/lab-bench/LabBench.jsx';
-import { getUsernameFromCookies } from '../../../lib/session.js';
-import { hasPermission } from '../../../lib/permissions.js';
-import '../../../styles/global.css';
+import Nav2 from '../../../../components/Nav2.astro';
+import SiteFontOverrides from '../../../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../../../components/ThemeInit.astro';
+import ThemeClient from '../../../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../../../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../../../../components/PageFavicon.astro';
+import PasteurExperiment from '../../../../components/lab-bench/experiments/Pasteur.jsx';
+import { getUsernameFromCookies } from '../../../../lib/session.js';
+import { hasPermission } from '../../../../lib/permissions.js';
+import '../../../../styles/global.css';
 
 const username = await getUsernameFromCookies(Astro.cookies);
 const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
+const skipIntro = Astro.url.searchParams.get('skip') === '1';
 ---
 
 <html lang="de">
@@ -24,23 +25,17 @@ if (!canUseMinigames) {
     <PageFavicon icon="minigames" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f1ea" />
-    <title>Pasteurs Experiment · Mikrobiologie · Minigames</title>
+    <title>Pasteurs Experiment · Labor · Mikrobiologie · Minigames</title>
     <SiteFontOverrides />
   </head>
   <body>
     <Nav2 variant="subpage" />
     <header class="pst-head">
-      <p class="pst-kicker"><a href="/minigames/mikrobiologie">&larr; Mikrobiologie</a></p>
+      <p class="pst-kicker"><a href="/minigames/mikrobiologie/labor">&larr; Labor</a></p>
       <h1 class="pst-title">Pasteurs Experiment</h1>
-      <p class="pst-lead">
-        Bau das Schwanenhals-Experiment auf. Items aus der Schublade, dem Regal oder der
-        Versorgungs-Schiene auf den Tisch ziehen; Bunsenbrenner anklicken zum Anzuenden,
-        Kolben anklicken zum Kippen. Mit dem Muelleimer wieder loeswerden.
-        <em>(WIP — Game-Mechanik kommt im naechsten Schritt; das hier ist nur die Buehne.)</em>
-      </p>
     </header>
     <main class="pst-main">
-      <LabBench client:load />
+      <PasteurExperiment client:load skipIntro={skipIntro} />
     </main>
     <ThemeClient />
     <BewareOfBugsBanner permission="minigames_access" />
@@ -59,7 +54,7 @@ if (!canUseMinigames) {
     width: 100%;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 1.4rem 1rem 0.6rem;
+    padding: 1.4rem 1rem 0.4rem;
     box-sizing: border-box;
   }
   .pst-kicker {
@@ -73,11 +68,6 @@ if (!canUseMinigames) {
     margin: 0 0 0.4rem;
     font-size: 1.85rem;
     font-weight: 700;
-  }
-  .pst-lead {
-    margin: 0;
-    line-height: 1.55;
-    color: var(--site-muted);
   }
   .pst-main {
     width: 100%;

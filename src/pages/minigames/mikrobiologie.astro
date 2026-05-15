@@ -46,6 +46,14 @@ if (!canUseMinigames) {
     <section class="mb-games" aria-label="Minigames">
       <ArchaeaLipidsMikrobioCard client:idle />
       <ExtremophileMikrobioCard client:idle />
+      <a class="mb-labor-card" href="/minigames/mikrobiologie/labor">
+        <span class="mb-labor-card-tag">Hub</span>
+        <span class="mb-labor-card-title">Labor</span>
+        <span class="mb-labor-card-desc">
+          Klassische Mikrobio-Experimente am virtuellen Tisch nachbauen. Aktuell: Pasteur.
+        </span>
+        <span class="mb-labor-card-wip">WIP</span>
+      </a>
     </section>
 
     <details class="mb-tools">
@@ -206,5 +214,52 @@ if (!canUseMinigames) {
 
   .mb-page-back a {
     color: inherit;
+  }
+
+  /* Labor-Hub-Karte (statischer Link, kein Progress-Island) */
+  .mb-labor-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 1rem 1.1rem;
+    background: var(--site-card-bg);
+    border: 1px solid var(--site-card-border);
+    border-radius: 0.9rem;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .mb-labor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--site-card-inset-soft), var(--site-card-shadow-hover);
+  }
+  .mb-labor-card-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--site-soft-muted);
+  }
+  .mb-labor-card-title {
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .mb-labor-card-desc {
+    color: var(--site-muted);
+    line-height: 1.45;
+  }
+  .mb-labor-card-wip {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.7rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.15rem 0.45rem;
+    background: rgba(225, 130, 30, 0.18);
+    color: #b56518;
+    border-radius: 0.35rem;
   }
 </style>

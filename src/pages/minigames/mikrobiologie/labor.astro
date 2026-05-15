@@ -1,0 +1,168 @@
+---
+import Nav2 from '../../../components/Nav2.astro';
+import SiteFontOverrides from '../../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../../components/ThemeInit.astro';
+import ThemeClient from '../../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../../../components/PageFavicon.astro';
+import { getUsernameFromCookies } from '../../../lib/session.js';
+import { hasPermission } from '../../../lib/permissions.js';
+import '../../../styles/global.css';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
+if (!canUseMinigames) {
+  return Astro.redirect('/');
+}
+
+// Verfuegbare Experimente. Neue hier eintragen. `wip` markiert Karten ohne
+// fertige Spielregeln (Bench steht, Mechanik kommt).
+const experiments = [
+  {
+    id: 'pasteur',
+    title: 'Pasteurs Experiment',
+    epoch: '1864',
+    desc: 'Schwanenhalskolben gegen Spontanzeugung. Glas ziehen mit Bunsen + Zange, Fluessigkeit kochen, kippen.',
+    href: '/minigames/mikrobiologie/labor/pasteur',
+    wip: true,
+  },
+];
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <PageFavicon icon="minigames" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>Labor · Mikrobiologie · Minigames</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="subpage" />
+    <header class="lh-head">
+      <p class="lh-kicker"><a href="/minigames/mikrobiologie">&larr; Mikrobiologie</a></p>
+      <h1 class="lh-title">Labor</h1>
+      <p class="lh-lead">
+        Klassische Mikrobio-Experimente am virtuellen Tisch nachbauen. Items aus Schublade,
+        Regal und Kuehlschrank ziehen, Bunsenbrenner anzuenden, Kolben kippen.
+      </p>
+    </header>
+    <main class="lh-main">
+      <ul class="lh-grid">
+        {experiments.map((e) => (
+          <li class="lh-card-li">
+            <a class="lh-card" href={e.href}>
+              <span class="lh-card-tag">{e.epoch}</span>
+              <span class="lh-card-title">{e.title}</span>
+              <span class="lh-card-desc">{e.desc}</span>
+              {e.wip && <span class="lh-card-wip">WIP</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </main>
+    <ThemeClient />
+    <BewareOfBugsBanner permission="minigames_access" />
+  </body>
+</html>
+
+<style>
+  body {
+    background-color: var(--mg-page-bg);
+    margin: 0;
+    padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+    color: var(--site-body-text);
+  }
+  .lh-head,
+  .lh-main {
+    width: 100%;
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 0 1rem;
+    box-sizing: border-box;
+  }
+  .lh-head {
+    padding-top: 1.6rem;
+    padding-bottom: 0.6rem;
+  }
+  .lh-kicker {
+    margin: 0 0 0.4rem;
+    font-size: 0.9rem;
+    color: var(--site-soft-muted);
+  }
+  .lh-kicker a { color: inherit; text-decoration: none; }
+  .lh-kicker a:hover { text-decoration: underline; }
+  .lh-title {
+    margin: 0 0 0.4rem;
+    font-size: 1.85rem;
+    font-weight: 700;
+  }
+  .lh-lead {
+    margin: 0;
+    line-height: 1.55;
+    color: var(--site-muted);
+  }
+  .lh-main {
+    margin-top: 1.2rem;
+    padding-bottom: 4rem;
+  }
+  .lh-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+  }
+  @media (min-width: 40rem) {
+    .lh-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .lh-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    background: var(--site-card-bg);
+    border: 1px solid var(--site-card-border);
+    border-radius: 0.9rem;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lh-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--site-card-inset-soft), var(--site-card-shadow-hover);
+  }
+  .lh-card-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--site-soft-muted);
+  }
+  .lh-card-title {
+    font-weight: 700;
+    font-size: 1.15rem;
+  }
+  .lh-card-desc {
+    color: var(--site-muted);
+    line-height: 1.45;
+  }
+  .lh-card-wip {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.7rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.15rem 0.45rem;
+    background: rgba(225, 130, 30, 0.18);
+    color: #b56518;
+    border-radius: 0.35rem;
+  }
+</style>

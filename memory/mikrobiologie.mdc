@@ -9,7 +9,7 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 ## Seitenstruktur
 
 - Header (Titel + Lead).
-- `<section.mb-games>` — Minigame-Karten-Grid. Aktuell zwei Karten: "Archaea: Membran: Lipide" und "Extremophile" (siehe unten).
+- `<section.mb-games>` — Minigame-Karten-Grid. Aktuell drei Karten: "Archaea: Membran: Lipide", "Extremophile", "Labor" (Hub, fuehrt zu Experimenten).
 - `<details.mb-tools>` — aufklappbarer Drawer "Werkzeuge & Vorlagen". Drinnen sitzt der `MoleculeBuilder` als erstes (zurzeit einziges) Tool. Weitere Tools/Vorlagen kommen hier rein, nicht oben in den Minigame-Bereich.
 
 ## Minigame: Archaea: Membran: Lipide
@@ -48,7 +48,23 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Persistenz: localStorage Key `mikrobio:extremophile:v1` **plus** Server-Sync via `/api/minigames/progress` (game_id `extremophile`). "ever correct"-Flag pro (Kategorie, Frage). Card-Prozent = jemals-richtige / (6 Kategorien × 6 Fragen). Merge = OR.
 - Spielfluss: Home-Grid mit 6 Tiles. Tile-Klick startet Quiz; andere Tiles werden ausgeblendet (nur die aktive Kategorie zeigt das Icon zentral). Fragen sequenziell; nach Pruefen klatscht ein ✓ oder ✗ als Pop-Animation auf das Icon (`ex-marker-pop`, 0.9 s) und der Marker haelt bis zum naechsten Advance: 1.1 s bei richtig, **3.5 s bei falsch** — damit Zeit bleibt, die Loesung zu lesen. Input ist waehrend des Holds gesperrt. Result-Liste oben ist **vertikal**, pro Frage eine Zeile: Pill links, rechts daneben die Loesung (bei richtig); bei falsch die User-Eingabe durchgestrichen + Loesung. Am Ende Summary mit Back-Button.
 
-## Rechte/Freigabe
+## Labor-Hub: Mikrobio-Experimente
+
+- Route Hub: `src/pages/minigames/mikrobiologie/labor.astro`. Tile-Liste mit Experimenten — neue Experimente hier eintragen (`experiments`-Array).
+- Karte auf Mikrobio-Seite: statischer Link `.mb-labor-card` mit WIP-Badge (kein Progress-Sync bisher, da Spielregeln noch offen).
+- Engine: `src/components/lab-bench/LabBench.jsx` (generisch). Items: `src/components/lab-bench/items.jsx`. Pattern siehe `memory/minigame-mechanics.mdc#2d-lab-bench`.
+
+## Experiment: Pasteur
+
+- Route: `src/pages/minigames/mikrobiologie/labor/pasteur.astro`.
+- Wrapper: `src/components/lab-bench/experiments/Pasteur.jsx` — State-Machine `'intro' | 'lab'`.
+- **Intro-Szene** (Phase 1, geliefert): SVG mit Pasteur-Portrait (Halbportrait, stilisiert: Bart/Schnurrbart/Anzug), Pfeil mit Label, Gedanken-Wolke ("Spontanzeugung ist Muell. Aber wie beweise ich es? Wo Vergammelung anfaengt geht die Vergammelung auch weiter… Hmmmmm"). Weiter-Button schaltet auf `phase='lab'`. Funktional auch Loading-Buffer fuer LabBench-Chunks.
+- Skip-Intro: `?skip=1` springt direkt zum Lab (Dev/Debugging).
+- **Spielregeln (Phase 2, ausstehend):**
+  - Event-basierte Progress: jeder produzierte Meilenstein zaehlt 1 Punkt (z. B. Erlenmeyer auf Stativ; Unsterile Fluessigkeit reingeschuettet; Glas gezogen mit Bunsen + Zange; gekocht; gekippt = kontaminiert).
+  - Smiley fallt eine Stufe wenn 3 Aktionen ohne Progress passieren. Drei Stufen :) -> ._. -> :(.
+  - Glas-Ziehen: Aktions-Menue auf platziertem Kolben -> "Bunsen an Hals". Bunsen schwebt am Hals. Zange auf Bunsen ziehen -> Animation (Bunsen + Zange driften ab, Crossfade von Erlenmeyer-straight auf Erlenmeyer-swan-neck).
+  - Kontamination: schmutzige Punkte ueber der Fluessigkeit (SVG-Pattern), wenn Kolben gekippt + Hals-Biegung im Spiel ist.
 
 `super_access` (siehe `minigames/index.astro`). Permission `minigames_access` bleibt fuer spaetere Reaktivierung in `KNOWN_PERMISSIONS`.
 
