@@ -172,25 +172,23 @@ function Lab() {
           list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
           list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
         }
-        // Bunsen-Positionierung kommt jetzt per Drag-Snap. Das Menue nennt
-        // die Stelle, wo man hinziehen soll — als pure Anleitung, kein
-        // Klick-Effekt.
-        if (!s.bunsenBelow && !s.bunsenAtNeck)
-          list.push({ id: 'note_drag_bunsen', label: '↪ Bunsenbrenner an den Kolben ziehen (drunter oder an den Hals)' });
-        // Sterilisieren: Bunsen drunter + Liquid drin. Loesst Sterilisations-
-        // Visual aus (Dampf), nach 2.5 s ist sterilized=true.
+        // Bunsen + Zange via Drag-Snap. Sterilisation + Glas-Ziehen laufen
+        // automatisch sobald die Bedingungen stimmen (siehe onPlacedChange).
+        if (!s.bunsenBelow && !s.bunsenAtNeck && !s.sterilized)
+          list.push({ id: 'note_drag_bunsen', label: '↪ Bunsenbrenner an den Kolben ziehen (drunter zum Sterilisieren)' });
+        if (s.bunsenBelow && !s.sterilized && !s.sterilizing && !(s.liquid))
+          list.push({ id: 'note_need_liquid', label: '↪ Erst Fluessigkeit einfuellen' });
         if (s.bunsenBelow && s.liquid && !s.sterilized && !s.sterilizing)
-          list.push({ id: 'sterilize', label: 'Sterilisieren (Bunsen unter dem Kolben)' });
+          list.push({ id: 'note_light_bunsen', label: '↪ Bunsen anzuenden (Klick auf den Brenner)' });
         if (s.sterilizing)
           list.push({ id: 'note_sterilizing', label: '↪ Sterilisiert gerade…' });
-        // Glas-Ziehen: Bunsen am Hals + Zange am Hals.
-        if (s.bunsenAtNeck && s.neck !== 'swan') {
-          if (s.tongsAtNeck) {
-            list.push({ id: 'pull_neck', label: 'Glas ziehen (mit Zange)' });
-          } else {
-            list.push({ id: 'note_need_tongs', label: '↪ Zange an den Hals ziehen (linke Seite)' });
-          }
-        }
+        if (s.sterilized && !s.bunsenAtNeck && s.neck !== 'swan')
+          list.push({ id: 'note_drag_bunsen_neck', label: '↪ Bunsen an den Hals ziehen (Schwanenhals vorbereiten)' });
+        if (s.bunsenAtNeck && !s.tongsAtNeck && s.neck !== 'swan')
+          list.push({ id: 'note_need_tongs', label: '↪ Zange an den Hals ziehen (linke Seite)' });
+        if (s.bunsenAtNeck && s.tongsAtNeck && s.neck !== 'swan' &&
+            !placed.some((p) => p.type === 'bunsen' && p.state?.on))
+          list.push({ id: 'note_light_bunsen_neck', label: '↪ Bunsen anzuenden zum Glas ziehen' });
         if (s.liquid && !s.tilted)
           list.push({ id: 'tip', label: 'Flasche kippen' });
         if (s.tilted)
@@ -229,44 +227,10 @@ function Lab() {
         );
         bump();
         return;
-      // bunsen_below / bunsen_at_neck als Menue-Aktionen entfernt — passiert
-      // jetzt per Drag-Snap (siehe handleItemSnapped).
-      case 'sterilize': {
-        // Sterilisations-Visual: kurze Animations-Phase mit Dampf, dann
-        // sterilized=true + neckContaminated=true (Luft hat Staub
-        // eingeschleppt). Liquid wird sterile-faerbig.
-        helpers.update({ sterilizing: true });
-        const flaskId = item.id;
-        setTimeout(() => {
-          // Spielregel: Sterilisation aendert Liquid auf "sterile" (Farbe +
-          // Flag), oeffnet Hals zur Luft -> neckContaminated.
-          const newAttrs = {
-            sterilizing: false,
-            sterilized: true,
-            liquidColor: '#f0e6c8',
-            neckContaminated: true,
-          };
-          helpers.update(newAttrs);
-          award('sterilized');
-        }, 2500);
-        return;
-      }
-      case 'pull_neck': {
-        dbg('pull-neck-start', { itemId: item.id, x: item.x, y: item.y });
-        helpers.runPullAnimation(
-          {
-            bunsen: { x: item.x - 60, y: item.y - 30 },
-            tongs:  { x: item.x + ITEM_META[item.type].w + 10, y: item.y - 20 },
-          },
-          1500,
-        );
-        setTimeout(() => {
-          dbg('pull-neck-complete', { itemId: item.id });
-          helpers.update({ neck: 'swan', bunsenAtNeck: false });
-          award('neck_pulled');
-        }, 1400);
-        return;
-      }
+      // Sterilisation + Glas-Ziehen passieren jetzt automatisch in
+      // onPlacedChange, sobald die Snap-Konditionen + Bunsen-an stimmen.
+      // Hier kein Menue-Pfad mehr.
+      // pull_neck als Menue-Aktion ebenfalls entfernt — siehe onPlacedChange.
       case 'tip': {
         // Kippen: Meilenstein einmalig, `tilted` togglebar.
         // Kontaminations-Logik (Pasteurs Idee):
@@ -304,31 +268,131 @@ function Lab() {
     }
   }
 
-  // LabBench meldet bei Drop, wenn ein Item snap-gesetzt wurde. Wir checken
-  // im Render-Effekt, ob ein neuer Erlenmeyer aufs Stativ gelandet ist.
-  function onPlacedChange(placed) {
-    placedReportRef.current.placed = placed;
-    // Heuristik: wenn ein Erlenmeyer auf einem Stand-Snap-Slot sitzt -> award.
-    const flaskOnStand = placed.some((p) => p.type === 'flask_erlenmeyer' && isOnStand(p, placed));
-    if (flaskOnStand && !progress.has('flask_on_stand')) {
+  // Position-basierte Snap-Erkennung: was sitzt aktuell wirklich in welchem
+  // Flask-Slot? Liefert {bunsenBelow, bunsenAtNeck, tongsAtNeck} + die
+  // jeweiligen Items.
+  function detectFlaskSnaps(flask, placedItems) {
+    const slots = ITEM_META.flask_erlenmeyer.snapSlots || [];
+    const RADIUS = 70;
+    const result = {
+      bunsenBelow: null,
+      bunsenAtNeck: null,
+      tongsAtNeck: null,
+    };
+    for (const slot of slots) {
+      const sx = flask.x + slot.x;
+      const sy = flask.y + slot.y;
+      const occ = placedItems.find((other) => {
+        if (other.id === flask.id) return false;
+        if (!slot.accepts.includes(other.type)) return false;
+        const om = ITEM_META[other.type];
+        const ocx = other.x + om.w / 2;
+        const ocy = other.y + om.h / 2;
+        return Math.hypot(ocx - sx, ocy - sy) < RADIUS;
+      });
+      if (!occ) continue;
+      if (slot.id === 'below') result.bunsenBelow = occ;
+      else if (slot.id === 'neck_heat') result.bunsenAtNeck = occ;
+      else if (slot.id === 'neck_pull') result.tongsAtNeck = occ;
+    }
+    return result;
+  }
+
+  // Ref-Tracker: verhindert Doppel-Ausloesungen von Auto-Aktionen, weil
+  // onPlacedChange mehrfach feuert bevor setPlaced den State commited hat.
+  const autoSterilizingRef = useRef(new Set());
+  const autoPullingRef = useRef(new Set());
+
+  function onPlacedChange(placedItems, helpers) {
+    placedReportRef.current.placed = placedItems;
+
+    // Erlenmeyer auf Stativ?
+    const flaskOnStand = placedItems.some(
+      (p) => p.type === 'flask_erlenmeyer' && isOnStand(p, placedItems),
+    );
+    if (flaskOnStand && !progressRef.current.has('flask_on_stand')) {
       award('flask_on_stand');
+    }
+
+    // Pro Erlenmeyer: Snap-Flags abgleichen + Auto-Aktionen pruefen.
+    for (const flask of placedItems) {
+      if (flask.type !== 'flask_erlenmeyer') continue;
+      const snaps = detectFlaskSnaps(flask, placedItems);
+      const s = flask.state || {};
+
+      // Flag-Sync: aktualisieren wenn sich die Realitaet vs. State unterscheiden.
+      const flagUpdate = {};
+      if (Boolean(snaps.bunsenBelow)  !== !!s.bunsenBelow)  flagUpdate.bunsenBelow  = !!snaps.bunsenBelow;
+      if (Boolean(snaps.bunsenAtNeck) !== !!s.bunsenAtNeck) flagUpdate.bunsenAtNeck = !!snaps.bunsenAtNeck;
+      if (Boolean(snaps.tongsAtNeck)  !== !!s.tongsAtNeck)  flagUpdate.tongsAtNeck  = !!snaps.tongsAtNeck;
+      if (Object.keys(flagUpdate).length > 0) {
+        helpers.update(flask.id, flagUpdate);
+      }
+      const effective = { ...s, ...flagUpdate };
+
+      // Auto-Sterilisation: Bunsen unter dem Kolben + an + Liquid drin +
+      // nicht schon sterilisiert / sterilisierend
+      if (
+        effective.bunsenBelow &&
+        snaps.bunsenBelow?.state?.on &&
+        effective.liquid &&
+        !effective.sterilized &&
+        !effective.sterilizing &&
+        !autoSterilizingRef.current.has(flask.id)
+      ) {
+        autoSterilizingRef.current.add(flask.id);
+        dbg('auto-sterilize-start', { flaskId: flask.id });
+        helpers.update(flask.id, { sterilizing: true });
+        setTimeout(() => {
+          autoSterilizingRef.current.delete(flask.id);
+          helpers.update(flask.id, {
+            sterilizing: false,
+            sterilized: true,
+            liquidColor: '#f0e6c8',
+            neckContaminated: true,
+          });
+          award('sterilized');
+          dbg('auto-sterilize-done', { flaskId: flask.id });
+        }, 2500);
+      }
+
+      // Auto-Glas-Ziehen: Bunsen am Hals + an + Zange am Hals + noch kein Schwanenhals
+      if (
+        effective.bunsenAtNeck &&
+        snaps.bunsenAtNeck?.state?.on &&
+        effective.tongsAtNeck &&
+        effective.neck !== 'swan' &&
+        !autoPullingRef.current.has(flask.id)
+      ) {
+        autoPullingRef.current.add(flask.id);
+        dbg('auto-pull-start', { flaskId: flask.id });
+        helpers.runPullAnimation(
+          {
+            bunsen: { x: snaps.bunsenAtNeck.x, y: snaps.bunsenAtNeck.y },
+            tongs:  { x: snaps.tongsAtNeck.x,  y: snaps.tongsAtNeck.y },
+          },
+          1600,
+        );
+        setTimeout(() => {
+          autoPullingRef.current.delete(flask.id);
+          helpers.update(flask.id, { neck: 'swan' });
+          award('neck_pulled');
+          dbg('auto-pull-done', { flaskId: flask.id });
+        }, 1500);
+      }
     }
   }
 
-  // Snap-Event: User hat einen Bunsen oder eine Zange an einen der drei
-  // Flask-Snap-Slots gezogen. Slot-ID entscheidet was passiert.
-  function handleItemSnapped(dropped, host, slot, helpers) {
+  // Snap-Event: nur fuer Meilenstein-Vergabe. State-Flags managt onPlacedChange
+  // anhand der Item-Positionen (Source-of-Truth: was steht wirklich wo).
+  function handleItemSnapped(dropped, host, slot /*, helpers */) {
     if (host.type !== 'flask_erlenmeyer') return;
     if (slot.id === 'below' && dropped.type === 'bunsen') {
-      helpers.updateHost({ bunsenBelow: true });
       award('bunsen_below');
     } else if (slot.id === 'neck_heat' && dropped.type === 'bunsen') {
-      helpers.updateHost({ bunsenAtNeck: true });
       award('bunsen_at_neck');
     } else if (slot.id === 'neck_pull' && dropped.type === 'tongs') {
-      helpers.updateHost({ tongsAtNeck: true });
-      // Kein eigener Meilenstein fuer Zange platzieren — Zange ist nur
-      // Voraussetzung fuer `neck_pulled`. Aber zaehlt als Setup-Aktion.
+      // Zange platzieren ist Setup, kein eigener Meilenstein.
       bump();
     } else {
       bump();

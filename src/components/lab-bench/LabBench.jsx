@@ -93,10 +93,17 @@ export default function LabBench({
   // Tongs-Position pro Animations-Frame fuer Glas-Zieh-Effekt: { x, y } | null
   const [pulledOverlay, setPulledOverlay] = useState(null);
 
-  // Parent ueber Aenderungen am Tisch informieren (z. B. fuer Snap-getriggerte
-  // Progress-Events wie "Erlenmeyer auf Stativ").
+  // Parent ueber Aenderungen am Tisch informieren. Helpers ermoeglichen
+  // Wrapper-Komponenten reactive Auto-Actions (z. B. Auto-Sterilisation
+  // wenn Bunsen unter Kolben + an).
   useEffect(() => {
-    onPlacedChange?.(placed);
+    onPlacedChange?.(placed, {
+      update: (id, partial) => updateItemState(id, partial),
+      runPullAnimation: (overlay, ms = 1400) => {
+        setPulledOverlay(overlay);
+        setTimeout(() => setPulledOverlay(null), ms);
+      },
+    });
   }, [placed, onPlacedChange]);
 
   // Pointer-Position in SVG-Koordinaten
