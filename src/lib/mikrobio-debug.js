@@ -48,10 +48,10 @@ export function isDebugEnabled() {
   if (typeof window === 'undefined') return false;
   try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('nodbg') === '1') return false;
-    if (window.localStorage?.getItem('mikrobio:debug') === 'off') return false;
+    if (params.get('dbg') === '1') return true;
+    if (window.localStorage?.getItem('mikrobio:debug') === 'on') return true;
   } catch {
     /* ignore */
   }
-  return true;
+  return false;
 }

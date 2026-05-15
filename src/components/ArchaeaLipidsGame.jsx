@@ -167,20 +167,9 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     if (ketcher) dbg('ketcher-state-set', { keys: Object.keys(ketcher).slice(0, 20) });
   }, [ketcher]);
 
-  // Ketcher-Bundle ist gross (mehrere MB inkl. WASM). Sobald die Game-Seite
-  // mountet, den Lazy-Chunk schonmal im Hintergrund holen — dann ist er beim
-  // Klick auf L1/L2 idealerweise schon im Cache.
-  useEffect(() => {
-    const t0 = performance.now();
-    dbg('prefetch-start');
-    import('./MoleculeBuilderCanvas.jsx')
-      .then(() =>
-        dbg('prefetch-done', { ms: Math.round(performance.now() - t0) }),
-      )
-      .catch((err) =>
-        dbg('prefetch-failed', { msg: String(err?.message || err) }),
-      );
-  }, []);
+  // (Frueher: Prefetch des Ketcher-Chunks beim Mount. Raus, weil L1 keinen
+  // Editor mehr braucht und L2 zurzeit beim Mount crasht — der mehrere-MB-
+  // Chunk wuerde bei jedem Page-Load fuer nichts geladen.)
 
   const ensureEditor = () => setEditorMounted(true);
 
@@ -322,15 +311,17 @@ function HomeView({ progress, onL1, onL2, targetsReady, editorMounted }) {
         </button>
         <button
           type="button"
-          className="alg-level-card"
+          className="alg-level-card alg-level-card--broken"
           onClick={onL2}
-          disabled={loadingHint}
+          disabled
+          title="Level 2 funktioniert grad nicht — Ketcher-Editor crasht beim Mount, kommt zurueck."
         >
-          <span className="alg-level-card-tag">Level 2</span>
+          <span className="alg-level-card-tag">Level 2 · kaputt</span>
           <span className="alg-level-card-title">Strukturen bauen</span>
           <span className="alg-level-card-desc">
-            Name oben, Editor unten. Mit Ketcher das Lipid nachbauen, pruefen,
-            sehen wie nah du dran warst.
+            Geplant: Name oben, Editor unten, Lipid mit Ketcher nachbauen.
+            Aktuell crasht der Editor beim Mount — kommt sobald ein leichterer
+            Molekuel-Editor eingebaut ist.
           </span>
           <span className="alg-level-card-progress-row">
             <span className="alg-level-card-bar">
@@ -768,6 +759,14 @@ function Styles() {
       .alg-level-card:disabled {
         opacity: 0.6;
         cursor: progress;
+      }
+      .alg-level-card--broken {
+        opacity: 0.5;
+        cursor: not-allowed;
+        filter: grayscale(0.6);
+      }
+      .alg-level-card--broken .alg-level-card-tag {
+        color: #b04040;
       }
       .alg-level-card-tag {
         font-size: 0.8rem;
