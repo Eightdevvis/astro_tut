@@ -1,13 +1,31 @@
 # Projekt-Anweisungen — astro-tut
 
-## RPG-Memory-Pflege (Pflicht)
+## Memory-Pflege (Pflicht, pedantisch)
 
-Bei allen Änderungen im Projekt muss die Memory mitgepflegt werden:
+Wir haben ein **striktes** Memory-System. Bei **jeder** inhaltlichen Änderung am Projekt — Feature, Refactor, Architektur-Umbau, Pfad-/Namens-/API-Änderung, neue Permissions, neue Seiten/Komponenten, geänderte Verhalten — muss die Memory mitgepflegt werden. Es gibt **keine** Ausnahme für "kleine" Änderungen. Einzige Ausnahme: reine Bugfixes ohne Verhaltensänderung.
 
-- **Auto-Memory** (immer geladen): `~/.claude/projects/-home-sasha-codicus-astrotutut-astro-tut/memory/MEMORY.md`
-- **Repo-Memory** (bei Bedarf): `memory/rpg/*.mdc` — Einstieg `memory/rpg/index.mdc`, Zuordnung Bereich→Datei `memory/rpg/source-map.mdc`
+### Quellen (beide pflegen, falls erreichbar)
 
-Bugfixes brauchen kein Memory-Update.
+- **Repo-Memory** (immer pflegen, wird mit-committet): das **gesamte** `memory/`-Verzeichnis im Repo. **Einstieg: `memory/memory.md`** — Themenübersicht mit Verlinkung. Unterdateien:
+  - `memory/*.mdc` — Top-Level-Themen (z. B. `math-minigames.mdc`, `mikrobiologie.mdc`, `blogpost-editor.mdc`, `database.mdc` …).
+  - `memory/rpg/*.mdc` — Sub-Bereich nur fuer das RPG/Quest-System. Einstieg `memory/rpg/index.mdc`, Bereichszuordnung `memory/rpg/source-map.mdc`.
+  - Achtung: `rpg/` ist **nicht** der gesamte Repo-Memory, sondern nur ein Unterordner. Neue Themen ausserhalb von RPG kommen als eigene `.mdc` direkt unter `memory/` an.
+- **Auto-Memory** (user-lokal, ausserhalb des Repos): `~/.claude/projects/-home-sasha-codicus-astrotutut-astro-tut/memory/MEMORY.md`. Wird bei jeder Session automatisch geladen. **Aus Web/Remote-Sessions oft nicht erreichbar** (der Pfad ist sasha-lokal). Wenn nicht erreichbar: nur Repo-Memory pflegen und am Ende kurz erwaehnen, dass Auto-Memory ggf. lokal nachgezogen werden muss.
+
+### Ablauf pro Änderung
+
+1. **Vor** der Aenderung `memory/memory.md` (Themenuebersicht) ueberfliegen und das passende Thema identifizieren — RPG-Aenderungen zusaetzlich gegen `memory/rpg/source-map.mdc` pruefen.
+2. **Nach** der Aenderung:
+   - Passende `.mdc` **erweitern** (Stichpunkte, moeglichst eine Zeile pro Fakt; Pfade/Dateien benennen; keinen Code abschreiben).
+   - Wenn das Thema noch nicht existiert: **neue** `.mdc` anlegen + **eine Zeile** in der Tabelle von `memory/memory.md` ergaenzen.
+   - Veraltete Fakten in der gleichen Datei **streichen oder korrigieren**, nicht danebenschreiben.
+3. **Memory-Update im selben PR/Commit** wie die Code-Aenderung — nicht "spaeter nachziehen". Wenn aus Versehen ohne Memory committet wurde, sofort einen Folge-Commit `docs(memory): …` hinterherschieben (siehe `0bebf13` als Beispiel: holt nach, was bei `99e54a8` liegen blieb).
+
+### Stilregeln (aus `memory/memory.md`)
+
+- **Form:** Stichpunkte, eine Zeile pro Fakt; ausufernde Specs in eigene Datei + Link.
+- **Inhalt:** Verhalten, Pfade/Dateien; APIs/Keys/Migration nur wenn betroffen; **kein** Code copy-paste.
+- **Ort:** ein Thema = eine `.mdc`; bei Bedarf neue Datei + Index-Zeile, nicht in fremde Dateien quetschen.
 
 ## UX-Naming-Regel
 
