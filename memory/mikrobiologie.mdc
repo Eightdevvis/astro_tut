@@ -35,10 +35,10 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Spielkomponente: `src/components/ExtremophileGame.jsx` (single-island, Preact).
 - Icons: `src/components/ExtremophileIcons.jsx` — sechs einfache SVGs (flame, snowflake, acid, alkali, pressure, salt). Bewusst grob.
 - Karte auf Mikrobio-Seite: `src/components/ExtremophileMikrobioCard.jsx` (client:idle).
-- Daten: `src/lib/extremophile.js` — sechs Kategorien (Hyperthermophile, Psychrophile, Acidophile, Alkaliphile, Barophile, Halophile) mit jeweils einer Beispielart aus Lehrbuch-Tabelle. Pro Kategorie sechs Fragen (`QUESTIONS`): Art, Gruppe, Habitat, Optimum, Min, Max.
+- Daten: `src/lib/extremophile.js` — sechs Kategorien (Hyperthermophile, Psychrophile, Acidophile, Alkaliphile, Barophile, Halophile) mit jeweils einer Beispielart aus Lehrbuch-Tabelle. Pro Kategorie sechs Fragen (`QUESTIONS`): Art, **Bakterium/Archaeon/Eukaryot**, Habitat, Optimum, Min, Max. `DOMAIN_ALIASES` mappt dt./latein./Plural-Schreibweisen auf die drei kanonischen Domains.
 - Antwort-Pruefung in `checkAnswer()`: Name/Gruppe exakt (normalisiert), Habitat lenient (Alternativen + Wortueberschneidung), Numerisch via Erstzahl-Parsing (deutsche Notation "0,7" / "−12" wird normalisiert).
 - Persistenz: localStorage Key `mikrobio:extremophile:v1` **plus** Server-Sync via `/api/minigames/progress` (game_id `extremophile`). "ever correct"-Flag pro (Kategorie, Frage). Card-Prozent = jemals-richtige / (6 Kategorien × 6 Fragen). Merge = OR.
-- Spielfluss: Home-Grid mit 6 Tiles. Tile-Klick startet Quiz; andere Tiles werden ausgeblendet (nur die aktive Kategorie zeigt das Icon zentral). Fragen sequenziell; nach Pruefen klatscht ein ✓ oder ✗ als Pop-Animation auf das Icon (`ex-marker-pop`, 0.9 s), dann naechste Frage nach 1.1 s. Pill-Strip oben zeigt pro Frage den Status (Pending/Current/OK/Bad). Am Ende Summary mit Back-Button.
+- Spielfluss: Home-Grid mit 6 Tiles. Tile-Klick startet Quiz; andere Tiles werden ausgeblendet (nur die aktive Kategorie zeigt das Icon zentral). Fragen sequenziell; nach Pruefen klatscht ein ✓ oder ✗ als Pop-Animation auf das Icon (`ex-marker-pop`, 0.9 s) und der Marker haelt bis zum naechsten Advance: 1.1 s bei richtig, **3.5 s bei falsch** — damit Zeit bleibt, die Loesung zu lesen. Input ist waehrend des Holds gesperrt. Result-Liste oben ist **vertikal**, pro Frage eine Zeile: Pill links, rechts daneben die Loesung (bei richtig); bei falsch die User-Eingabe durchgestrichen + Loesung. Am Ende Summary mit Back-Button.
 
 ## Rechte/Freigabe
 

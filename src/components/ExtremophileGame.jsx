@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { CATEGORIES, QUESTIONS, categoryById, checkAnswer } from '../lib/extremophile.js';
+import {
+  CATEGORIES,
+  QUESTIONS,
+  categoryById,
+  checkAnswer,
+  getDisplayAnswer,
+} from '../lib/extremophile.js';
 import {
   loadProgress,
   saveProgress,
@@ -65,16 +71,15 @@ export default function ExtremophileGame({ mode = 'play' }) {
     const cat = categoryById(selectedId);
     const q = QUESTIONS[qIdx];
     const correct = checkAnswer(cat, q, input);
+    const correctAnswer = getDisplayAnswer(cat, q);
 
     setResults((prev) => {
       const next = [...prev];
-      next[qIdx] = { correct, userAnswer: input };
+      next[qIdx] = { correct, userAnswer: input.trim(), correctAnswer };
       return next;
     });
 
     setMarker(correct ? 'check' : 'cross');
-    clearTimeout(markerTimer.current);
-    markerTimer.current = setTimeout(() => setMarker(null), 900);
 
     if (correct) {
       const updated = markCorrect(selectedId, q.id);
@@ -82,15 +87,17 @@ export default function ExtremophileGame({ mode = 'play' }) {
       pushToServer(GAME_ID, updated);
     }
 
+    // Marker bleibt visuell bis Advance — das hält den Input gesperrt und
+    // gibt bei falscher Antwort Zeit, die Loesung im Strip oben zu lesen.
+    clearTimeout(markerTimer.current);
     clearTimeout(advanceTimer.current);
+    const advanceDelay = correct ? 1100 : 3500;
     advanceTimer.current = setTimeout(() => {
+      setMarker(null);
       setInput('');
-      setQIdx((v) => {
-        const next = v + 1;
-        return next;
-      });
+      setQIdx((v) => v + 1);
       setTimeout(() => inputRef.current?.focus(), 0);
-    }, 1100);
+    }, advanceDelay);
   };
 
   const quizDone = selectedId && qIdx >= QUESTIONS.length;
@@ -172,19 +179,45 @@ export default function ExtremophileGame({ mode = 'play' }) {
             </span>
           </div>
 
-          <div className="ex-result-strip" role="list" aria-label="Fragen-Fortschritt">
+          <ol className="ex-result-list" aria-label="Fragen-Fortschritt">
             {QUESTIONS.map((q, i) => {
               const r = results[i];
-              const cls = r === null
-                ? i === qIdx ? 'ex-pill--current' : 'ex-pill--pending'
-                : r.correct ? 'ex-pill--ok' : 'ex-pill--bad';
+              const isCurrent = i === qIdx && r === null;
+              const cls =
+                r === null
+                  ? isCurrent
+                    ? 'ex-pill--current'
+                    : 'ex-pill--pending'
+                  : r.correct
+                  ? 'ex-pill--ok'
+                  : 'ex-pill--bad';
+              const isSpecies = q.id === 'species';
               return (
-                <span key={q.id} className={`ex-pill ${cls}`} role="listitem">
-                  {r === null ? i + 1 : r.correct ? '✓' : '✗'}
-                </span>
+                <li key={q.id} className="ex-result-row">
+                  <span className={`ex-pill ${cls}`}>
+                    {r === null ? i + 1 : r.correct ? '✓' : '✗'}
+                  </span>
+                  <span className="ex-result-text">
+                    {r === null ? (
+                      <span className="ex-result-prompt">{q.prompt}</span>
+                    ) : r.correct ? (
+                      <span className="ex-result-correct">
+                        {isSpecies ? <em>{r.correctAnswer}</em> : r.correctAnswer}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="ex-result-user-wrong">{r.userAnswer}</span>
+                        <span className="ex-result-arrow" aria-hidden="true">→</span>
+                        <span className="ex-result-correct">
+                          {isSpecies ? <em>{r.correctAnswer}</em> : r.correctAnswer}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </li>
               );
             })}
-          </div>
+          </ol>
 
           <div className="ex-icon-stage">
             <ExtremophileIcon iconKey={category.iconKey} size={170} />
@@ -436,10 +469,40 @@ function Styles() {
         color: var(--site-muted);
       }
 
-      .ex-result-strip {
+      .ex-result-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
         display: flex;
-        gap: 0.4rem;
-        flex-wrap: wrap;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .ex-result-row {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        line-height: 1.3;
+      }
+      .ex-result-text {
+        flex: 1;
+        min-width: 0;
+        font-size: 0.95rem;
+      }
+      .ex-result-prompt {
+        color: var(--site-soft-muted);
+      }
+      .ex-result-user-wrong {
+        text-decoration: line-through;
+        color: #b94b4b;
+        margin-right: 0.4rem;
+      }
+      .ex-result-arrow {
+        color: var(--site-soft-muted);
+        margin-right: 0.4rem;
+      }
+      .ex-result-correct {
+        font-weight: 600;
+        color: var(--site-body-text);
       }
       .ex-pill {
         width: 2rem;
