@@ -233,27 +233,17 @@ function ErlenmeyerFlask({ state }) {
   const fill = state?.liquidColor;
   const contaminated = state?.contaminated;
   const neck = state?.neck || 'straight';
+  // Schwanenhals: zweimal denselben Centerline-Pfad strichen — einmal dick
+  // mit Wandfarbe (#5b8dbf), einmal duenner mit Glas-Innenfarbe (#e8f4fa).
+  // Differenz = Wandstaerke. So gibt's einen sauberen Tube-Look ohne dass
+  // wir die Aussen-Polygone manuell zeichnen muessen.
+  const swanD =
+    'M 35 28 L 35 14 ' +     // hoch raus aus dem Kolbenkoerper
+    'C 35 4 48 4 48 14 ' +    // erste Schleife (Bogen nach rechts)
+    'C 48 24 62 24 62 14 ' +  // zweite Schleife (Bogen darunter zurueck)
+    'L 78 14';                // gerade Auslass nach rechts
   return (
     <g>
-      {/* Hals — gerade oder Schwanenhals */}
-      {neck === 'straight' ? (
-        <rect x="29" y="6" width="12" height="22" fill="#e8f4fa" stroke="#5b8dbf" stroke-width="1.6" />
-      ) : (
-        <path
-          d="M29 28 L29 16
-             C 29 6, 50 8, 50 22
-             C 50 38, 70 38, 70 22
-             C 70 8, 88 8, 92 16
-             L 96 12
-             C 92 -2, 70 -2, 60 12
-             C 50 26, 40 26, 40 10
-             L 40 6 L 29 6 Z"
-          fill="#e8f4fa"
-          stroke="#5b8dbf"
-          stroke-width="1.6"
-          stroke-linejoin="round"
-        />
-      )}
       {/* Konisches Gefaess */}
       <path
         d="M29 28 L12 92 L58 92 L41 28 Z"
@@ -262,6 +252,31 @@ function ErlenmeyerFlask({ state }) {
         stroke-width="1.6"
         stroke-linejoin="round"
       />
+      {/* Hals — gerade Roehre oder Schwanenhals */}
+      {neck === 'straight' ? (
+        <rect x="29" y="6" width="12" height="22" fill="#e8f4fa" stroke="#5b8dbf" stroke-width="1.6" />
+      ) : (
+        <>
+          {/* Aussenwand (dunkler) */}
+          <path
+            d={swanD}
+            fill="none"
+            stroke="#5b8dbf"
+            stroke-width="14"
+            stroke-linecap="butt"
+            stroke-linejoin="round"
+          />
+          {/* Innenfuellung (heller) */}
+          <path
+            d={swanD}
+            fill="none"
+            stroke="#e8f4fa"
+            stroke-width="11.6"
+            stroke-linecap="butt"
+            stroke-linejoin="round"
+          />
+        </>
+      )}
       {/* Fluessigkeit */}
       {fill && (
         <>

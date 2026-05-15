@@ -159,8 +159,10 @@ function Lab() {
             });
           }
         }
-        if (s.liquid && !s.tipped)
+        if (s.liquid && !s.tilted)
           list.push({ id: 'tip', label: 'Flasche kippen' });
+        if (s.tilted)
+          list.push({ id: 'untip', label: 'Wieder aufrichten' });
         if (s.bunsenBelow || s.bunsenAtNeck) {
           list.push({ id: 'clear_actions', label: '— Bunsen/Zange abnehmen —' });
         }
@@ -212,16 +214,25 @@ function Lab() {
         }, 1400);
         return;
       }
-      case 'tip':
+      case 'tip': {
+        // Kippen erlaubt einmaligen Meilenstein (`tipped`); `tilted` ist
+        // separat und togglebar ueber `untip`. Kontamination ist final:
+        // einmal verdorben bleibt verdorben.
+        const alreadyContaminated = !!item.state?.contaminated;
+        const willContaminate =
+          (item.state?.liquid === 'unsterile' && !item.state?.sterilized) ||
+          (item.state?.neck !== 'swan' && item.state?.liquid === 'unsterile');
         helpers.update({
           tipped: true,
           tilted: true,
-          // Wenn nicht steril -> kontaminiert. Schwanenhals + steril bleibt sauber.
-          contaminated:
-            (item.state?.liquid === 'unsterile' && !item.state?.sterilized) ||
-            (item.state?.neck !== 'swan' && item.state?.liquid === 'unsterile'),
+          contaminated: alreadyContaminated || willContaminate,
         });
         award('tipped');
+        return;
+      }
+      case 'untip':
+        helpers.update({ tilted: false });
+        bump();
         return;
       case 'clear_actions':
         helpers.update({ bunsenBelow: false, bunsenAtNeck: false });
