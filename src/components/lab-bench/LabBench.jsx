@@ -81,6 +81,7 @@ export default function LabBench({
   onItemPlaced,     // (item)  - User hat Item aus Inventar abgestellt
   onItemMoved,      // (item)  - User hat platziertes Item bewegt
   onItemTrashed,    // (item)  - User hat platziertes Item in den Muelleimer
+  onItemSnapped,    // (dropped, host, slot, helpers) - Snap an einen Slot
 } = {}) {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -255,10 +256,13 @@ export default function LabBench({
     let dropX = d.cur.x - d.offsetX;
     let dropY = d.cur.y - d.offsetY;
 
-    // Snap an Slots anderer platzierter Items
+    // Snap an Slots anderer platzierter Items. Speichert host+slot, um nach
+    // dem State-Update den onItemSnapped-Callback feuern zu koennen.
     const cx = dropX + meta.w / 2;
     const cy = dropY + meta.h / 2;
     let snapped = null;
+    let snapHost = null;
+    let snapSlot = null;
     for (const other of placed) {
       if (other.id === d.originId) continue;
       const om = ITEM_META[other.type];
@@ -269,6 +273,8 @@ export default function LabBench({
         const sy = other.y + slot.y;
         if (Math.hypot(cx - sx, cy - sy) < SNAP_RADIUS) {
           snapped = { x: sx - meta.w / 2, y: sy - meta.h / 2 };
+          snapHost = other;
+          snapSlot = slot;
           break;
         }
       }
@@ -280,16 +286,35 @@ export default function LabBench({
     }
 
     // Drop auf Tisch (oder eigentlich ueberall im Szenenbereich)
+    let landedItem = null;
     if (d.cloneFromInventory) {
       const id = `p${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const newItem = { id, type: d.itemType, x: dropX, y: dropY, state: {} };
-      setPlaced((prev) => [...prev, newItem]);
+      landedItem = { id, type: d.itemType, x: dropX, y: dropY, state: {} };
+      setPlaced((prev) => [...prev, landedItem]);
       dbg('item-add-from-drop', { id, type: d.itemType });
-      onItemPlaced?.(newItem);
+      onItemPlaced?.(landedItem);
     } else if (d.originId) {
       const moved = placed.find((p) => p.id === d.originId);
       setPlaced((prev) => prev.map((p) => (p.id === d.originId ? { ...p, x: dropX, y: dropY } : p)));
-      if (moved) onItemMoved?.({ ...moved, x: dropX, y: dropY });
+      if (moved) {
+        landedItem = { ...moved, x: dropX, y: dropY };
+        onItemMoved?.(landedItem);
+      }
+    }
+    // Snap-Callback: erst nach Place/Move, damit der Wrapper das Item schon
+    // im Tisch sieht. helpers.updateHost mutiert den Host-State.
+    if (snapped && snapHost && snapSlot && landedItem && onItemSnapped) {
+      dbg('snap', {
+        droppedType: landedItem.type,
+        hostType: snapHost.type,
+        hostId: snapHost.id,
+        slotId: snapSlot.id,
+      });
+      onItemSnapped(landedItem, snapHost, snapSlot, {
+        updateHost: (partial) => updateItemState(snapHost.id, partial),
+        update: (partial) => updateItemState(landedItem.id, partial),
+        placed,
+      });
     }
   }
 
@@ -785,6 +810,11 @@ function Styles() {
       @keyframes lb-flame-flicker {
         0%   { transform: scale(1) translateY(0); }
         100% { transform: scale(1.04, 1.08) translateY(-1px); }
+      }
+      .lb-steam { animation: lb-steam-puff 1.4s ease-in-out infinite; }
+      @keyframes lb-steam-puff {
+        0%, 100% { transform: translateY(0)  scale(1);    opacity: 1; }
+        50%      { transform: translateY(-6px) scale(1.1); opacity: 0.75; }
       }
     `}</style>
   );

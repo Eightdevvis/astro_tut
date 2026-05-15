@@ -164,41 +164,37 @@ function Lab() {
     if (item.type === 'flask_erlenmeyer') {
       const s = item.state || {};
       const onStand = isOnStand(item, placed);
-      const tongsHere = hasPlacedTongs(placed);
       list = [];
       if (!onStand) {
         list.push({ id: 'note_off_stand', label: '↪ Erst auf das Stativ stellen' });
-        // Sonst keine weiteren Aktionen — Stativ ist Pflicht.
       } else {
         if (!s.liquid) {
           list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
           list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
         }
-        if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
-        if (!s.bunsenAtNeck && s.neck !== 'swan')
-          list.push({ id: 'bunsen_at_neck', label: 'Bunsen an Hals halten' });
-        if (s.bunsenBelow && s.liquid && !s.sterilized)
-          list.push({ id: 'sterilize', label: 'Anzuenden + Sterilisieren' });
-        // Glas-Ziehen: zeigen sobald Bunsen am Hals ist. Wenn die Zange noch
-        // nicht da ist, eine sichtbare Hinweis-Zeile statt der Aktion zu
-        // verstecken (vorher: schweigend weg, User wusste nicht woran's lag).
+        // Bunsen-Positionierung kommt jetzt per Drag-Snap. Das Menue nennt
+        // die Stelle, wo man hinziehen soll — als pure Anleitung, kein
+        // Klick-Effekt.
+        if (!s.bunsenBelow && !s.bunsenAtNeck)
+          list.push({ id: 'note_drag_bunsen', label: '↪ Bunsenbrenner an den Kolben ziehen (drunter oder an den Hals)' });
+        // Sterilisieren: Bunsen drunter + Liquid drin. Loesst Sterilisations-
+        // Visual aus (Dampf), nach 2.5 s ist sterilized=true.
+        if (s.bunsenBelow && s.liquid && !s.sterilized && !s.sterilizing)
+          list.push({ id: 'sterilize', label: 'Sterilisieren (Bunsen unter dem Kolben)' });
+        if (s.sterilizing)
+          list.push({ id: 'note_sterilizing', label: '↪ Sterilisiert gerade…' });
+        // Glas-Ziehen: Bunsen am Hals + Zange am Hals.
         if (s.bunsenAtNeck && s.neck !== 'swan') {
-          if (tongsHere) {
+          if (s.tongsAtNeck) {
             list.push({ id: 'pull_neck', label: 'Glas ziehen (mit Zange)' });
           } else {
-            list.push({
-              id: 'note_need_tongs',
-              label: '↪ Zange erst auf den Tisch ziehen',
-            });
+            list.push({ id: 'note_need_tongs', label: '↪ Zange an den Hals ziehen (linke Seite)' });
           }
         }
         if (s.liquid && !s.tilted)
           list.push({ id: 'tip', label: 'Flasche kippen' });
         if (s.tilted)
           list.push({ id: 'untip', label: 'Wieder aufrichten' });
-        if (s.bunsenBelow || s.bunsenAtNeck) {
-          list.push({ id: 'clear_actions', label: '— Bunsen/Zange abnehmen —' });
-        }
       }
     } else if (item.type === 'bunsen') {
       list = [{ id: 'toggle_on', label: item.state?.on ? 'Ausmachen' : 'Anzuenden' }];
@@ -233,18 +229,28 @@ function Lab() {
         );
         bump();
         return;
-      case 'bunsen_below':
-        helpers.update({ bunsenBelow: true });
-        award('bunsen_below');
+      // bunsen_below / bunsen_at_neck als Menue-Aktionen entfernt — passiert
+      // jetzt per Drag-Snap (siehe handleItemSnapped).
+      case 'sterilize': {
+        // Sterilisations-Visual: kurze Animations-Phase mit Dampf, dann
+        // sterilized=true + neckContaminated=true (Luft hat Staub
+        // eingeschleppt). Liquid wird sterile-faerbig.
+        helpers.update({ sterilizing: true });
+        const flaskId = item.id;
+        setTimeout(() => {
+          // Spielregel: Sterilisation aendert Liquid auf "sterile" (Farbe +
+          // Flag), oeffnet Hals zur Luft -> neckContaminated.
+          const newAttrs = {
+            sterilizing: false,
+            sterilized: true,
+            liquidColor: '#f0e6c8',
+            neckContaminated: true,
+          };
+          helpers.update(newAttrs);
+          award('sterilized');
+        }, 2500);
         return;
-      case 'bunsen_at_neck':
-        helpers.update({ bunsenAtNeck: true });
-        award('bunsen_at_neck');
-        return;
-      case 'sterilize':
-        helpers.update({ sterilized: true });
-        award('sterilized');
-        return;
+      }
       case 'pull_neck': {
         dbg('pull-neck-start', { itemId: item.id, x: item.x, y: item.y });
         helpers.runPullAnimation(
@@ -262,13 +268,18 @@ function Lab() {
         return;
       }
       case 'tip': {
-        // Kippen erlaubt einmaligen Meilenstein (`tipped`); `tilted` ist
-        // separat und togglebar ueber `untip`. Kontamination ist final:
-        // einmal verdorben bleibt verdorben.
-        const alreadyContaminated = !!item.state?.contaminated;
-        const willContaminate =
-          (item.state?.liquid === 'unsterile' && !item.state?.sterilized) ||
-          (item.state?.neck !== 'swan' && item.state?.liquid === 'unsterile');
+        // Kippen: Meilenstein einmalig, `tilted` togglebar.
+        // Kontaminations-Logik (Pasteurs Idee):
+        //   - Unsteriles Liquid ohne Sterilisation -> immer kontaminiert
+        //   - Sterilisiert + gerader Hals + Hals-Schmutz -> Schmutz faellt
+        //     beim Kippen ins Liquid -> kontaminiert
+        //   - Sterilisiert + Schwanenhals -> Schmutz steckt in Biegung,
+        //     erreicht das Liquid auch beim Kippen nicht -> sauber
+        const s = item.state || {};
+        const alreadyContaminated = !!s.contaminated;
+        const unsterileTipped = s.liquid === 'unsterile' && !s.sterilized;
+        const dustFallsIn = !!s.neckContaminated && s.neck !== 'swan';
+        const willContaminate = unsterileTipped || dustFallsIn;
         helpers.update({
           tipped: true,
           tilted: true,
@@ -281,10 +292,8 @@ function Lab() {
         helpers.update({ tilted: false });
         bump();
         return;
-      case 'clear_actions':
-        helpers.update({ bunsenBelow: false, bunsenAtNeck: false });
-        bump();
-        return;
+      // clear_actions: Bunsen/Zange kann der User per Drag wegziehen,
+      // separater Menue-Eintrag nicht mehr noetig. (Trash oder neuer Snap)
       case 'toggle_on':
         helpers.update({ on: !item.state?.on });
         bump();
@@ -303,6 +312,26 @@ function Lab() {
     const flaskOnStand = placed.some((p) => p.type === 'flask_erlenmeyer' && isOnStand(p, placed));
     if (flaskOnStand && !progress.has('flask_on_stand')) {
       award('flask_on_stand');
+    }
+  }
+
+  // Snap-Event: User hat einen Bunsen oder eine Zange an einen der drei
+  // Flask-Snap-Slots gezogen. Slot-ID entscheidet was passiert.
+  function handleItemSnapped(dropped, host, slot, helpers) {
+    if (host.type !== 'flask_erlenmeyer') return;
+    if (slot.id === 'below' && dropped.type === 'bunsen') {
+      helpers.updateHost({ bunsenBelow: true });
+      award('bunsen_below');
+    } else if (slot.id === 'neck_heat' && dropped.type === 'bunsen') {
+      helpers.updateHost({ bunsenAtNeck: true });
+      award('bunsen_at_neck');
+    } else if (slot.id === 'neck_pull' && dropped.type === 'tongs') {
+      helpers.updateHost({ tongsAtNeck: true });
+      // Kein eigener Meilenstein fuer Zange platzieren — Zange ist nur
+      // Voraussetzung fuer `neck_pulled`. Aber zaehlt als Setup-Aktion.
+      bump();
+    } else {
+      bump();
     }
   }
 
@@ -386,6 +415,7 @@ function Lab() {
         onItemPlaced={handleItemPlaced}
         onItemMoved={handleItemMoved}
         onItemTrashed={handleItemTrashed}
+        onItemSnapped={handleItemSnapped}
       />
       <p className="lab-hint">
         Items aus der Schublade ziehen, aufs Stativ snappen. Fluessigkeit

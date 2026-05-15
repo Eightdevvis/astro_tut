@@ -41,6 +41,14 @@ export const ITEM_META = {
     kind: 'vessel',
     interaction: 'rotate',
     label: 'Erlenmeyerkolben',
+    // Snap-Slots fuer Bunsen + Zange. Positionen sind Slot-CENTER relativ
+    // zum Item-Ursprung. Slot-IDs nutzt der Game-Wrapper (Pasteur), um
+    // Flask-States entsprechend zu setzen.
+    snapSlots: [
+      { id: 'below',     x: 35,  y: 152, accepts: ['bunsen'] },          // Bunsen unter dem Kolben
+      { id: 'neck_heat', x: 110, y: 68,  accepts: ['bunsen'] },          // Bunsen rechts am Hals
+      { id: 'neck_pull', x: -28, y: 68,  accepts: ['tongs'] },           // Zange links am Hals
+    ],
   },
   flask_pasteur: {
     w: 100,
@@ -233,15 +241,15 @@ function ErlenmeyerFlask({ state }) {
   const fill = state?.liquidColor;
   const contaminated = state?.contaminated;
   const neck = state?.neck || 'straight';
+  const sterilizing = state?.sterilizing;
+  const neckDirty = state?.neckContaminated;
   // Schwanenhals: zweimal denselben Centerline-Pfad strichen — einmal dick
   // mit Wandfarbe (#5b8dbf), einmal duenner mit Glas-Innenfarbe (#e8f4fa).
-  // Differenz = Wandstaerke. So gibt's einen sauberen Tube-Look ohne dass
-  // wir die Aussen-Polygone manuell zeichnen muessen.
   const swanD =
-    'M 35 28 L 35 14 ' +     // hoch raus aus dem Kolbenkoerper
-    'C 35 4 48 4 48 14 ' +    // erste Schleife (Bogen nach rechts)
-    'C 48 24 62 24 62 14 ' +  // zweite Schleife (Bogen darunter zurueck)
-    'L 78 14';                // gerade Auslass nach rechts
+    'M 35 28 L 35 14 ' +
+    'C 35 4 48 4 48 14 ' +
+    'C 48 24 62 24 62 14 ' +
+    'L 78 14';
   return (
     <g>
       {/* Konisches Gefaess */}
@@ -286,6 +294,28 @@ function ErlenmeyerFlask({ state }) {
       )}
       {/* Glanz */}
       <line x1="22" y1="50" x2="18" y2="80" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.6" />
+      {/* Schmutz am Hals nach Sterilisation (Luftstaub setzt sich ab) */}
+      {neckDirty && neck === 'straight' && (
+        <ellipse cx="35" cy="9" rx="5.5" ry="2" fill="#3a2a1a" opacity="0.65" />
+      )}
+      {neckDirty && neck === 'swan' && (
+        // Im Schwanenhals sammelt sich Schmutz in der Biegung — Pasteurs
+        // Punkt: er kommt nicht weiter ins Liquid.
+        <g opacity="0.7">
+          <ellipse cx="48" cy="9"  rx="4"   ry="1.8" fill="#3a2a1a" />
+          <ellipse cx="62" cy="19" rx="3.5" ry="1.6" fill="#3a2a1a" />
+          <ellipse cx="78" cy="14" rx="3"   ry="1.5" fill="#3a2a1a" />
+        </g>
+      )}
+      {/* Dampf waehrend Sterilisierung */}
+      {sterilizing && (
+        <g className="lb-steam">
+          <circle cx={neck === 'swan' ? 78 : 35} cy={neck === 'swan' ? 14 : 6}  r="3.5" fill="#fff" opacity="0.78" />
+          <circle cx={neck === 'swan' ? 82 : 32} cy={neck === 'swan' ? 6  : -2} r="3"   fill="#fff" opacity="0.6"  />
+          <circle cx={neck === 'swan' ? 86 : 38} cy={neck === 'swan' ? -2 : -10} r="2.5" fill="#fff" opacity="0.45" />
+          <circle cx={neck === 'swan' ? 90 : 30} cy={neck === 'swan' ? -10 : -18} r="2"  fill="#fff" opacity="0.3"  />
+        </g>
+      )}
     </g>
   );
 }
