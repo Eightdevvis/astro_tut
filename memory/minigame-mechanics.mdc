@@ -1,0 +1,147 @@
+---
+description: Konkreter Katalog aller Game-Mechaniken/Templates aus den bisherigen Minigames — als Vorlage fuer neue Spiele zum Copy-Paste/Anpassen
+---
+
+# Minigame-Mechaniken (Katalog)
+
+Schwester-Datei zu `memory/minigames-pattern.mdc`. Dort steht das **System**
+(Persistenz, Sync, Cards, Practice-Mode, Skala). Hier steht der **Baukasten**:
+jede konkrete Spielmechanik, die wir schon umgesetzt haben, mit Code-Pfaden,
+Props/Config-Form und dem nachweisbaren Erst-Einsatz — damit ein neues Spiel
+nicht von Null beginnen muss.
+
+Bei jeder neuen Mechanik: hier eine Sektion ergaenzen.
+
+---
+
+## Persistenz + Server-Sync (alle Spiele)
+
+- Was: localStorage sofort, dann Server-Merge im Hintergrund. Eingeloggte User kriegen pro-User-Privacy automatisch.
+- Code:
+  - Client: `src/lib/minigame-progress-sync.js` (`syncOnMount`, `pushToServer`).
+  - API: `src/pages/api/minigames/progress.js` (GET/PUT + `ALLOWED_GAMES`-Whitelist + 16 KB Cap).
+  - DB-Tabelle: `minigame_progress(username, game_id, payload JSON, ...)` in `src/lib/db.js`.
+- Pro Spiel: eigene `*-progress.js` mit `loadProgress`, `saveProgress`, `mergeProgress(a, b)`, `GAME_ID`. Merge ist spielspezifisch, muss kommutativ + idempotent sein (OR fuer Bits, max fuer Scores).
+- Game-ID muss in `ALLOWED_GAMES` eingetragen sein, sonst 400.
+- Detail: `memory/minigames-pattern.mdc#persistenz-schema`.
+
+## Mikrobio-Karten mit Progress + Uebung-Link
+
+- Was: Karte auf der Themenseite (Mikrobio), zeigt sofort lokalen Progress, mergt Server-Wert im Hintergrund, hat oben den Spiel-Link und unten rechts einen kleinen "Uebung →"-Link in den Practice-Mode.
+- Vorlage: `src/components/ArchaeaLipidsMikrobioCard.jsx` und `src/components/ExtremophileMikrobioCard.jsx` (identische Struktur).
+- Eingebunden mit `client:idle` in `src/pages/minigames/mikrobiologie.astro`.
+- Wesentliche Klassen: `*-card`, `*-card-main`, `*-card-progress-row`, `*-card-bar`, `*-card-practice`.
+
+## Konfetti-Tier-System
+
+- Was: standardisierte Schwellen 85 / 95 / 100 fuer "freundlich / stark / gold". `tierFromScore(score)` -> `'gold' | 'strong' | 'confetti' | 'none'`.
+- Code:
+  - Lib: `src/lib/scoring-scale.js` (`SCORE_TIERS`, `tierFromScore`, `isPassing`).
+  - Komponente: `src/components/ArchaeaLipidsConfetti.jsx` — Props `tier` + `runId` (Reset-Token, damit dieselbe Tier-Stufe nochmal triggerbar ist).
+- Erstanwendung: Archaea-Lipide L2 (Strukturen nachbauen).
+- Detail: `memory/scoring-scale.mdc`.
+
+## Practice-Mode ("Uebung")
+
+- Was: gleicher Spiel-Shell, aber Loesungen offen, kein Scoring, kein Konfetti.
+- Pattern: Game-Insel-Komponente nimmt `mode: 'play' | 'practice'` als Prop. Astro-Seite liest `Astro.url.searchParams.get('ueben') === '1'` und reicht durch.
+- Praxis: Archaea-Lipide rendert Strukturen + Namen + Hint untereinander; Extremophile rendert sechs Loesungs-Karten.
+
+---
+
+## Quiz: Single-Input-Fragenrunde mit Reveal
+
+- Was: sequenzieller Fragenstrom, ein Input pro Frage, Pruefen-Button, Marker-Pop auf einer zentralen Figur (Icon), Auto-Advance.
+- Erstanwendung: `src/components/ExtremophileGame.jsx`.
+- Bausteine:
+  - **Result-Liste vertikal** (`.ex-result-list`): pro Frage eine Zeile mit Pill links + Antwort-Text rechts. Pending zeigt den Fragetext (grau), richtig zeigt Loesung in fett, falsch zeigt `<userAnswer>` durchgestrichen → Loesung. Pill-Stile: `--current` (Outline), `--ok` (gruen), `--bad` (rot), `--pending` (grau).
+  - **Marker-Pop**: ✓/✗ Glyphe poppt zentral auf das Icon. Keyframes `ex-marker-pop` (0.9 s, scale + fade). Element bekommt `key={`${qIdx}-${marker}`}` damit Preact bei jeder neuen Anwort den Animations-Lauf neu startet.
+  - **Wrong-Reveal im Eingabe-Feld**: ersetzt waehrend des Holds das `<input>` durch eine Reveal-Box (`.ex-input-reveal`): roter Rahmen, durchgestrichene User-Eingabe + Pfeil + fett-gruene Loesung.
+  - **Hold-Timing**: richtig 1.1 s, falsch 3.5 s. Eingabe + Button waehrend des Holds gesperrt.
+- Pruef-Helper (`checkAnswer`, `getDisplayAnswer`): kennt drei `kind`s — `name` (exakt, normalisiert), `domain` (exakt), `habitat` (lenient: Alternativen-Liste + Wortueberschneidung), `numeric` (Erstzahl-Parsing, deutsche Notation `0,7` / `−12`).
+- Antwort-Aliasing in Pruef-Funktion via Lookup-Tabelle (siehe wie's bei `DOMAIN_ALIASES` mal war — wurde dann zurueckgenommen, Aliase aber dokumentiert: ggf. wieder einsetzen wenn neues Spiel das braucht).
+
+## Tile-Selection-Screen (Kategorie-Grid)
+
+- Was: Home-Screen mit Grid aus klickbaren Tiles (Icon + Titel + Untertitel). Klick startet das Spiel in dieser Kategorie; andere Tiles verschwinden.
+- Erstanwendung: `ExtremophileGame.jsx` (Home -> `ex-grid` mit `.ex-tile`).
+- Komplett-abgeschlossene Kategorien kriegen ein ✓-Badge oben rechts (`.ex-tile-done`).
+
+## Level-Cards-Screen (mehrere Level pro Spiel)
+
+- Was: Home-Screen mit zwei (oder mehr) Level-Karten, je mit eigenem Progressbar. Klick fuehrt in den Level.
+- Erstanwendung: `src/components/ArchaeaLipidsGame.jsx` -> `HomeView` mit `.alg-level-card`.
+- Punkte-Konvention: Level-Anteile summieren auf 100 % (z. B. L1=50, L2=50). Pro Aufgabe gleichmaessig aufgeteilt.
+
+## Name-the-Thing (Bild zeigen, Namen tippen)
+
+- Was: Struktur/Bild zeigen, Name tippen, Pruefen, binaeres richtig/falsch.
+- Erstanwendung: `ArchaeaLipidsGame.jsx` -> `Level1View`.
+- Name-Match: `isNameCorrect(input, lipid)` mit `normalizeLipidName` (lowercase, Umlaute->ae/oe/ue, Whitespace trim) — strikt genug, dass Prefixe nicht reichen.
+- Bei richtig: kleine Konfetti-Stufe (`'confetti'`). Bei falsch: roter Marker + Loesung wird unter dem Bild eingeblendet.
+
+## Structure-Build mit Ketcher (Molekuelbau)
+
+- Was: User baut ein Molekuel in Ketcher nach, Pruefen rechnet Aehnlichkeits-Score per gewichteter Atomzaehlung. Konfetti-Tier triggert je nach Score.
+- Erstanwendung: `ArchaeaLipidsGame.jsx` -> `Level2View`.
+- Setup:
+  - Targets in `src/lib/archaea-lipids.js` (SMILES).
+  - Atomzaehlungen statisch aus SMILES via `atomCountsFromSmiles()` (kein Ketcher noetig). Sehr wichtig: macrocyclische Lipide haben Indigo's Layout-Algorithmus blockiert — Parser ist heuristisch fuer C/O/P/N/S, deckt unsere SMILES exakt.
+  - Bilder pro Lipid via `ketcher.generateImage(smiles, {outputFormat:'svg'})` — Pre-Rendering. Inkrementell in den State schreiben (`(prev) => ({...prev, [id]: url})`), nicht erst nach dem Loop, sonst sieht man fertige Bilder spaet.
+  - L1-Mode haelt den Editor versteckt (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen — Canvas-Kollaps vermeiden).
+  - Ketcher-Bundle prefetchen sobald die Game-Seite mountet: `import('./MoleculeBuilderCanvas.jsx').catch(() => {})` im useEffect.
+- Score-Funktion: `similarityScore(userAtoms, targetAtoms)` — Gewichte `{C:0.65, O:0.18, P:0.1, N:0.04, S:0.03}`. C dominiert. Bei perfekter Uebereinstimmung 100.
+
+## Preact ↔ React-Bridge (Ketcher ist React-only)
+
+- `astro.config.mjs`: Vite-Aliases `react`/`react-dom` -> `preact/compat`, `react-dom/client` -> `src/lib/preact-react-dom-client-shim.js` (WeakMap-Root-Cache fuer fehlendes `createRoot`).
+- `vite.define` + `optimizeDeps.esbuildOptions.define`: einzelne `process.env.*`-Keys, **kein** pauschales `'process.env': '{}'`.
+- Astro-Island fuer Ketcher: `client:only="preact"` (nicht `client:load` — Ketcher mutiert DOM, Preact-Diff verliert sonst die Spur).
+- Detail: `memory/mikrobiologie.mdc` Sektion "Preact <-> React-Bridge".
+
+---
+
+## 2D-Lab-Bench (Drag-Drop-Szene)
+
+- Was: 2D-Szene mit Tisch im Vordergrund, Inventar-Zonen (Schublade unten, Regal hinten, Kuehlschrank, Versorgung rechts), Muelleimer unten links, Mood-Smiley oben. Items werden per Pointer-Drag platziert; aus Inventar-Zonen wird beim Pickup geklont (Originale bleiben). Click auf platzierte Items triggert Interaktion (Toggle, Kippen).
+- Code:
+  - Engine: `src/components/lab-bench/LabBench.jsx` (Pointer-Engine, Drop-Logik, Snap, Trash, Click-Interaktion, Mood, Fridge-Toggle).
+  - SVG-Items: `src/components/lab-bench/items.jsx` (`ITEM_META`, `renderItem`, `LabBenchDefs`). Items: bunsen, stand, flask_round, flask_erlenmeyer, flask_pasteur, test_tube, bottle_sterile, bottle_unsterile, petri_dish, beaker.
+- Konventionen:
+  - `viewBox` 1000×600. Tisch bei y=380. Items in SVG-Einheiten; Bounding-Box (`w`, `h`) in `ITEM_META`.
+  - `ITEM_META[type].interaction`: `'toggle'` (Bunsen-Flamme), `'rotate'` (Kolben kippen), `'pour'` (noch nicht implementiert).
+  - `ITEM_META[type].snapSlots`: Liste `{x, y, accepts: [types]}`, Koordinaten relativ zum Ursprung des Container-Items. Drag in Snap-Radius (70 SVG-Einheiten) zeigt strich-Kreis-Vorschau und rastet beim Drop ein.
+  - Klick vs. Drag: Distanz < 6 px UND Zeit < 260 ms -> Klick, sonst Drag.
+- Inventar-Zonen: aktuell `INVENTORY` direkt in der Komponente, wandert bei Refactor in `src/lib/lab-bench/<experiment>.js`.
+- Reusability: die Engine kennt nichts ueber Pasteur — neue Experimente bekommen einen eigenen Config-Block.
+- Erstanwendung: Pasteur-Seite `src/pages/minigames/mikrobiologie/pasteur.astro` (WIP — Spielregeln + Score-Logik kommt noch).
+
+## Mood-Smiley
+
+- Was: kleines SVG-Gesicht oben in der Ecke, dessen Mundkurve durch einen `mood`-Wert (-3..+3) gesteuert wird. Hintergrund + Ring faerben gruen/rot/grau je nach Stimmung.
+- Code: `MoodSmiley` in `src/components/lab-bench/LabBench.jsx`. Wenn an anderer Stelle gebraucht: rausziehen in eigenes File.
+
+---
+
+## SVG-Icon-Stil (Inline-Komponenten)
+
+- Was: schlichte Linien-Skizze, hellblau-grau Glas-Look (`#e8f4fa` Fuellung, `#5b8dbf` Stroke), 1.6 Stroke-Width. Highlights mit weissem Bogen + Opacity. Aehnlich Lehrbuch-Stil.
+- Pattern: Inline-`<svg>` Tags ohne externe Assets. Eigene `<defs>` werden in einer Komponente wie `LabBenchDefs` zentral eingebunden (Gradients fuer Flamme, Tisch, Wand, Kuehlschrank).
+- Erstanwendung Extremophile: `src/components/ExtremophileIcons.jsx` (sechs kleine Konzept-Icons fuer Hyperthermophile, Psychrophile, etc.).
+- Erstanwendung Lab: `src/components/lab-bench/items.jsx` (Laborglas, Bunsenbrenner, Stativ etc.).
+
+---
+
+## Checkliste fuer "Neues Minigame im gleichen Stil"
+
+1. Daten + Pruef-Funktionen in `src/lib/<game>.js`. Spielregeln dokumentieren.
+2. Persistenz `src/lib/<game>-progress.js`: `loadProgress`, `saveProgress`, `mergeProgress`, `GAME_ID`, Score-Helper.
+3. Game-ID in `ALLOWED_GAMES` (`src/pages/api/minigames/progress.js`).
+4. Spielinsel `<Game>.jsx`:
+   - `mode`-Prop (`'play' | 'practice'`).
+   - `useEffect`: `syncOnMount` + auf jede Aenderung `pushToServer`.
+   - Welche Mechanik(en) aus dem Katalog oben? Code von dort schnappen, anpassen.
+5. Karte `<Game>MikrobioCard.jsx` (oder analoge Themenseite): Hauptlink + Uebung-Link, Progressbar mit sync-on-mount.
+6. Astro-Seite unter `src/pages/minigames/<bereich>/<game>.astro`, liest `?ueben=1` -> reicht `mode` durch.
+7. Karte in `<bereich>.astro` einbinden (`client:idle`).
+8. Memory: `memory/<bereich>.mdc` um Spiel-Sektion ergaenzen. Wenn neue Mechanik dabei war: hier in `minigame-mechanics.mdc` einen Eintrag.

@@ -20,6 +20,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
 | Mikrobiologie-Seite + Molecule Builder (Ketcher, Preact-Bridge) | [`mikrobiologie.mdc`](mikrobiologie.mdc) |
 | Minigames-Pattern (Karten-Prozente, Server-Sync, Konfetti, Tool-Vorlagen, Practice-Mode) | [`minigames-pattern.mdc`](minigames-pattern.mdc) |
+| Minigame-Mechaniken (Katalog: Quiz, Tiles, Structure-Build, Lab-Bench, …) | [`minigame-mechanics.mdc`](minigame-mechanics.mdc) |
 | RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |
 | RPG Qualitätskontrolle (Berichte, Stand, Trends) | [`rpg/quality-control.mdc`](rpg/quality-control.mdc) |
 | Bewertungsskala (Standard-Konfetti-Tiers fuer Minigames) | [`scoring-scale.mdc`](scoring-scale.mdc) |
