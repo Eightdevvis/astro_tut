@@ -20,7 +20,7 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Drei Lipide aus `src/lib/archaea-lipids.js`: Glycerindiether (Archaeol+Phosphat), Glycerintetraether (Caldarchaeol-Bisphosphat, macrocyclisch), Crenarchaeol (Tetraether ohne Phosphat, 1 Cyclopentan oben + 3 Cyclopentane + 1 Cyclohexan unten — plausibel platziert, nicht atomgenau).
 - Level 1: Struktur (Ketcher-SVG-Rendering) zeigen, Name tippen, binary richtig/falsch.
 - Level 2: Name oben, Ketcher-Editor unten, Pruefen-Score per gewichteter Atomzaehlung (C dominiert) — siehe `similarityScore()`. Falsch -> Loesungs-Bild oben.
-- Score-Persistenz: localStorage Key `mikrobio:archaea-lipide:v1` (siehe `archaea-lipids-progress.js`). L1 = 50 % gesamt (binaer pro Lipid), L2 = 50 % (best similarity pro Lipid).
+- Score-Persistenz: localStorage Key `mikrobio:archaea-lipide:v1` (siehe `archaea-lipids-progress.js`) **plus** Server-Sync via `/api/minigames/progress` (Tabelle `minigame_progress`, game_id `archaea-lipide`). Pattern: siehe `memory/minigames-pattern.mdc`. L1 = 50 % gesamt (binaer pro Lipid), L2 = 50 % (best similarity pro Lipid).
 - Bewertungsschwellen: `src/lib/scoring-scale.js` (Standard 85/95/100 — siehe `memory/scoring-scale.mdc`).
 - Konfetti: `src/components/ArchaeaLipidsConfetti.jsx`, getriggert ab 85 %.
 - Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar. SVG-Renderings + Atomzaehlungen aller drei Targets werden einmalig nach Ketcher-Ready vorberechnet.
@@ -34,7 +34,7 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Karte auf Mikrobio-Seite: `src/components/ExtremophileMikrobioCard.jsx` (client:idle).
 - Daten: `src/lib/extremophile.js` — sechs Kategorien (Hyperthermophile, Psychrophile, Acidophile, Alkaliphile, Barophile, Halophile) mit jeweils einer Beispielart aus Lehrbuch-Tabelle. Pro Kategorie sechs Fragen (`QUESTIONS`): Art, Gruppe, Habitat, Optimum, Min, Max.
 - Antwort-Pruefung in `checkAnswer()`: Name/Gruppe exakt (normalisiert), Habitat lenient (Alternativen + Wortueberschneidung), Numerisch via Erstzahl-Parsing (deutsche Notation "0,7" / "−12" wird normalisiert).
-- Persistenz: localStorage Key `mikrobio:extremophile:v1` mit "ever correct"-Flag pro (Kategorie, Frage). Card-Prozent = jemals-richtige / (6 Kategorien × 6 Fragen).
+- Persistenz: localStorage Key `mikrobio:extremophile:v1` **plus** Server-Sync via `/api/minigames/progress` (game_id `extremophile`). "ever correct"-Flag pro (Kategorie, Frage). Card-Prozent = jemals-richtige / (6 Kategorien × 6 Fragen). Merge = OR.
 - Spielfluss: Home-Grid mit 6 Tiles. Tile-Klick startet Quiz; andere Tiles werden ausgeblendet (nur die aktive Kategorie zeigt das Icon zentral). Fragen sequenziell; nach Pruefen klatscht ein ✓ oder ✗ als Pop-Animation auf das Icon (`ex-marker-pop`, 0.9 s), dann naechste Frage nach 1.1 s. Pill-Strip oben zeigt pro Frage den Status (Pending/Current/OK/Bad). Am Ende Summary mit Back-Button.
 
 ## Rechte/Freigabe
@@ -74,6 +74,9 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 | Extremophile Daten + Pruefer | `src/lib/extremophile.js` |
 | Extremophile Persistenz | `src/lib/extremophile-progress.js` |
 | Bewertungs-Standardskala | `src/lib/scoring-scale.js` |
+| Minigame-Server-Sync (Client) | `src/lib/minigame-progress-sync.js` |
+| Minigame-Progress-API | `src/pages/api/minigames/progress.js` |
+| DB-Tabelle `minigame_progress` | `src/lib/db.js` |
 | Builder-Wrapper (Toggle + Lazy + Suspense) | `src/components/MoleculeBuilder.jsx` |
 | Builder-Canvas (Ketcher-Mount, exportiert `onReady` Callback) | `src/components/MoleculeBuilderCanvas.jsx` |
 | React-DOM-Client-Shim | `src/lib/preact-react-dom-client-shim.js` |

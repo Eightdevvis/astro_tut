@@ -15,6 +15,7 @@ const canUseMinigames = Boolean(username) && (await hasPermission(username, 'sup
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
+const isUeben = Astro.url.searchParams.get('ueben') === '1';
 ---
 
 <html lang="de">
@@ -35,7 +36,7 @@ if (!canUseMinigames) {
       </p>
     </header>
     <main class="alp-main">
-      <ArchaeaLipidsGame client:only="preact" />
+      <ArchaeaLipidsGame client:only="preact" mode={isUeben ? 'practice' : 'play'} />
     </main>
     <ThemeClient />
     <BewareOfBugsBanner permission="minigames_access" />

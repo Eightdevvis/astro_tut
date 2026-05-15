@@ -15,6 +15,7 @@ const canUseMinigames = Boolean(username) && (await hasPermission(username, 'sup
 if (!canUseMinigames) {
   return Astro.redirect('/');
 }
+const isUeben = Astro.url.searchParams.get('ueben') === '1';
 ---
 
 <html lang="de">
@@ -33,7 +34,7 @@ if (!canUseMinigames) {
       <p><a href="/minigames/mikrobiologie">&larr; Mikrobiologie</a></p>
     </header>
     <main class="exp-main">
-      <ExtremophileGame client:load />
+      <ExtremophileGame client:load mode={isUeben ? 'practice' : 'play'} />
     </main>
     <ThemeClient />
     <BewareOfBugsBanner permission="minigames_access" />

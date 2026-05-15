@@ -82,6 +82,29 @@ export function level2Percent(progress) {
   return Math.round(sum / lipidCount);
 }
 
+// Merge zweier Progress-Objekte (z. B. local vs. server). Pro Lipid:
+// - l1.correct -> OR (einmal richtig bleibt richtig)
+// - l2.bestScore -> max
+export function mergeProgress(a, b) {
+  const na = normalize(a);
+  const nb = normalize(b);
+  const l1 = {};
+  const l1Keys = new Set([...Object.keys(na.l1), ...Object.keys(nb.l1)]);
+  for (const k of l1Keys) {
+    l1[k] = { correct: Boolean(na.l1[k]?.correct || nb.l1[k]?.correct) };
+  }
+  const l2 = {};
+  const l2Keys = new Set([...Object.keys(na.l2), ...Object.keys(nb.l2)]);
+  for (const k of l2Keys) {
+    const ax = Math.round(na.l2[k]?.bestScore ?? 0);
+    const bx = Math.round(nb.l2[k]?.bestScore ?? 0);
+    l2[k] = { bestScore: Math.max(ax, bx) };
+  }
+  return { l1, l2 };
+}
+
+export const GAME_ID = 'archaea-lipide';
+
 function emptyProgress() {
   return { l1: {}, l2: {} };
 }

@@ -3,13 +3,17 @@ import { lazy, Suspense } from 'preact/compat';
 import { ARCHAEA_LIPIDS, isNameCorrect } from '../lib/archaea-lipids.js';
 import {
   loadProgress,
+  saveProgress,
   markLevel1,
   markLevel2,
   totalScore,
   level1Percent,
   level2Percent,
+  mergeProgress,
+  GAME_ID,
 } from '../lib/archaea-lipids-progress.js';
 import { tierFromScore, isPassing, SCORE_TIERS } from '../lib/scoring-scale.js';
+import { syncOnMount, pushToServer } from '../lib/minigame-progress-sync.js';
 import ArchaeaLipidsConfetti from './ArchaeaLipidsConfetti.jsx';
 
 const MoleculeBuilderCanvas = lazy(() => import('./MoleculeBuilderCanvas.jsx'));
@@ -70,12 +74,30 @@ function useKetcherReady() {
   return [ketcher, handleReady];
 }
 
-export default function ArchaeaLipidsGame() {
-  // 'home' | 'l1' | 'l2'
-  const [mode, setMode] = useState('home');
+export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
+  // 'home' | 'l1' | 'l2' (oder 'practice' wenn initialMode === 'practice')
+  const [mode, setMode] = useState(initialMode === 'practice' ? 'practice' : 'home');
   const [progress, setProgress] = useState(() => loadProgress());
-  const [editorMounted, setEditorMounted] = useState(false);
+  // Im Practice-Mode wird der Editor sofort gemountet, damit die Targets
+  // gerendert werden koennen.
+  const [editorMounted, setEditorMounted] = useState(initialMode === 'practice');
   const [ketcher, onKetcherReady] = useKetcherReady();
+
+  // Server-Sync auf Mount: lokalen Progress mit Server mergen (falls eingeloggt).
+  useEffect(() => {
+    syncOnMount({
+      gameId: GAME_ID,
+      localProgress: loadProgress(),
+      merge: mergeProgress,
+      saveLocal: saveProgress,
+      onMerged: (merged) => setProgress(merged),
+    });
+  }, []);
+
+  const persistChange = (updated) => {
+    setProgress(updated);
+    pushToServer(GAME_ID, updated);
+  };
 
   // Pre-rendered SVG-DataURLs pro Lipid (fuer L1-Prompts und L2-Reveal).
   const [lipidImages, setLipidImages] = useState({});
@@ -148,7 +170,11 @@ export default function ArchaeaLipidsGame() {
     setMode('l2');
   };
 
-  const refreshProgress = () => setProgress(loadProgress());
+  const refreshProgress = () => {
+    const p = loadProgress();
+    setProgress(p);
+    pushToServer(GAME_ID, p);
+  };
 
   return (
     <section className="alg-root">
@@ -167,6 +193,13 @@ export default function ArchaeaLipidsGame() {
           onL2={enterL2}
           targetsReady={targetsReady}
           editorMounted={editorMounted}
+        />
+      )}
+
+      {mode === 'practice' && (
+        <PracticeView
+          lipidImages={lipidImages}
+          targetsReady={targetsReady}
         />
       )}
 
@@ -575,6 +608,36 @@ function Level2View({
   );
 }
 
+function PracticeView({ lipidImages, targetsReady }) {
+  return (
+    <div className="alg-practice">
+      <p className="alg-practice-hint">
+        Uebungs-Modus — alle drei Lipide mit Namen und Struktur. Kein Punkten,
+        kein Speichern.
+      </p>
+      {ARCHAEA_LIPIDS.map((lipid) => (
+        <article key={lipid.id} className="alg-practice-card">
+          <h2 className="alg-practice-name">{lipid.name}</h2>
+          <p className="alg-practice-hint-text">{lipid.hint}</p>
+          <div className="alg-practice-imagewrap">
+            {lipidImages[lipid.id] ? (
+              <img
+                className="alg-practice-image"
+                src={lipidImages[lipid.id]}
+                alt={`Struktur: ${lipid.name}`}
+              />
+            ) : (
+              <p className="alg-practice-imagewait">
+                {targetsReady ? 'Bild fehlt.' : 'Struktur wird gerendert…'}
+              </p>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function Styles() {
   return (
     <style>{`
@@ -939,6 +1002,54 @@ function Styles() {
         padding: 1.5rem;
         text-align: center;
         color: var(--site-muted);
+      }
+
+      /* PRACTICE */
+      .alg-practice {
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+      }
+      .alg-practice-hint {
+        margin: 0 0 0.3rem;
+        color: var(--site-muted);
+        font-style: italic;
+      }
+      .alg-practice-card {
+        background: var(--site-card-bg);
+        border: 1px solid var(--site-card-border);
+        border-radius: 1rem;
+        padding: 1rem 1.1rem;
+        box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+      }
+      .alg-practice-name {
+        margin: 0 0 0.3rem;
+        font-size: 1.3rem;
+        font-weight: 700;
+      }
+      .alg-practice-hint-text {
+        margin: 0 0 0.6rem;
+        color: var(--site-muted);
+        line-height: 1.5;
+      }
+      .alg-practice-imagewrap {
+        padding: 0.6rem;
+        background: #ffffff;
+        border-radius: 0.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 9rem;
+        overflow: auto;
+      }
+      .alg-practice-image {
+        max-width: 100%;
+        height: auto;
+      }
+      .alg-practice-imagewait {
+        color: var(--site-muted);
+        font-style: italic;
+        margin: 0;
       }
     `}</style>
   );

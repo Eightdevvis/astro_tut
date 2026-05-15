@@ -2,15 +2,29 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { CATEGORIES, QUESTIONS, categoryById, checkAnswer } from '../lib/extremophile.js';
 import {
   loadProgress,
+  saveProgress,
   markCorrect,
   totalPercent,
   categoryComplete,
+  mergeProgress,
+  GAME_ID,
 } from '../lib/extremophile-progress.js';
+import { syncOnMount, pushToServer } from '../lib/minigame-progress-sync.js';
 import { ExtremophileIcon } from './ExtremophileIcons.jsx';
 
-export default function ExtremophileGame() {
+export default function ExtremophileGame({ mode = 'play' }) {
   const [progress, setProgress] = useState(() => loadProgress());
   const [selectedId, setSelectedId] = useState(null);
+
+  useEffect(() => {
+    syncOnMount({
+      gameId: GAME_ID,
+      localProgress: loadProgress(),
+      merge: mergeProgress,
+      saveLocal: saveProgress,
+      onMerged: (merged) => setProgress(merged),
+    });
+  }, []);
 
   // Session-Quiz-State (resettet bei Kategorie-Wechsel).
   const [qIdx, setQIdx] = useState(0);
@@ -65,6 +79,7 @@ export default function ExtremophileGame() {
     if (correct) {
       const updated = markCorrect(selectedId, q.id);
       setProgress(updated);
+      pushToServer(GAME_ID, updated);
     }
 
     clearTimeout(advanceTimer.current);
@@ -81,6 +96,21 @@ export default function ExtremophileGame() {
   const quizDone = selectedId && qIdx >= QUESTIONS.length;
   const category = selectedId ? categoryById(selectedId) : null;
   const correctCount = results.filter((r) => r && r.correct).length;
+
+  if (mode === 'practice') {
+    return (
+      <section className="ex-root">
+        <header className="ex-header">
+          <h1 className="ex-title">Extremophile — Uebung</h1>
+          <p className="ex-sub">
+            Alle Kategorien mit Loesungen. Keine Wertung, kein Speichern.
+          </p>
+        </header>
+        <PracticeView />
+        <Styles />
+      </section>
+    );
+  }
 
   return (
     <section className="ex-root">
@@ -227,6 +257,42 @@ export default function ExtremophileGame() {
 
       <Styles />
     </section>
+  );
+}
+
+function PracticeView() {
+  return (
+    <div className="ex-practice">
+      {CATEGORIES.map((cat) => (
+        <article key={cat.id} className="ex-practice-card">
+          <div className="ex-practice-head">
+            <span className="ex-practice-icon">
+              <ExtremophileIcon iconKey={cat.iconKey} size={64} />
+            </span>
+            <div className="ex-practice-titles">
+              <h2 className="ex-practice-title">{cat.title}</h2>
+              <p className="ex-practice-subtitle">
+                {cat.parameter} ({cat.direction})
+              </p>
+            </div>
+          </div>
+          <dl className="ex-practice-fields">
+            <dt>Art</dt>
+            <dd><em>{cat.species.name}</em></dd>
+            <dt>Gruppe</dt>
+            <dd>{cat.species.domain}</dd>
+            <dt>Habitat</dt>
+            <dd>{cat.species.habitat}</dd>
+            <dt>Optimum</dt>
+            <dd>{cat.species.optimum.display}</dd>
+            <dt>Minimum</dt>
+            <dd>{cat.species.min.display}</dd>
+            <dt>Maximum</dt>
+            <dd>{cat.species.max.display}</dd>
+          </dl>
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -513,6 +579,54 @@ function Styles() {
         margin: 0;
         color: var(--site-muted);
       }
+
+      /* PRACTICE */
+      .ex-practice {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.9rem;
+      }
+      @media (min-width: 40rem) {
+        .ex-practice { grid-template-columns: 1fr 1fr; }
+      }
+      .ex-practice-card {
+        background: var(--site-card-bg);
+        border: 1px solid var(--site-card-border);
+        border-radius: 1rem;
+        padding: 0.9rem 1rem;
+        box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+      }
+      .ex-practice-head {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        margin-bottom: 0.6rem;
+      }
+      .ex-practice-icon {
+        display: block;
+        line-height: 0;
+        flex-shrink: 0;
+      }
+      .ex-practice-titles { display: flex; flex-direction: column; }
+      .ex-practice-title { margin: 0; font-size: 1.15rem; font-weight: 700; }
+      .ex-practice-subtitle {
+        margin: 0;
+        color: var(--site-soft-muted);
+        font-size: 0.85rem;
+      }
+      .ex-practice-fields {
+        margin: 0;
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        column-gap: 0.8rem;
+        row-gap: 0.25rem;
+        font-size: 0.95rem;
+      }
+      .ex-practice-fields dt {
+        color: var(--site-soft-muted);
+        font-weight: 600;
+      }
+      .ex-practice-fields dd { margin: 0; }
     `}</style>
   );
 }

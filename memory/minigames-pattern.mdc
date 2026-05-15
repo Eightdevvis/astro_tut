@@ -1,0 +1,64 @@
+---
+description: Systemisches Muster fuer Lern-Minigames — Karten-Prozente, Persistenz, Konfetti, wiederverwendbare Tool-Komponenten
+---
+
+# Minigames-Pattern
+
+Wiederverwendbares Geruest fuer Lern-Minigames mit Fortschritts-Anzeige.
+Erste Anwendungen liegen unter Mikrobiologie (`memory/mikrobiologie.mdc`).
+Bei neuen Spielen dieses Pattern uebernehmen, nicht jedes Mal neu erfinden.
+
+## Stuecke
+
+| Bereich | Datei(en) | Was sie tut |
+|--------|-----------|-------------|
+| **Score-Skala + Konfetti-Schwellen** | `src/lib/scoring-scale.js`, `memory/scoring-scale.mdc` | Tiers: >=100 gold, >=95 strong, >=85 confetti, sonst none. `tierFromScore()`, `isPassing()`. |
+| **Konfetti-UI** | `src/components/ArchaeaLipidsConfetti.jsx` | Props `tier` + `runId`. Vorlagen-Komponente, anderen Games per Copy/Import wiederverwendbar. |
+| **Server-Sync** | `src/lib/minigame-progress-sync.js`, `src/pages/api/minigames/progress.js`, DB-Tabelle `minigame_progress` | `syncOnMount()` auf Mount, `pushToServer()` bei jeder Aenderung. Eingeloggt -> Server-Wahrheit; nicht eingeloggt -> localStorage-only. |
+| **Tool: Strukturformeln** | `src/components/MoleculeBuilder.jsx`, `src/components/MoleculeBuilderCanvas.jsx` | Ketcher als Editor *und* als Render-Service via `generateImage(smiles, {outputFormat:'svg'})`. Reuse fuer Chemie-Spiele. |
+| **Tool: Quiz** | `src/components/ExtremophileGame.jsx` (Quiz-Sektion) | Pill-Strip oben, Pop-Marker (`ex-marker-pop` Keyframes), Pruefen-Button mit Auto-Advance nach 1.1 s. Pattern fuer beliebige Single-Input-Fragenrunden. |
+| **Karten-Prozente von aussen** | `src/components/ArchaeaLipidsMikrobioCard.jsx`, `src/components/ExtremophileMikrobioCard.jsx` | Pattern fuer Mikrobio/Index-Seite: Hauptlink + Progressbar (sofort aus LS, dann Server-Merge) + "Uebung"-Link unten rechts in den Practice-Mode. |
+
+## Persistenz-Schema
+
+- DB-Tabelle: `minigame_progress(username, game_id, payload TEXT JSON, updated_at, PK(username,game_id))`.
+- API: `GET /api/minigames/progress?game=<id>` -> `{payload, updated_at}` (oder 401). `PUT /api/minigames/progress` body `{game, payload}` -> upsert.
+- Whitelist erlaubter game-IDs in `ALLOWED_GAMES` (Set in der API-Datei). **Neue Minigames dort eintragen**, sonst 400.
+- Maximal 16 KB pro Payload (Server-side enforced).
+- Pro Spielmodul:
+  - `loadProgress()` / `saveProgress(p)` -> localStorage (sync, sofort).
+  - `mergeProgress(a, b)` -> spielspezifischer Merge (z. B. OR fuer "ever correct"-Bits, max fuer best-Scores). Wichtig: Merge muss kommutativ + idempotent sein, sonst flackert die UI beim Sync.
+  - `GAME_ID` Konstante, identisch mit API-Whitelist-Eintrag.
+- Card + Game-Insel rufen `syncOnMount({gameId, localProgress, merge, saveLocal, onMerged})` auf — sofort lokale Anzeige, im Hintergrund Server-Merge.
+- Bei jeder Aenderung `pushToServer(GAME_ID, updated)` (fire-and-forget; 401 wird gemerkt, danach kein weiterer Call).
+
+## Practice-/Uebung-Mode
+
+- Game-Insel-Komponente nimmt `mode` Prop (`'play' | 'practice'`).
+- Astro-Seite liest `?ueben=1` aus `Astro.url.searchParams` und reicht es weiter.
+- Practice-Mode: Loesungen direkt sichtbar, keine Wertung, keine Persistenz, kein Konfetti. UI bleibt erkennbar das gleiche Spiel — nur in "Stillstand" mit allen Antworten offen.
+
+## Score-Punkte-Verteilung (Konvention)
+
+Wenn ein Spiel mehrere Level hat, summieren die Level-Anteile auf 100&nbsp;%
+(z. B. Archaea-Lipide: L1 50&nbsp;%, L2 50&nbsp;%). Pro Aufgabe innerhalb des
+Levels: gleichmaessig aufgeteilt (z. B. 50&nbsp;%/3 Lipide = ~16.67&nbsp;%).
+
+Bei Single-Level-Quiz (Extremophile): 100&nbsp;% = alle Fragen aller Kategorien
+richtig (6×6 = 36 Fragen).
+
+## Naming-Konventionen
+
+- Speicherort: `mikrobio:<game-id>:v1` als localStorage-Key (oder analog pro Themengebiet).
+- Komponenten-Namen mit Praefix matched die Game-ID (z. B. `ArchaeaLipidsGame`, `ArchaeaLipidsConfetti`, `ArchaeaLipidsMikrobioCard`). CSS-Klassen-Praefix: kurz, eindeutig (z. B. `alg-…`, `ex-…`).
+
+## Checkliste fuer neue Minigames
+
+1. Daten + Pruef-Funktionen in `src/lib/<game>.js`.
+2. Persistenz in `src/lib/<game>-progress.js` mit `loadProgress`, `saveProgress`, `mergeProgress`, `GAME_ID` + Score-Helper.
+3. Game-ID in API-Whitelist `src/pages/api/minigames/progress.js#ALLOWED_GAMES` eintragen.
+4. Spielinsel `<Game>.jsx` mit `mode`-Prop, `syncOnMount` + `pushToServer`.
+5. Karte `<Game>MikrobioCard.jsx` (oder analog) mit Hauptlink + "Uebung"-Link.
+6. Astro-Seite unter `src/pages/minigames/<bereich>/<game>.astro`, liest `?ueben=1`.
+7. Karte in `<bereich>.astro` einbinden (`client:idle`).
+8. Memory: `memory/<bereich>.mdc` um Spiel-Sektion ergaenzen.

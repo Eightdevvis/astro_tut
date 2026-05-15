@@ -147,6 +147,14 @@ const SCHEMA_DDL = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS minigame_progress (
+    username   TEXT NOT NULL,
+    game_id    TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, game_id)
+  );
+
   CREATE TABLE IF NOT EXISTS rpg_user_state_backups (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     username    TEXT NOT NULL,

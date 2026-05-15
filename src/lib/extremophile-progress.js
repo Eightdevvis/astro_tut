@@ -57,6 +57,28 @@ export function categoryComplete(progress, categoryId) {
   return QUESTIONS.every((q) => ev[q.id]);
 }
 
+// Merge zweier Progress-Objekte (z. B. local vs. server). "ever correct"
+// pro (Kategorie, Frage) = OR.
+export function mergeProgress(a, b) {
+  const na = normalize(a);
+  const nb = normalize(b);
+  const ev = {};
+  const catKeys = new Set([...Object.keys(na.ev), ...Object.keys(nb.ev)]);
+  for (const cat of catKeys) {
+    const ax = na.ev[cat] || {};
+    const bx = nb.ev[cat] || {};
+    const merged = {};
+    const qKeys = new Set([...Object.keys(ax), ...Object.keys(bx)]);
+    for (const q of qKeys) {
+      if (ax[q] || bx[q]) merged[q] = true;
+    }
+    ev[cat] = merged;
+  }
+  return { ev };
+}
+
+export const GAME_ID = 'extremophile';
+
 function emptyProgress() {
   return { ev: {} };
 }
