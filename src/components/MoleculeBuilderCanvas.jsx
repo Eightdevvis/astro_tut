@@ -5,7 +5,7 @@ import { StandaloneStructServiceProvider } from 'ketcher-standalone';
 
 const structServiceProvider = new StandaloneStructServiceProvider();
 
-export default function MoleculeBuilderCanvas() {
+export default function MoleculeBuilderCanvas({ onReady }) {
   // Ketcher's outer Editor-Wrapper feuert `onInit` zweimal, weil sein innerer
   // `MicromoleculesEditor` einen Init-Cycle fuer React-StrictMode hat, den
   // Preact-Suspense ungewollt mit triggert. Nur den ersten Init durchlassen —
@@ -28,6 +28,7 @@ export default function MoleculeBuilderCanvas() {
           }
           if (initedRef.current) return;
           initedRef.current = true;
+          onReady?.(ketcher);
         }}
       />
       <style>{`

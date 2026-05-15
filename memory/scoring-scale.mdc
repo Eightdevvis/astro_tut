@@ -1,0 +1,35 @@
+---
+description: Standard-Bewertungsskala fuer Score-basierte Minigames — Konfetti-Tiers und Schwellen
+---
+
+# Bewertungsskala (Standard)
+
+Projektweite Konvention fuer Score-basierte Minigames mit Konfetti-Feedback.
+Quelle der Wahrheit: `src/lib/scoring-scale.js`. Bei Aenderungen sowohl dort
+als auch hier mitziehen.
+
+## Tiers (Score in %)
+
+| Score | Tier | Effekt |
+|-------|------|--------|
+| >= 100 | `gold` | starkes Konfetti + zusaetzliches goldenes Konfetti |
+| >= 95 | `strong` | deutlich starkes Konfetti |
+| >= 85 | `confetti` | freundliches Konfetti |
+| < 85 | `none` | nur X-Feedback, keine Animation |
+
+## API
+
+- `SCORE_TIERS` — eingefrorenes Objekt mit Schwellen (`CONFETTI`, `STRONG`, `GOLD`).
+- `tierFromScore(score)` -> `'gold' | 'strong' | 'confetti' | 'none'`.
+- `isPassing(score)` -> `score >= 85`.
+
+## Erste Anwendung
+
+`src/components/ArchaeaLipidsGame.jsx` Level&nbsp;2 (Strukturen nachbauen). Score
+kommt dort aus gewichteter Atomzaehlung (C dominiert; siehe Datei).
+
+## Konfetti-Komponente
+
+Wiederverwendbar: `src/components/ArchaeaLipidsConfetti.jsx`. Props: `tier` und
+`runId`. `runId` ist ein Reset-Token (z. B. `Date.now()`), damit dieselbe Tier-
+Stufe nochmal getriggert werden kann.

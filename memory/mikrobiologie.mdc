@@ -9,8 +9,21 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 ## Seitenstruktur
 
 - Header (Titel + Lead).
-- `<section.mb-games>` — Minigame-Bereich (aktuell leerer Platzhalter "Noch keine Minigames hier. Bald.").
+- `<section.mb-games>` — Minigame-Karten-Grid. Aktuell eine Karte: "Archaea: Membran: Lipide" (siehe unten).
 - `<details.mb-tools>` — aufklappbarer Drawer "Werkzeuge & Vorlagen". Drinnen sitzt der `MoleculeBuilder` als erstes (zurzeit einziges) Tool. Weitere Tools/Vorlagen kommen hier rein, nicht oben in den Minigame-Bereich.
+
+## Minigame: Archaea: Membran: Lipide
+
+- Route: `src/pages/minigames/mikrobiologie/archaea-membran-lipide.astro`.
+- Spielkomponente: `src/components/ArchaeaLipidsGame.jsx` (single-island, Preact).
+- Karte auf Mikrobio-Seite: `src/components/ArchaeaLipidsMikrobioCard.jsx` (client:idle, liest Score aus localStorage).
+- Drei Lipide aus `src/lib/archaea-lipids.js`: Glycerindiether (Archaeol+Phosphat), Glycerintetraether (Caldarchaeol-Bisphosphat, macrocyclisch), Crenarchaeol (Tetraether ohne Phosphat, 1 Cyclopentan oben + 3 Cyclopentane + 1 Cyclohexan unten — plausibel platziert, nicht atomgenau).
+- Level 1: Struktur (Ketcher-SVG-Rendering) zeigen, Name tippen, binary richtig/falsch.
+- Level 2: Name oben, Ketcher-Editor unten, Pruefen-Score per gewichteter Atomzaehlung (C dominiert) — siehe `similarityScore()`. Falsch -> Loesungs-Bild oben.
+- Score-Persistenz: localStorage Key `mikrobio:archaea-lipide:v1` (siehe `archaea-lipids-progress.js`). L1 = 50 % gesamt (binaer pro Lipid), L2 = 50 % (best similarity pro Lipid).
+- Bewertungsschwellen: `src/lib/scoring-scale.js` (Standard 85/95/100 — siehe `memory/scoring-scale.mdc`).
+- Konfetti: `src/components/ArchaeaLipidsConfetti.jsx`, getriggert ab 85 %.
+- Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar. SVG-Renderings + Atomzaehlungen aller drei Targets werden einmalig nach Ketcher-Ready vorberechnet.
 
 ## Rechte/Freigabe
 
@@ -35,8 +48,15 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 
 | Bereich | Pfad |
 |--------|------|
-| Seite | `src/pages/minigames/mikrobiologie.astro` |
+| Mikrobio-Seite | `src/pages/minigames/mikrobiologie.astro` |
+| Archaea-Lipide Game-Seite | `src/pages/minigames/mikrobiologie/archaea-membran-lipide.astro` |
+| Archaea-Lipide Game (Insel) | `src/components/ArchaeaLipidsGame.jsx` |
+| Archaea-Lipide Karte (Mikrobio) | `src/components/ArchaeaLipidsMikrobioCard.jsx` |
+| Archaea-Lipide Konfetti | `src/components/ArchaeaLipidsConfetti.jsx` |
+| Archaea-Lipide Daten | `src/lib/archaea-lipids.js` |
+| Archaea-Lipide Persistenz | `src/lib/archaea-lipids-progress.js` |
+| Bewertungs-Standardskala | `src/lib/scoring-scale.js` |
 | Builder-Wrapper (Toggle + Lazy + Suspense) | `src/components/MoleculeBuilder.jsx` |
-| Builder-Canvas (Ketcher-Mount) | `src/components/MoleculeBuilderCanvas.jsx` |
+| Builder-Canvas (Ketcher-Mount, exportiert `onReady` Callback) | `src/components/MoleculeBuilderCanvas.jsx` |
 | React-DOM-Client-Shim | `src/lib/preact-react-dom-client-shim.js` |
 | Vite/Preact-Bridge-Config | `astro.config.mjs` |

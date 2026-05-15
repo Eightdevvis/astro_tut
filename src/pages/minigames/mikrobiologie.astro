@@ -6,6 +6,7 @@ import ThemeClient from '../../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import PageFavicon from '../../components/PageFavicon.astro';
 import MoleculeBuilder from '../../components/MoleculeBuilder.jsx';
+import ArchaeaLipidsMikrobioCard from '../../components/ArchaeaLipidsMikrobioCard.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
@@ -40,7 +41,7 @@ if (!canUseMinigames) {
     </header>
 
     <section class="mb-games" aria-label="Minigames">
-      <p class="mb-games-empty">Noch keine Minigames hier. Bald.</p>
+      <ArchaeaLipidsMikrobioCard client:idle />
     </section>
 
     <details class="mb-tools">
@@ -121,19 +122,15 @@ if (!canUseMinigames) {
 
   .mb-games {
     margin-top: 1.5rem;
-    min-height: 8rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px dashed var(--site-card-border);
-    border-radius: 0.9rem;
-    background: transparent;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
   }
 
-  .mb-games-empty {
-    margin: 0;
-    color: var(--site-soft-muted);
-    font-style: italic;
+  @media (min-width: 40rem) {
+    .mb-games {
+      grid-template-columns: 1fr 1fr;
+    }
   }
 
   .mb-tools {

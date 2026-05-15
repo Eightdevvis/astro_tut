@@ -21,6 +21,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | Mikrobiologie-Seite + Molecule Builder (Ketcher, Preact-Bridge) | [`mikrobiologie.mdc`](mikrobiologie.mdc) |
 | RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |
 | RPG Qualitätskontrolle (Berichte, Stand, Trends) | [`rpg/quality-control.mdc`](rpg/quality-control.mdc) |
+| Bewertungsskala (Standard-Konfetti-Tiers fuer Minigames) | [`scoring-scale.mdc`](scoring-scale.mdc) |
 | Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
 | Site — Theme-System (global, Light/Dark, Storage, Init) | [`site-theme-system.mdc`](site-theme-system.mdc) |
 | Testbarkeit — lokale Risiko-/Flaky-Notizen (**lokal:** `testability-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |
