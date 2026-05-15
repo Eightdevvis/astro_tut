@@ -107,34 +107,12 @@ export const CATEGORIES = [
 
 export const QUESTIONS = [
   { id: 'species', prompt: 'Nenne eine Art.', kind: 'name', field: 'name' },
-  {
-    id: 'domain',
-    prompt: 'Ist es ein Bakterium, ein Archaeon oder ein Eukaryot?',
-    kind: 'domain',
-    field: 'domain',
-  },
+  { id: 'domain', prompt: 'Zu welcher Gruppe gehoert sie?', kind: 'domain', field: 'domain' },
   { id: 'habitat', prompt: 'Wo lebt sie typischerweise?', kind: 'habitat', field: 'habitat' },
   { id: 'optimum', prompt: 'Was ist ihr Optimum?', kind: 'numeric', field: 'optimum' },
   { id: 'min', prompt: 'Was ist das Minimum?', kind: 'numeric', field: 'min' },
   { id: 'max', prompt: 'Was ist das Maximum?', kind: 'numeric', field: 'max' },
 ];
-
-// Alias-Tabelle fuer die drei Domains. Liste deutsch + lateinisch + Plural.
-// Wenn der User irgendeine dieser Schreibweisen tippt, wird's auf die
-// kanonische Form gemappt; verglichen wird kanonisch.
-const DOMAIN_ALIASES = {
-  archaea: ['archaea', 'archaeen', 'archaeon', 'archaee', 'archaeum'],
-  bacteria: ['bacteria', 'bakterium', 'bakterien', 'eubacteria', 'bakteria', 'bacterium'],
-  eukarya: ['eukarya', 'eukaryot', 'eukaryote', 'eukaryoten', 'eukaryota', 'eukarya-domain'],
-};
-
-function canonDomain(s) {
-  const n = normalize(s);
-  for (const [canon, aliases] of Object.entries(DOMAIN_ALIASES)) {
-    if (aliases.includes(n)) return canon;
-  }
-  return n;
-}
 
 // Liefert die kanonische Anzeige-Antwort einer Frage fuer eine Kategorie.
 // Wird vom Result-Strip benutzt, um die "richtige Loesung" zu zeigen.
@@ -157,7 +135,7 @@ export function checkAnswer(category, question, userInput) {
     case 'name':
       return norm === normalize(species.name);
     case 'domain':
-      return canonDomain(userInput) === canonDomain(species.domain);
+      return norm === normalize(species.domain);
     case 'habitat': {
       const target = normalize(species.habitat);
       if (norm === target) return true;
