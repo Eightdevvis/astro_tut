@@ -6,6 +6,7 @@ import ThemeClient from '../../../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../../../components/BewareOfBugsBanner.astro';
 import PageFavicon from '../../../components/PageFavicon.astro';
 import ArchaeaLipidsGame from '../../../components/ArchaeaLipidsGame.jsx';
+import KetcherRequireShim from '../../../components/KetcherRequireShim.astro';
 import { getUsernameFromCookies } from '../../../lib/session.js';
 import { hasPermission } from '../../../lib/permissions.js';
 import '../../../styles/global.css';
@@ -20,6 +21,7 @@ const isUeben = Astro.url.searchParams.get('ueben') === '1';
 
 <html lang="de">
   <head>
+    <KetcherRequireShim />
     <meta charset="utf-8" />
     <ThemeInit />
     <PageFavicon icon="minigames" />

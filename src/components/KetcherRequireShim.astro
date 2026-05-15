@@ -1,0 +1,24 @@
+---
+// Ketcher (ketcher-react + ketcher-standalone, 3.x) versendet im Lazy-Chunk
+// CJS-Reste, die im Browser `require(...)` bare aufrufen — ohne Shim crasht
+// dann der ganze Chunk beim Eval mit "require is not defined", noch bevor
+// `onInit` ueberhaupt feuern kann (siehe Mikrobio-Debug-Log:
+// `prefetch-failed`, `canvas-chunk-import-failed`).
+//
+// Loesung: ein No-op-`require`-Stub auf window, **bevor** irgendein Modul-
+// Script laedt. `is:inline` haengt das Script direkt in <head> und Astro
+// beruehrt es nicht mehr — laeuft synchron vor allen deferred Module-Scripts.
+//
+// Falls Ketcher tatsaechlich einen bestimmten Modul-Inhalt erwartet, wird
+// dann ein neuer (anderer) Fehler im Debug-Panel auftauchen — keine stille
+// Verschlechterung.
+---
+<script is:inline>
+  (function () {
+    if (typeof window === 'undefined') return;
+    if (typeof window.require !== 'undefined') return;
+    var noop = function () { return undefined; };
+    noop.resolve = function () { return ''; };
+    window.require = noop;
+  })();
+</script>
