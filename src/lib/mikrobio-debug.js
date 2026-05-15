@@ -1,4 +1,4 @@
-// Sichtbarer Debug-Log fuer das Archaea-Mini-Game.
+// Sichtbarer Debug-Log für das Archaea-Mini-Game.
 //
 // Module-level Event-Buffer + Listener-Set, damit MoleculeBuilderCanvas und
 // ArchaeaLipidsGame in dasselbe Log schreiben, ohne sich Props durchzureichen.

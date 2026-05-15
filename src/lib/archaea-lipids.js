@@ -32,11 +32,11 @@ const BIPHYTANYL_1_CYP =
 const BIPHYTANYL_3_CYP_1_CYH =
   'CCC(C)CC3CCCC3C(C)CCC4CCCC4C(C)CC5CCCCC5C(C)CCC(C)CCCC(C)CC6CCCC6C(C)CCCC(C)CC';
 
-// Mini-SMILES-Parser fuer Atomzaehlungen (ohne H). Reicht fuer unser Alphabet:
+// Mini-SMILES-Parser für Atomzählungen (ohne H). Reicht für unser Alphabet:
 // C, O, P (alle einbuchstabig, keine aromatische Notation, keine Cl/Br).
-// Brackets `[...]` werden behandelt; Zahlen/Bindungen/Klammern/Schraegstriche
-// uebersprungen. Vorher lief das ueber `ketcher.setMolecule()` + `getMolfile()`
-// pro Lipid — Indigo brauchte fuer macrocyclische Lipide Minuten und blockte
+// Brackets `[...]` werden behandelt; Zahlen/Bindungen/Klammern/Schrägstriche
+// übersprungen. Vorher lief das über `ketcher.setMolecule()` + `getMolfile()`
+// pro Lipid — Indigo brauchte für macrocyclische Lipide Minuten und blockte
 // das gesamte Vorrendern.
 export function atomCountsFromSmiles(smiles) {
   const counts = {};
@@ -63,7 +63,7 @@ export function atomCountsFromSmiles(smiles) {
       continue;
     }
     // Aromatische Kleinbuchstaben (kommen in unseren Lipiden nicht vor, aber
-    // billig zu unterstuetzen).
+    // billig zu unterstützen).
     if (c === 'c' || c === 'n' || c === 'o' || c === 's' || c === 'p') {
       const elem = c.toUpperCase();
       counts[elem] = (counts[elem] || 0) + 1;
@@ -97,8 +97,8 @@ export const ARCHAEA_LIPIDS = [
   },
 ];
 
-// Vorgerechnete Target-Atomzaehlungen — wird vom Game als Vergleichsbasis fuer
-// L2-Score genutzt. Statisch ableitbar aus den SMILES, kein Ketcher noetig.
+// Vorgerechnete Target-Atomzählungen — wird vom Game als Vergleichsbasis für
+// L2-Score genutzt. Statisch ableitbar aus den SMILES, kein Ketcher nötig.
 export const LIPID_TARGET_ATOMS = Object.fromEntries(
   ARCHAEA_LIPIDS.map((l) => [l.id, atomCountsFromSmiles(l.smiles)]),
 );

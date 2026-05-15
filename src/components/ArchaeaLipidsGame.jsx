@@ -86,8 +86,8 @@ function similarityScore(userAtoms, targetAtoms) {
 
 // L1-Prompt-Bilder: zuerst lokales SVG aus `/public/lipids/<id>.svg` versuchen
 // (handgemalte Lehrbuch-Darstellung mit gefalteten Ketten — Auto-Renderer
-// koennen das nicht), per <img onError> auf Simolecule CDK Depict zurueckfallen.
-// So koennen SVGs Stueck fuer Stueck nachgezogen werden, der Game laeuft eh.
+// können das nicht), per <img onError> auf Simolecule CDK Depict zurückfallen.
+// So können SVGs Stück für Stück nachgezogen werden, der Game läuft eh.
 const LOCAL_LIPID_URL = (id) => `/lipids/${id}.svg`;
 const SIMOLECULE_URL = (smiles) =>
   `https://www.simolecule.com/cdkdepict/depict/bow/svg?smi=${encodeURIComponent(smiles)}&abbr=on&disp=bridgehead&zoom=1.0&hdisp=provided&showtitle=false`;
@@ -101,7 +101,7 @@ function lipidImageFallbackUrl(lipid) {
 
 // <img> mit automatischem Fallback: zuerst local SVG, bei 404/Fehler einmal
 // auf Simolecule umschalten. `data-fallback="1"` verhindert Endlos-Loop, falls
-// auch der Fallback fehlschlaegt.
+// auch der Fallback fehlschlägt.
 function LipidImage({ lipid, alt, className }) {
   if (!lipid) return null;
   return (
@@ -175,11 +175,11 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
   // Bilder pro Lipid: erst lokales SVG aus /public/lipids/<id>.svg, sonst
   // Simolecule-Fallback (siehe `lipidImageUrl` / `lipidImageFallbackUrl`).
   // Views holen sich pro Lipid die URLs direkt aus dem Lipid-Objekt; kein
-  // dynamischer State noetig.
+  // dynamischer State nötig.
   const targetAtoms = LIPID_TARGET_ATOMS;
-  // Targets sind bereit, sobald Ketcher mountet — Atomzaehlungen brauchen ihn nicht.
+  // Targets sind bereit, sobald Ketcher mountet — Atomzählungen brauchen ihn nicht.
   const targetsReady = Boolean(ketcher);
-  // Map fuer alte View-Props (lipidImages[id]). Werte sind Primary-URLs;
+  // Map für alte View-Props (lipidImages[id]). Werte sind Primary-URLs;
   // im <img>-Tag setzt onError den Fallback.
   const lipidImages = useMemo(
     () =>
@@ -189,22 +189,22 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     [],
   );
 
-  // (Frueher: Ketcher-generateImage-Loop — komplett entfernt, weil Ketcher
+  // (Früher: Ketcher-generateImage-Loop — komplett entfernt, weil Ketcher
   // hier nicht sauber mountet und wir die Bilder eh extern beziehen.)
   useEffect(() => {
     if (ketcher) dbg('ketcher-state-set', { keys: Object.keys(ketcher).slice(0, 20) });
   }, [ketcher]);
 
-  // (Frueher: Prefetch des Ketcher-Chunks beim Mount. Raus, weil L1 keinen
+  // (Früher: Prefetch des Ketcher-Chunks beim Mount. Raus, weil L1 keinen
   // Editor mehr braucht und L2 zurzeit beim Mount crasht — der mehrere-MB-
-  // Chunk wuerde bei jedem Page-Load fuer nichts geladen.)
+  // Chunk würde bei jedem Page-Load für nichts geladen.)
 
   const ensureEditor = () => setEditorMounted(true);
 
   const goHome = () => setMode('home');
-  // Ketcher mounten wir NUR fuer L2 (User zeichnet selbst). L1 zeigt nur ein
+  // Ketcher mounten wir NUR für L2 (User zeichnet selbst). L1 zeigt nur ein
   // SVG-Bild der Target-Struktur — das holen wir extern via Simolecule CDK
-  // Depict (`lipidImageUrl`), kein Ketcher-Mount noetig. Hintergrund: Ketcher
+  // Depict (`lipidImageUrl`), kein Ketcher-Mount nötig. Hintergrund: Ketcher
   // 3.12 + Preact-Compat-Shim crasht im Mount-Lifecycle ("'ci' in null"
   // Endlosschleife + 4x null.render + ResizeObserver.observe(null)) — siehe
   // Mikrobio-Debug-Log. Bis Ketcher hier sauber mountet, halten wir's aus L1
@@ -272,14 +272,14 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
       {editorMounted && (
         <Suspense
           fallback={
-            <div className="alg-editor-loading">Ketcher laedt&hellip;</div>
+            <div className="alg-editor-loading">Ketcher lädt&hellip;</div>
           }
         >
           {/*
             Ketcher/Konva crasht beim Mount in einem off-screen-Container
             (`position:fixed; left:-10000px`) — endlose `'ci' in null` und
             `ResizeObserver.observe(null)`-Fehler, weil interne DOM-Lookups
-            ins Leere greifen. Bis dafuer eine saubere Loesung steht, mounten
+            ins Leere greifen. Bis dafür eine saubere Lösung steht, mounten
             wir den Editor *immer* in seinem sichtbaren Layout-Slot.
             UX-Trade-Off in L1: Editor ist sichtbar unter dem Quiz; in L2
             ist er ohnehin das Hauptelement.

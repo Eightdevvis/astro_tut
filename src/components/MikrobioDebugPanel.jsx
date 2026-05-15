@@ -20,7 +20,7 @@ export default function MikrobioDebugPanel() {
     return subscribeDbg(() => force((v) => v + 1));
   }, []);
 
-  // Globale Fehler-Listener: alles aufschnappen, was waehrend Mikrobio-Game
+  // Globale Fehler-Listener: alles aufschnappen, was während Mikrobio-Game
   // schief geht (Worker-Fehler, WASM-Loads, Ketcher-Rejections etc.).
   useEffect(() => {
     if (!enabled) return undefined;

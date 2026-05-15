@@ -429,8 +429,8 @@ async function ensureUsersDisplayNameColumn() {
 }
 
 export async function ensureDbSchema() {
-  // Alle Wartungs-Statements (ALTER/DROP/Seeds) liefen frueher pro Request frisch
-  // gegen Turso — 8+ Round-Trips ueberall, selbst auf der Home. Jetzt einmal pro
+  // Alle Wartungs-Statements (ALTER/DROP/Seeds) liefen früher pro Request frisch
+  // gegen Turso — 8+ Round-Trips überall, selbst auf der Home. Jetzt einmal pro
   // Cold-Start hinter dem gleichen Promise wie das initiale DDL.
   if (!schemaPromise) {
     const db = createDbClient();

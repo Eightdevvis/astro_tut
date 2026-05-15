@@ -2,14 +2,14 @@
 // Ketcher (ketcher-react + ketcher-standalone, 3.x) versendet im Lazy-Chunk
 // CJS-Reste, die im Browser `require(...)` bare aufrufen — ohne Shim crasht
 // dann der ganze Chunk beim Eval mit "require is not defined", noch bevor
-// `onInit` ueberhaupt feuern kann (siehe Mikrobio-Debug-Log:
+// `onInit` überhaupt feuern kann (siehe Mikrobio-Debug-Log:
 // `prefetch-failed`, `canvas-chunk-import-failed`).
 //
-// Loesung: ein No-op-`require`-Stub auf window, **bevor** irgendein Modul-
-// Script laedt. `is:inline` haengt das Script direkt in <head> und Astro
-// beruehrt es nicht mehr — laeuft synchron vor allen deferred Module-Scripts.
+// Lösung: ein No-op-`require`-Stub auf window, **bevor** irgendein Modul-
+// Script lädt. `is:inline` hängt das Script direkt in <head> und Astro
+// berührt es nicht mehr — läuft synchron vor allen deferred Module-Scripts.
 //
-// Falls Ketcher tatsaechlich einen bestimmten Modul-Inhalt erwartet, wird
+// Falls Ketcher tatsächlich einen bestimmten Modul-Inhalt erwartet, wird
 // dann ein neuer (anderer) Fehler im Debug-Panel auftauchen — keine stille
 // Verschlechterung.
 ---
@@ -19,10 +19,10 @@
     if (typeof window.require !== 'undefined') return;
     // Singleton-Proxy: antwortet auf JEDEN Property-Access (default, default.x,
     // default.x.y ...) mit sich selbst, ist callable, ist konstruierbar, und
-    // gibt fuer Spezial-Symbole sinnvolle Werte zurueck (sonst crasht z. B.
+    // gibt für Spezial-Symbole sinnvolle Werte zurück (sonst crasht z. B.
     // `String(stub)` oder `await stub`). __esModule:true umgeht ESM-Interop-
-    // Re-Wrapping, then:undefined verhindert dass jemand stub fuer ein Promise
-    // haelt.
+    // Re-Wrapping, then:undefined verhindert dass jemand stub für ein Promise
+    // hält.
     var SINGLETON;
     var target = function () { return SINGLETON; };
     SINGLETON = new Proxy(target, {
