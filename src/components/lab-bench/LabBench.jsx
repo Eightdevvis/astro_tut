@@ -75,6 +75,12 @@ export default function LabBench({
   onAction,
   onPlacedChange,
   onSourceDropped,  // (sourceType, targetItem|null, helpers) - Flaschen-auf-Kolben
+  // User-Aktions-Callbacks: feuern bei jeder explizit-vom-User-ausgeloesten
+  // Aenderung am Tisch. Damit kann der Game-Wrapper (Pasteur) Idle-Counter
+  // hochzaehlen wenn nichts Sinnvolles passiert.
+  onItemPlaced,     // (item)  - User hat Item aus Inventar abgestellt
+  onItemMoved,      // (item)  - User hat platziertes Item bewegt
+  onItemTrashed,    // (item)  - User hat platziertes Item in den Muelleimer
 } = {}) {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -191,7 +197,9 @@ export default function LabBench({
     if (pointInRect(d.cur.x, d.cur.y, ZONES.trash)) {
       dbg('drop-trash', { originId: d.originId || null });
       if (d.originId) {
+        const trashed = placed.find((p) => p.id === d.originId);
         setPlaced((prev) => prev.filter((p) => p.id !== d.originId));
+        if (trashed) onItemTrashed?.(trashed);
       }
       return;
     }
@@ -274,9 +282,14 @@ export default function LabBench({
     // Drop auf Tisch (oder eigentlich ueberall im Szenenbereich)
     if (d.cloneFromInventory) {
       const id = `p${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      setPlaced((prev) => [...prev, { id, type: d.itemType, x: dropX, y: dropY, state: {} }]);
+      const newItem = { id, type: d.itemType, x: dropX, y: dropY, state: {} };
+      setPlaced((prev) => [...prev, newItem]);
+      dbg('item-add-from-drop', { id, type: d.itemType });
+      onItemPlaced?.(newItem);
     } else if (d.originId) {
+      const moved = placed.find((p) => p.id === d.originId);
       setPlaced((prev) => prev.map((p) => (p.id === d.originId ? { ...p, x: dropX, y: dropY } : p)));
+      if (moved) onItemMoved?.({ ...moved, x: dropX, y: dropY });
     }
   }
 

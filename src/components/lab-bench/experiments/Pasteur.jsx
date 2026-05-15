@@ -52,6 +52,17 @@ function Lab() {
   const [idleActions, setIdleActions] = useState(0);
   // Wird gesetzt von LabBench, wenn `flask_on_stand` getriggert wurde.
   const placedReportRef = useRef({});
+  // Kurzer Lehr-Hinweis. Wird beim Falschmachen gesetzt; verschwindet nach
+  // ein paar Sekunden. Beispiel: "Mit steriler Bruehe lernst du nichts ueber
+  // Sterilisation — Pasteur startet mit unsteriler".
+  const [hint, setHint] = useState(null);
+  const hintTimerRef = useRef(null);
+  function showHint(text, ms = 5000) {
+    setHint(text);
+    clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = setTimeout(() => setHint(null), ms);
+  }
+  useEffect(() => () => clearTimeout(hintTimerRef.current), []);
 
   const mood = computeMood(idleActions);
   // Mood-Tracking ins Debug-Log: bei jedem Render zeigen wir den aktuellen
@@ -90,11 +101,13 @@ function Lab() {
   // ungefaehr auf y=615 (Schubladen-Boden).
   const inventory = useMemo(
     () => [
-      // Regal: Flaschen. Nur unsteril — Pasteur startet immer mit
-      // unsteriler Bruehe; ein Glas mit schon-steriler Fluessigkeit waere
-      // Cheat (man bekaeme das Endergebnis ohne Sterilisation zu lernen).
-      { type: 'bottle_unsterile',  x: 620, y: 130 },
-      { type: 'bottle_unsterile',  x: 800, y: 210 },
+      // Regal: Flaschen. Sterile + unsterile sind beide da — User soll
+      // selber rausfinden was Sinn macht. Sterile geben aber keinen
+      // Meilenstein und triggern einen Hint + Idle-Bump (Mood-Drop).
+      { type: 'bottle_sterile',    x: 600, y: 130 },
+      { type: 'bottle_unsterile',  x: 700, y: 130 },
+      { type: 'bottle_sterile',    x: 780, y: 210 },
+      { type: 'bottle_unsterile',  x: 870, y: 210 },
 
       // Schublade — fuer Pasteurs Experiment relevant ist nur der Erlenmeyer.
       // Den Schwanenhalskolben sollst du selbst herstellen (durch Heizen +
@@ -140,6 +153,7 @@ function Lab() {
       } else {
         if (!s.liquid) {
           list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
+          list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
         }
         if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
         if (!s.bunsenAtNeck && s.neck !== 'swan')
@@ -185,7 +199,21 @@ function Lab() {
         helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
         award('liquid_in_flask');
         return;
-      // fill_sterile entfernt — Pasteur startet immer mit unsteriler Bruehe.
+      case 'fill_sterile':
+        // Dieselbe Logik wie der sterile-pour-Drop: kein Meilenstein, Hint,
+        // Mood-Drop. Sterile via Menue ist genauso ein Shortcut wie via
+        // Drag.
+        helpers.update({
+          liquid: 'sterile',
+          liquidColor: '#f0e6c8',
+          sterilized: true,
+          cheated: true,
+        });
+        showHint(
+          'Mit steriler Bruehe lernst du nichts ueber Sterilisation — Pasteur startet immer mit *unsteriler* Bruehe.',
+        );
+        bump();
+        return;
       case 'bunsen_below':
         helpers.update({ bunsenBelow: true });
         award('bunsen_below');
@@ -259,6 +287,23 @@ function Lab() {
     }
   }
 
+  // User-Aktionen (Drop aus Inventar / Move / Trash) zaehlen ALLE als Aktion.
+  // Falls die Aktion einen Meilenstein triggert, ruft `onPlacedChange` danach
+  // `award()` auf, was den Idle-Counter wieder auf 0 setzt. Sinnloses Item-
+  // Spammen laesst den Counter steigen -> Mood faellt.
+  function handleItemPlaced(item) {
+    dbg('pasteur-item-placed', { type: item.type, id: item.id });
+    bump();
+  }
+  function handleItemMoved(item) {
+    dbg('pasteur-item-moved', { type: item.type, id: item.id });
+    bump();
+  }
+  function handleItemTrashed(item) {
+    dbg('pasteur-item-trashed', { type: item.type, id: item.id });
+    bump();
+  }
+
   // Pour-Mechanik: Flasche aus dem Regal auf einen Vessel gezogen.
   // Jeder Vessel-Typ (Kolben, Becherglas, Reagenzglas) ist gueltiges Pour-Ziel.
   function handleSourceDropped(sourceType, target, helpers) {
@@ -283,12 +328,22 @@ function Lab() {
       helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
       award('liquid_in_flask');
     } else if (sourceType === 'bottle_sterile') {
-      // Kein Award fuer sterile Bruehe — wuerde das Experiment trivialisieren.
-      // Bottle sollte in Pasteurs Inventar gar nicht mehr existieren; falls
-      // doch (z. B. ueber andere Codepfade), Liquid setzen aber Meilenstein
-      // ausdruecklich nicht vergeben.
-      dbg('pour-fill-skipped-sterile', { target: target.type });
-      helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
+      // Sterile Bruehe ist ein verfuehrerischer Shortcut — wer mit sterilem
+      // Inhalt startet, beweist die Sterilisations-Hypothese nicht (man hat
+      // ja gar nichts zu sterilisieren). Liquid setzen, aber:
+      //  - KEIN Meilenstein
+      //  - Hint einblenden, der's pedagogisch erklaert
+      //  - Mood faellt (bump)
+      dbg('pour-fill-sterile-shortcut', { target: target.type });
+      helpers.update({
+        liquid: 'sterile',
+        liquidColor: '#f0e6c8',
+        sterilized: true,
+        cheated: true, // markiert: Setup ist trivial, Tip-Test sagt eh nix aus
+      });
+      showHint(
+        'Mit steriler Bruehe lernst du nichts ueber Sterilisation — Pasteur startet immer mit *unsteriler* Bruehe und macht sie selbst sauber.',
+      );
       bump();
     } else {
       bump();
@@ -301,6 +356,7 @@ function Lab() {
   return (
     <div className="lab-wrap">
       <ProgressStrip done={total} max={max} progress={progress} />
+      {hint && <HintBanner text={hint} onDismiss={() => setHint(null)} />}
       <LabBench
         inventory={inventory}
         mood={mood}
@@ -308,6 +364,9 @@ function Lab() {
         onAction={handleAction}
         onPlacedChange={onPlacedChange}
         onSourceDropped={handleSourceDropped}
+        onItemPlaced={handleItemPlaced}
+        onItemMoved={handleItemMoved}
+        onItemTrashed={handleItemTrashed}
       />
       <p className="lab-hint">
         Items aus der Schublade ziehen, aufs Stativ snappen. Fluessigkeit
@@ -318,6 +377,23 @@ function Lab() {
       </p>
       <LabStyles />
       <MikrobioDebugPanel />
+    </div>
+  );
+}
+
+function HintBanner({ text, onDismiss }) {
+  return (
+    <div className="lab-hint-banner" role="status" aria-live="polite">
+      <span className="lab-hint-banner-icon" aria-hidden="true">!</span>
+      <span className="lab-hint-banner-text">{text}</span>
+      <button
+        type="button"
+        className="lab-hint-banner-dismiss"
+        onClick={onDismiss}
+        aria-label="Hinweis schliessen"
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -556,6 +632,46 @@ function LabStyles() {
         font-size: 0.9rem;
         line-height: 1.5;
       }
+      .lab-hint-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.7rem;
+        padding: 0.75rem 1rem;
+        background: linear-gradient(180deg, rgba(225, 175, 50, 0.18), rgba(225, 175, 50, 0.08));
+        border: 1px solid rgba(180, 130, 30, 0.5);
+        border-radius: 0.7rem;
+        color: #5a3f15;
+        line-height: 1.45;
+        font-size: 0.95rem;
+      }
+      .lab-hint-banner-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.4rem;
+        height: 1.4rem;
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: #b56518;
+        color: #fff;
+        font-weight: 800;
+        font-size: 0.95rem;
+        line-height: 1;
+        margin-top: 0.05rem;
+      }
+      .lab-hint-banner-text { flex: 1; }
+      .lab-hint-banner-dismiss {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        color: inherit;
+        font-size: 1.3rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.2rem;
+        opacity: 0.55;
+      }
+      .lab-hint-banner-dismiss:hover { opacity: 1; }
     `}</style>
   );
 }
