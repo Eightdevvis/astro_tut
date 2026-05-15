@@ -17,8 +17,32 @@
   (function () {
     if (typeof window === 'undefined') return;
     if (typeof window.require !== 'undefined') return;
-    var noop = function () { return undefined; };
-    noop.resolve = function () { return ''; };
-    window.require = noop;
+    // Singleton-Proxy: antwortet auf JEDEN Property-Access (default, default.x,
+    // default.x.y ...) mit sich selbst, ist callable, ist konstruierbar, und
+    // gibt fuer Spezial-Symbole sinnvolle Werte zurueck (sonst crasht z. B.
+    // `String(stub)` oder `await stub`). __esModule:true umgeht ESM-Interop-
+    // Re-Wrapping, then:undefined verhindert dass jemand stub fuer ein Promise
+    // haelt.
+    var SINGLETON;
+    var target = function () { return SINGLETON; };
+    SINGLETON = new Proxy(target, {
+      get: function (_, prop) {
+        if (prop === '__esModule') return true;
+        if (prop === 'then') return undefined;
+        if (prop === Symbol.toPrimitive) return function () { return ''; };
+        if (prop === Symbol.iterator) return function () {
+          return { next: function () { return { done: true, value: undefined }; } };
+        };
+        if (prop === 'toString' || prop === 'toJSON' || prop === 'valueOf') {
+          return function () { return ''; };
+        }
+        return SINGLETON;
+      },
+      apply: function () { return SINGLETON; },
+      construct: function () { return SINGLETON; },
+    });
+    window.require = function () { return SINGLETON; };
+    window.require.resolve = function () { return ''; };
+    window.require.cache = SINGLETON;
   })();
 </script>
