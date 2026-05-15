@@ -200,6 +200,9 @@ export default function LabBench({
 
     // Source-Items (Flaschen): nicht auf den Tisch legen, sondern Pour-Event
     // ausloesen, wenn das Drop ueber einem platzierten Item landet.
+    // Source-Items (Flaschen): wenn ueber einem Vessel gedroppt -> Pour-Event,
+    // Flasche wird NICHT platziert. Wenn woanders gedroppt -> faellt durch zur
+    // normalen Platzierung wie jedes andere Item.
     if (meta.kind === 'source' && d.cloneFromInventory && onSourceDropped) {
       const checks = placed.map((p) => {
         const pm = ITEM_META[p.type];
@@ -216,9 +219,6 @@ export default function LabBench({
           hit,
         };
       });
-      // Nur Vessels (Kolben, Becherglas, Reagenzglas) sind gueltige
-      // Pour-Ziele. Bei mehreren Treffern das spaeter-platzierte nehmen
-      // (typisch oben auf dem Stack, z. B. Kolben auf Stativ).
       const hitVessels = placed.filter(
         (p, i) => checks[i].hit && ITEM_META[p.type].kind === 'vessel',
       );
@@ -232,16 +232,17 @@ export default function LabBench({
         candidates: checks,
         hasOnSourceDropped: typeof onSourceDropped === 'function',
       });
-      const helpers = target
-        ? {
-            update: (partial) => updateItemState(target.id, partial),
-            remove: () => removeItemById(target.id),
-            changeType: (newType) => setItemTypeById(target.id, newType),
-            placed,
-          }
-        : { placed };
-      onSourceDropped(d.itemType, target || null, helpers);
-      return;
+      if (target) {
+        const helpers = {
+          update: (partial) => updateItemState(target.id, partial),
+          remove: () => removeItemById(target.id),
+          changeType: (newType) => setItemTypeById(target.id, newType),
+          placed,
+        };
+        onSourceDropped(d.itemType, target, helpers);
+        return;
+      }
+      // Kein Vessel getroffen — Flasche wird normal abgestellt (faellt durch).
     }
     let dropX = d.cur.x - d.offsetX;
     let dropY = d.cur.y - d.offsetY;
