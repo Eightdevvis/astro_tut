@@ -8,7 +8,7 @@ Eine zentrale Verbindung über **`src/lib/db.js`** (`@libsql/client`):
 | **Prod / Vercel** | **Turso**: `TURSO_URL` + `TURSO_AUTH_TOKEN` in der Umgebung — Serverless braucht eine echte Cloud-DB, nicht nur eine lokale Datei |
 
 - **`getDb()`** — Client pro Aufruf (libsql-typisch).
-- **`ensureDbSchema()`** — idempotentes Anlegen aller Tabellen (gleiches DDL wie in den Init-Skripten).
+- **`ensureDbSchema()`** — idempotentes Anlegen aller Tabellen (gleiches DDL wie in den Init-Skripten). **Alle** Wartungs-Statements (`ALTER TABLE … ADD COLUMN`, `DROP TABLE/COLUMN`, `seedFeedPolicyDefaults`) liegen **innerhalb** des `schemaPromise` und laufen damit **einmal pro Cold-Start**, nicht pro Request. Vorher: 8+ Round-Trips pro Page-Load gegen Turso → spuerbar lahm in Produktion (Home, Mikrobio etc.).
 
 ## Init-Skripte (manuell / einmalig)
 

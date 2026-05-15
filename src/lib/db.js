@@ -421,22 +421,26 @@ async function ensureUsersDisplayNameColumn() {
 }
 
 export async function ensureDbSchema() {
+  // Alle Wartungs-Statements (ALTER/DROP/Seeds) liefen frueher pro Request frisch
+  // gegen Turso — 8+ Round-Trips ueberall, selbst auf der Home. Jetzt einmal pro
+  // Cold-Start hinter dem gleichen Promise wie das initiale DDL.
   if (!schemaPromise) {
     const db = createDbClient();
-    schemaPromise = db.executeMultiple(SCHEMA_DDL).catch((err) => {
+    schemaPromise = (async () => {
+      await db.executeMultiple(SCHEMA_DDL);
+      await ensureQuotesAuthorColumn();
+      await ensureUserFeedItemsImageUrlColumn();
+      await dropLegacyGraffitiStrokesTable();
+      await ensureUserPermissionsStateColumn();
+      await dropUsersGlobalColumn();
+      await ensureUsersDisplayNameColumn();
+      await seedFeedPolicyDefaults(db);
+    })().catch((err) => {
       schemaPromise = null;
       throw err;
     });
   }
   await schemaPromise;
-  await ensureQuotesAuthorColumn();
-  await ensureUserFeedItemsImageUrlColumn();
-  await dropLegacyGraffitiStrokesTable();
-  await ensureUserPermissionsStateColumn();
-  await dropUsersGlobalColumn();
-  await ensureUsersDisplayNameColumn();
-  const db = createDbClient();
-  await seedFeedPolicyDefaults(db);
 }
 
 export function getDb() {

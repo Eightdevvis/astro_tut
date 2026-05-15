@@ -24,6 +24,7 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Bewertungsschwellen: `src/lib/scoring-scale.js` (Standard 85/95/100 — siehe `memory/scoring-scale.mdc`).
 - Konfetti: `src/components/ArchaeaLipidsConfetti.jsx`, getriggert ab 85 %.
 - Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar. SVG-Renderings + Atomzaehlungen aller drei Targets werden einmalig nach Ketcher-Ready vorberechnet.
+- Ketcher-Chunk-Prefetch: `ArchaeaLipidsGame` triggert beim Mount einen `import('./MoleculeBuilderCanvas.jsx')` ins Leere — der mehrere-MB-Chunk laedt im Hintergrund, waehrend der User die Home-View liest, statt erst beim L1/L2-Klick zu starten.
 
 ## Minigame: Extremophile
 

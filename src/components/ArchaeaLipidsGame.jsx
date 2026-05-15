@@ -129,6 +129,13 @@ export default function ArchaeaLipidsGame() {
     };
   }, [ketcher]);
 
+  // Ketcher-Bundle ist gross (mehrere MB inkl. WASM). Sobald die Game-Seite
+  // mountet, den Lazy-Chunk schonmal im Hintergrund holen — dann ist er beim
+  // Klick auf L1/L2 idealerweise schon im Cache.
+  useEffect(() => {
+    import('./MoleculeBuilderCanvas.jsx').catch(() => {});
+  }, []);
+
   const ensureEditor = () => setEditorMounted(true);
 
   const goHome = () => setMode('home');
