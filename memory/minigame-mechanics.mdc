@@ -87,9 +87,12 @@ Bei jeder neuen Mechanik: hier eine Sektion ergaenzen.
 - Setup:
   - Targets in `src/lib/archaea-lipids.js` (SMILES).
   - Atomzaehlungen statisch aus SMILES via `atomCountsFromSmiles()` (kein Ketcher noetig). Sehr wichtig: macrocyclische Lipide haben Indigo's Layout-Algorithmus blockiert — Parser ist heuristisch fuer C/O/P/N/S, deckt unsere SMILES exakt.
-  - Bilder pro Lipid via `ketcher.generateImage(smiles, {outputFormat:'svg'})` — Pre-Rendering. Inkrementell in den State schreiben (`(prev) => ({...prev, [id]: url})`), nicht erst nach dem Loop, sonst sieht man fertige Bilder spaet.
-  - L1-Mode haelt den Editor versteckt (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen — Canvas-Kollaps vermeiden).
+  - Bilder pro Lipid via `ketcher.generateImage(smiles, {outputFormat:'svg'})` mit 15 s Timeout — Pre-Rendering. Inkrementell in den State schreiben (`(prev) => ({...prev, [id]: url})`), nicht erst nach dem Loop, sonst sieht man fertige Bilder spaet.
+  - L1-Mode haelt den Editor off-screen aber **paintbar**: `position:fixed; left:-10000px; opacity:0; pointer-events:none` mit echten Dimensionen (900x600). `visibility:hidden` ist falsch — Browser paintet die Konva-Canvas dann nicht mehr und `generateImage` kriegt keinen Snapshot.
   - Ketcher-Bundle prefetchen sobald die Game-Seite mountet: `import('./MoleculeBuilderCanvas.jsx').catch(() => {})` im useEffect.
+  - `onInit` ist **latest-wins** (kein `initedRef`-Guard mehr) — Ketcher feuert ihn zweimal, der erste Aufruf liefert einen halb-verdrahteten Editor (Indigo noch nicht ready). Die `onReady`-Callback wird bei jedem Feuern aufgerufen.
+- **Achtung: `KetcherRequireShim`** muss `is:inline` im `<head>` jeder Ketcher-Seite stehen. Der Lazy-Chunk enthaelt CJS-Reste mit bare `require(...)`-Calls; ohne Stub crasht der Eval mit `ReferenceError: require is not defined` und `onInit` feuert nie. Siehe `src/components/KetcherRequireShim.astro`.
+- Debug: `MikrobioDebugPanel.jsx` + `src/lib/mikrobio-debug.js` — sichtbares Overlay loggt Init-Schritte (chunk-import, ketcher-onInit mit Methoden-Probe, render-loop pro Lipid, errorHandler). Copy-Button kopiert JSON. Aus per `?nodbg=1` oder `localStorage.mikrobio:debug=off`.
 - Score-Funktion: `similarityScore(userAtoms, targetAtoms)` — Gewichte `{C:0.65, O:0.18, P:0.1, N:0.04, S:0.03}`. C dominiert. Bei perfekter Uebereinstimmung 100.
 
 ## Preact ↔ React-Bridge (Ketcher ist React-only)
