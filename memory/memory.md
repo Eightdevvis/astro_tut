@@ -18,6 +18,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | fgraffiti (globales Overlay, Hotkey, Stift/Spray, Settings) | [`fgraffiti.mdc`](fgraffiti.mdc) |
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
+| Mikrobiologie-Seite + Molecule Builder (Ketcher, Preact-Bridge) | [`mikrobiologie.mdc`](mikrobiologie.mdc) |
 | RPG Memory-System (zentraler Einstieg, nicht zeitbasiert) | [`rpg/index.mdc`](rpg/index.mdc) |
 | RPG Qualitätskontrolle (Berichte, Stand, Trends) | [`rpg/quality-control.mdc`](rpg/quality-control.mdc) |
 | Security — sensible APIs, Env, Risiken, Maßnahmen (**lokal:** `security-sensitive.md`, **gitignored**) | (Datei nur lokal anlegen; nicht committen) |

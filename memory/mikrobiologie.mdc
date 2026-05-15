@@ -1,0 +1,42 @@
+---
+description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade, Struktur, Preact-Bridge
+---
+
+# Mikrobiologie
+
+**Ziel:** Sammel-Seite fuer kleine Mikrobio-Minigames. Werkzeuge/Vorlagen, die mehrere Minigames teilen, liegen in einem aufklappbaren Drawer unten.
+
+## Seitenstruktur
+
+- Header (Titel + Lead).
+- `<section.mb-games>` — Minigame-Bereich (aktuell leerer Platzhalter "Noch keine Minigames hier. Bald.").
+- `<details.mb-tools>` — aufklappbarer Drawer "Werkzeuge & Vorlagen". Drinnen sitzt der `MoleculeBuilder` als erstes (zurzeit einziges) Tool. Weitere Tools/Vorlagen kommen hier rein, nicht oben in den Minigame-Bereich.
+
+## Rechte/Freigabe
+
+`super_access` (siehe `minigames/index.astro`). Permission `minigames_access` bleibt fuer spaetere Reaktivierung in `KNOWN_PERMISSIONS`.
+
+## Molecule Builder = Werkzeug, kein Minigame
+
+- Aufklappbarer Builder fuer 2D-Strukturformeln, backed by EPAM Ketcher (`ketcher-react` + `ketcher-standalone`).
+- Lazy-Chunk ~7 MB gzip. Erst nach Klick auf den Launch-Button im Tool, *nicht* schon beim Aufklappen des Drawers.
+- Kein Debug-Stack mehr in Komponenten (entfernt 05/2026): kein `window.__mbDebug`, kein Debug-Log-UI, keine rote DEBUG-Plakette, keine ErrorBoundary, kein `debug:mb`-Script.
+- `initedRef`-Guard in `MoleculeBuilderCanvas` bleibt — Ketcher feuert `onInit` unter Preact-Suspense doppelt (React-StrictMode-defensiver Init-Cycle); nur erstes Init durchlassen, `window.ketcher` immer aktualisieren (latest wins).
+- `disableMacromoleculesEditor` — Polymer-Editor irrelevant fuer Playground.
+
+## Preact <-> React-Bridge (Ketcher ist React-only)
+
+- `astro.config.mjs`: Vite-Aliases `react`/`react-dom` -> `preact/compat`, `react-dom/client` -> `src/lib/preact-react-dom-client-shim.js` (Shim cached einen Root pro Container in einer WeakMap, weil `preact/compat` kein `createRoot`/`hydrateRoot` hat).
+- `vite.define` + `optimizeDeps.esbuildOptions.define` setzen einzelne `process.env.*`-Keys (`NODE_ENV`, `BUILD_DATE`, `INDIGO_*` etc.) — **kein** pauschales `'process.env': '{}'`, das wuerde im SSR-Bundle alle `process.env`-Zugriffe zerschiessen.
+- Astro-Island: `client:only="preact"` (nicht `client:load` — Ketcher mutiert das DOM heftig, Preact-Diff verliert sonst die Spur und spawnt duplizierte Buttons).
+- `width:100%` am Island-Root noetig, weil `body{display:flex;column}` + `astro-island{display:contents}` Kinder sonst auf content-width zusammenfallen laesst.
+
+## Relevante Dateien
+
+| Bereich | Pfad |
+|--------|------|
+| Seite | `src/pages/minigames/mikrobiologie.astro` |
+| Builder-Wrapper (Toggle + Lazy + Suspense) | `src/components/MoleculeBuilder.jsx` |
+| Builder-Canvas (Ketcher-Mount) | `src/components/MoleculeBuilderCanvas.jsx` |
+| React-DOM-Client-Shim | `src/lib/preact-react-dom-client-shim.js` |
+| Vite/Preact-Bridge-Config | `astro.config.mjs` |
