@@ -106,18 +106,26 @@ Bei jeder neuen Mechanik: hier eine Sektion ergaenzen.
 
 ## 2D-Lab-Bench (Drag-Drop-Szene)
 
-- Was: 2D-Szene mit Tisch im Vordergrund, Inventar-Zonen (Schublade unten, Regal hinten, Kuehlschrank, Versorgung rechts), Muelleimer unten links, Mood-Smiley oben. Items werden per Pointer-Drag platziert; aus Inventar-Zonen wird beim Pickup geklont (Originale bleiben). Click auf platzierte Items triggert Interaktion (Toggle, Kippen).
+- Was: 2D-Szene mit Tisch im Vordergrund, Inventar-Zonen (Schublade unten, Regal hinten, Kuehlschrank, Versorgung rechts), Muelleimer unten links, Mood-Smiley oben. Items werden per Pointer-Drag platziert; aus Inventar-Zonen wird beim Pickup geklont (Originale bleiben). Click auf platzierte Items oeffnet ein Aktions-Menue (oder triggert Toggle/Rotate als Fallback ohne `actionsForItem`).
 - Code:
-  - Engine: `src/components/lab-bench/LabBench.jsx` (Pointer-Engine, Drop-Logik, Snap, Trash, Click-Interaktion, Mood, Fridge-Toggle).
-  - SVG-Items: `src/components/lab-bench/items.jsx` (`ITEM_META`, `renderItem`, `LabBenchDefs`). Items: bunsen, stand, flask_round, flask_erlenmeyer, flask_pasteur, test_tube, bottle_sterile, bottle_unsterile, petri_dish, beaker.
+  - Engine: `src/components/lab-bench/LabBench.jsx`. Akzeptiert Props `inventory`, `fridgeInventory`, `mood`, `actionsForItem(item, placed)`, `onAction(actionId, item, helpers)`, `onPlacedChange(placed)`.
+  - SVG-Items: `src/components/lab-bench/items.jsx` (`ITEM_META`, `renderItem`, `LabBenchDefs`). Items: bunsen, stand, flask_round, flask_erlenmeyer (mit `state.neck: 'straight'|'swan'`), flask_pasteur, test_tube, bottle_sterile, bottle_unsterile, petri_dish, beaker, tongs. Kontamination via `state.contaminated` zeichnet schmutzige Punkte ueber dem Liquid.
 - Konventionen:
   - `viewBox` 1000×600. Tisch bei y=380. Items in SVG-Einheiten; Bounding-Box (`w`, `h`) in `ITEM_META`.
-  - `ITEM_META[type].interaction`: `'toggle'` (Bunsen-Flamme), `'rotate'` (Kolben kippen), `'pour'` (noch nicht implementiert).
+  - `ITEM_META[type].interaction`: `'toggle'` / `'rotate'` (Fallback ohne actionsForItem) oder `'menu'` (Aktions-Menue).
   - `ITEM_META[type].snapSlots`: Liste `{x, y, accepts: [types]}`, Koordinaten relativ zum Ursprung des Container-Items. Drag in Snap-Radius (70 SVG-Einheiten) zeigt strich-Kreis-Vorschau und rastet beim Drop ein.
   - Klick vs. Drag: Distanz < 6 px UND Zeit < 260 ms -> Klick, sonst Drag.
-- Inventar-Zonen: aktuell `INVENTORY` direkt in der Komponente, wandert bei Refactor in `src/lib/lab-bench/<experiment>.js`.
-- Reusability: die Engine kennt nichts ueber Pasteur — neue Experimente bekommen einen eigenen Config-Block.
-- Erstanwendung: Pasteur-Seite `src/pages/minigames/mikrobiologie/pasteur.astro` (WIP — Spielregeln + Score-Logik kommt noch).
+- **Aktions-Menue:** wird beim Klick auf platziertes Item gerendert (SVG-internes Popover rechts neben dem Item). `actionsForItem(item, placed) -> Array<{id, label}>` liefert die Liste; leeres Array oder `null` = kein Menue. Pointerdown ausserhalb schliesst.
+- **Helpers in `onAction(actionId, item, helpers)`:**
+  - `update(partialState)` — merge in item.state
+  - `remove()` — Item vom Tisch loeschen
+  - `changeType(newType)` — Item-Typ umtauschen (z. B. erlenmeyer-straight -> erlenmeyer-swan, falls als separate Typen modelliert)
+  - `addAt(type, x, y, state)` — neues Item platzieren
+  - `findPlaced(pred)`, `placed` — gegenwaertiger Tisch-Snapshot
+  - `runPullAnimation(overlay, durationMs)` — temporaere Overlay-Items (bunsen/tongs) fuer Animation einblenden; State-Update danach selbst per `update()` aufrufen
+- **onPlacedChange(placed):** wird nach jeder Aenderung am Tisch aufgerufen. Nuetzlich um Snap-Events (z. B. "Kolben auf Stativ") als Progress zu zaehlen.
+- Reusability: die Engine kennt nichts ueber das jeweilige Experiment — Inventar + actionsForItem + onAction definieren die Spielregeln. Generischer Wrapper pro Experiment unter `src/components/lab-bench/experiments/<Name>.jsx`.
+- Erstanwendung: Pasteur — `src/components/lab-bench/experiments/Pasteur.jsx`. Sieben Progress-Meilensteine, sieben Aktions-Typen, Glas-Ziehen-Animation via `runPullAnimation`. Smiley-Skala: 0-2 idle = +1, 3-5 = 0, 6+ = -2.
 
 ## Mood-Smiley
 

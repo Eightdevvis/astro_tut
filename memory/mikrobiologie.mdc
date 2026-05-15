@@ -54,11 +54,12 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Wrapper: `src/components/lab-bench/experiments/Pasteur.jsx` — State-Machine `'intro' | 'lab'`.
 - **Intro-Szene** (Phase 1, geliefert): SVG mit Pasteur-Portrait (Halbportrait, stilisiert: Bart/Schnurrbart/Anzug), Pfeil mit Label, Gedanken-Wolke ("Spontanzeugung ist Muell. Aber wie beweise ich es? Wo Vergammelung anfaengt geht die Vergammelung auch weiter… Hmmmmm"). Weiter-Button schaltet auf `phase='lab'`. Funktional auch Loading-Buffer fuer LabBench-Chunks.
 - Skip-Intro: `?skip=1` springt direkt zum Lab (Dev/Debugging).
-- **Spielregeln (Phase 2, ausstehend):**
-  - Event-basierte Progress: jeder produzierte Meilenstein zaehlt 1 Punkt (z. B. Erlenmeyer auf Stativ; Unsterile Fluessigkeit reingeschuettet; Glas gezogen mit Bunsen + Zange; gekocht; gekippt = kontaminiert).
-  - Smiley fallt eine Stufe wenn 3 Aktionen ohne Progress passieren. Drei Stufen :) -> ._. -> :(.
-  - Glas-Ziehen: Aktions-Menue auf platziertem Kolben -> "Bunsen an Hals". Bunsen schwebt am Hals. Zange auf Bunsen ziehen -> Animation (Bunsen + Zange driften ab, Crossfade von Erlenmeyer-straight auf Erlenmeyer-swan-neck).
-  - Kontamination: schmutzige Punkte ueber der Fluessigkeit (SVG-Pattern), wenn Kolben gekippt + Hals-Biegung im Spiel ist.
+- **Spielregeln (Phase 2, geliefert):**
+  - Sieben Progress-Meilensteine: `flask_on_stand`, `liquid_in_flask`, `bunsen_below`, `sterilized`, `bunsen_at_neck`, `neck_pulled`, `tipped`. Reihenfolge ist nicht starr — Hauptsache der jeweilige Zustand wird erreicht. Chip-Strip unter dem Score zeigt jeden Meilenstein.
+  - Smiley-Skala: 0-2 Idle-Aktionen = lustig (+1), 3-5 = neutral (0), 6+ = traurig (-2). Idle-Counter reset bei jedem neuen Meilenstein.
+  - Kontext-Aktionen am platzierten Erlenmeyer (sichtbar via Aktions-Menue beim Klick): "Unsterile/sterile Fluessigkeit einfuellen", "Bunsen drunterstellen", "Bunsen an Hals halten", "Anzuenden + Sterilisieren", "Glas ziehen (mit Zange)" (nur wenn Bunsen am Hals + Zange platziert), "Flasche kippen", "Bunsen/Zange abnehmen".
+  - Glas-Ziehen-Animation: `helpers.runPullAnimation` blendet Bunsen + Zange links/rechts vom Kolben fuer ~1.4 s ein. Danach State-Update auf `neck: 'swan'`.
+  - Kontamination: beim Kippen einer unsterilen, nicht-sterilisierten Fluessigkeit setzt `contaminated: true` — schmutzige Punkte ueber dem Liquid (siehe `ContaminationDots` in `items.jsx`).
 
 `super_access` (siehe `minigames/index.astro`). Permission `minigames_access` bleibt fuer spaetere Reaktivierung in `KNOWN_PERMISSIONS`.
 
