@@ -48,6 +48,11 @@ export default function Pasteur({ skipIntro = false }) {
 function Lab() {
   // Set der bereits erreichten Meilensteine.
   const [progress, setProgress] = useState(() => new Set());
+  // Synchroner Spiegel des progress-Sets — wird in `award()` benutzt um
+  // Prerequisite-Checks zu fahren, ohne auf den naechsten Render zu warten
+  // (setProgress ist async, mehrere Awards in derselben Aktion wuerden sonst
+  // alle vom gleichen alten progress-Snapshot ausgehen).
+  const progressRef = useRef(new Set());
   // Zaehler an Aktionen seit dem letzten Progress-Event.
   const [idleActions, setIdleActions] = useState(0);
   // Wird gesetzt von LabBench, wenn `flask_on_stand` getriggert wurde.
@@ -83,13 +88,27 @@ function Lab() {
   }, [mood, idleActions]);
 
   function award(event) {
-    setProgress((prev) => {
-      if (prev.has(event)) return prev;
-      const next = new Set(prev);
-      next.add(event);
-      return next;
-    });
+    const idx = PROGRESS_TARGETS.indexOf(event);
+    // Prerequisite-Check: jeder Meilenstein braucht den vorherigen.
+    // Erster Meilenstein (idx=0) hat keinen Vorgaenger.
+    if (idx > 0) {
+      const prev = PROGRESS_TARGETS[idx - 1];
+      if (!progressRef.current.has(prev)) {
+        dbg('award-blocked-out-of-order', { event, requires: prev });
+        showHint(
+          `Reihenfolge: "${labelForEvent(prev)}" muss erst sitzen, bevor "${labelForEvent(event)}" zaehlt.`,
+        );
+        bump();
+        return;
+      }
+    }
+    if (progressRef.current.has(event)) return; // schon erreicht
+    const next = new Set(progressRef.current);
+    next.add(event);
+    progressRef.current = next;
+    setProgress(next);
     setIdleActions(0);
+    dbg('award-ok', { event, total: next.size });
   }
 
   function bump() {
