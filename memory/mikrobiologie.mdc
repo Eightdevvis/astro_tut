@@ -23,8 +23,11 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Score-Persistenz: localStorage Key `mikrobio:archaea-lipide:v1` (siehe `archaea-lipids-progress.js`) **plus** Server-Sync via `/api/minigames/progress` (Tabelle `minigame_progress`, game_id `archaea-lipide`). Pattern: siehe `memory/minigames-pattern.mdc`. L1 = 50 % gesamt (binaer pro Lipid), L2 = 50 % (best similarity pro Lipid).
 - Bewertungsschwellen: `src/lib/scoring-scale.js` (Standard 85/95/100 — siehe `memory/scoring-scale.mdc`).
 - Konfetti: `src/components/ArchaeaLipidsConfetti.jsx`, getriggert ab 85 %.
-- Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar. SVG-Renderings + Atomzaehlungen aller drei Targets werden einmalig nach Ketcher-Ready vorberechnet.
+- Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar.
 - Ketcher-Chunk-Prefetch: `ArchaeaLipidsGame` triggert beim Mount einen `import('./MoleculeBuilderCanvas.jsx')` ins Leere — der mehrere-MB-Chunk laedt im Hintergrund, waehrend der User die Home-View liest, statt erst beim L1/L2-Klick zu starten.
+- **Atomzaehlungen statisch aus SMILES** (`atomCountsFromSmiles` + `LIPID_TARGET_ATOMS` in `archaea-lipids.js`), nicht via Ketcher. Vorher: pro Lipid `setMolecule` + `getMolfile` — Indigo-Layout fuer Crenarchaeol (macrocyclisch, mehrere Cyclopentane) brauchte Minuten und blockte alles. Parser ist heuristisch fuer das Alphabet C/O/P/N/S + ein-/zweibuchstabige Elemente in `[...]`; deckt unsere SMILES exakt ab.
+- **L1-Bilder inkrementell:** `setLipidImages` schreibt per Lipid sofort in den State (`(prev) => ({...prev, [id]: url})`), nicht erst nach dem ganzen Loop. Vorher konnte ein langsames letztes Lipid die schnellen ersten unsichtbar machen, obwohl sie laengst fertig waren.
+- `targetsReady` ist jetzt einfach `Boolean(ketcher)` — Atomzaehlungen sind sync da, sobald Ketcher mountet, kann L2 starten.
 
 ## Minigame: Extremophile
 

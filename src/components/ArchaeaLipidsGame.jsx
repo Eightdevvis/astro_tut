@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { lazy, Suspense } from 'preact/compat';
-import { ARCHAEA_LIPIDS, isNameCorrect } from '../lib/archaea-lipids.js';
+import {
+  ARCHAEA_LIPIDS,
+  LIPID_TARGET_ATOMS,
+  isNameCorrect,
+} from '../lib/archaea-lipids.js';
 import {
   loadProgress,
   saveProgress,
@@ -101,18 +105,22 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
 
   // Pre-rendered SVG-DataURLs pro Lipid (fuer L1-Prompts und L2-Reveal).
   const [lipidImages, setLipidImages] = useState({});
-  // Atomzaehlungen pro Lipid (fuer L2-Aehnlichkeit).
-  const [targetAtoms, setTargetAtoms] = useState({});
-  const [targetsReady, setTargetsReady] = useState(false);
+  // Atomzaehlungen sind statisch aus den SMILES ableitbar — kein Ketcher noetig.
+  // Vorher: 3 Indigo-Ops pro Lipid (`setMolecule` + `getMolfile`), die fuer
+  // Crenarchaeol Minuten brauchten und das gesamte Vorrendern blockten.
+  const targetAtoms = LIPID_TARGET_ATOMS;
+  // Targets sind bereit, sobald Ketcher mountet — Atomzaehlungen brauchen ihn nicht.
+  const targetsReady = Boolean(ketcher);
 
-  // Targets vorbereiten, sobald Ketcher da ist.
+  // Bilder vorbereiten, sobald Ketcher da ist. Inkrementell pro Lipid in den
+  // State schreiben — vorher kam alles zusammen am Ende der Schleife, sodass
+  // ein langsames letztes Lipid (Crenarchaeol-Layout!) auch die schnellen
+  // ersten unsichtbar machte.
   useEffect(() => {
     if (!ketcher) return;
     let cancelled = false;
     const urls = [];
     (async () => {
-      const imgMap = {};
-      const atomMap = {};
       for (const lipid of ARCHAEA_LIPIDS) {
         try {
           const blob = await ketcher.generateImage(lipid.smiles, {
@@ -121,29 +129,11 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
           if (cancelled) return;
           const url = URL.createObjectURL(blob);
           urls.push(url);
-          imgMap[lipid.id] = url;
+          setLipidImages((prev) => ({ ...prev, [lipid.id]: url }));
         } catch (err) {
           console.error('[ArchaeaLipids] generateImage failed for', lipid.id, err);
         }
-        try {
-          await ketcher.setMolecule(lipid.smiles);
-          const molfile = await ketcher.getMolfile();
-          if (cancelled) return;
-          atomMap[lipid.id] = parseAtomCountsFromMolfile(molfile);
-        } catch (err) {
-          console.error('[ArchaeaLipids] atom-count failed for', lipid.id, err);
-          atomMap[lipid.id] = {};
-        }
       }
-      try {
-        await ketcher.setMolecule('');
-      } catch {
-        /* ignore */
-      }
-      if (cancelled) return;
-      setLipidImages(imgMap);
-      setTargetAtoms(atomMap);
-      setTargetsReady(true);
     })();
     return () => {
       cancelled = true;
@@ -381,9 +371,7 @@ function Level1View({ ketcher, lipidImages, targetsReady, onBack, onProgress }) 
         {imageUrl ? (
           <img className="alg-l1-image" src={imageUrl} alt="Lipid-Struktur" />
         ) : (
-          <p className="alg-l1-imagewait">
-            {targetsReady ? 'Bild fehlt.' : 'Struktur wird gerendert…'}
-          </p>
+          <p className="alg-l1-imagewait">Struktur wird gerendert…</p>
         )}
       </div>
       <div className="alg-l1-input-row">

@@ -32,6 +32,47 @@ const BIPHYTANYL_1_CYP =
 const BIPHYTANYL_3_CYP_1_CYH =
   'CCC(C)CC3CCCC3C(C)CCC4CCCC4C(C)CC5CCCCC5C(C)CCC(C)CCCC(C)CC6CCCC6C(C)CCCC(C)CC';
 
+// Mini-SMILES-Parser fuer Atomzaehlungen (ohne H). Reicht fuer unser Alphabet:
+// C, O, P (alle einbuchstabig, keine aromatische Notation, keine Cl/Br).
+// Brackets `[...]` werden behandelt; Zahlen/Bindungen/Klammern/Schraegstriche
+// uebersprungen. Vorher lief das ueber `ketcher.setMolecule()` + `getMolfile()`
+// pro Lipid — Indigo brauchte fuer macrocyclische Lipide Minuten und blockte
+// das gesamte Vorrendern.
+export function atomCountsFromSmiles(smiles) {
+  const counts = {};
+  const s = String(smiles || '');
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '[') {
+      const end = s.indexOf(']', i);
+      if (end < 0) break;
+      const inner = s.slice(i + 1, end);
+      const m = inner.match(/^\d*([A-Z][a-z]?)/);
+      if (m && m[1] !== 'H') counts[m[1]] = (counts[m[1]] || 0) + 1;
+      i = end + 1;
+      continue;
+    }
+    if (c >= 'A' && c <= 'Z') {
+      const next = s[i + 1];
+      const isTwoLetter =
+        (c === 'C' && next === 'l') || (c === 'B' && next === 'r');
+      const elem = isTwoLetter ? c + next : c;
+      if (elem !== 'H') counts[elem] = (counts[elem] || 0) + 1;
+      i += isTwoLetter ? 2 : 1;
+      continue;
+    }
+    // Aromatische Kleinbuchstaben (kommen in unseren Lipiden nicht vor, aber
+    // billig zu unterstuetzen).
+    if (c === 'c' || c === 'n' || c === 'o' || c === 's' || c === 'p') {
+      const elem = c.toUpperCase();
+      counts[elem] = (counts[elem] || 0) + 1;
+    }
+    i += 1;
+  }
+  return counts;
+}
+
 export const ARCHAEA_LIPIDS = [
   {
     id: 'glycerindiether',
@@ -55,6 +96,12 @@ export const ARCHAEA_LIPIDS = [
     hint: 'Tetraether ohne Phosphat, freie Hydroxyle. Obere Kette mit 1 Cyclopentan, untere mit 3 Cyclopentanen + 1 Cyclohexan.',
   },
 ];
+
+// Vorgerechnete Target-Atomzaehlungen — wird vom Game als Vergleichsbasis fuer
+// L2-Score genutzt. Statisch ableitbar aus den SMILES, kein Ketcher noetig.
+export const LIPID_TARGET_ATOMS = Object.fromEntries(
+  ARCHAEA_LIPIDS.map((l) => [l.id, atomCountsFromSmiles(l.smiles)]),
+);
 
 export function lipidById(id) {
   return ARCHAEA_LIPIDS.find((l) => l.id === id) || null;
