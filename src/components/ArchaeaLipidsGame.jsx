@@ -132,12 +132,12 @@ function useKetcherReady() {
 }
 
 export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
-  // 'home' | 'l1' | 'l2' (oder 'practice' wenn initialMode === 'practice')
+  // 'home' | 'l1' | 'l2' | 'practice'
   const [mode, setMode] = useState(initialMode === 'practice' ? 'practice' : 'home');
   const [progress, setProgress] = useState(() => loadProgress());
-  // Im Practice-Mode wird der Editor sofort gemountet, damit die Targets
-  // gerendert werden koennen.
-  const [editorMounted, setEditorMounted] = useState(initialMode === 'practice');
+  // Editor mountet nur in L2 (siehe enterL2). Practice + L1 ziehen Strukturen
+  // extern via <LipidImage>, brauchen Ketcher nicht.
+  const [editorMounted, setEditorMounted] = useState(false);
   const [ketcher, onKetcherReady] = useKetcherReady();
 
   useEffect(() => {
@@ -214,6 +214,7 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     ensureEditor();
     setMode('l2');
   };
+  const enterPractice = () => setMode('practice');
 
   const refreshProgress = () => {
     const p = loadProgress();
@@ -236,16 +237,14 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
           progress={progress}
           onL1={enterL1}
           onL2={enterL2}
+          onPractice={enterPractice}
           targetsReady={targetsReady}
           editorMounted={editorMounted}
         />
       )}
 
       {mode === 'practice' && (
-        <PracticeView
-          lipidImages={lipidImages}
-          targetsReady={targetsReady}
-        />
+        <PracticeView onBack={goHome} />
       )}
 
       {mode === 'l1' && (
@@ -299,7 +298,7 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
   );
 }
 
-function HomeView({ progress, onL1, onL2, targetsReady, editorMounted }) {
+function HomeView({ progress, onL1, onL2, onPractice, targetsReady, editorMounted }) {
   const total = totalScore(progress);
   const l1pct = level1Percent(progress);
   const l2pct = level2Percent(progress);
@@ -360,6 +359,16 @@ function HomeView({ progress, onL1, onL2, targetsReady, editorMounted }) {
           </span>
         </button>
       </div>
+      <button
+        type="button"
+        className="alg-practice-launch"
+        onClick={onPractice}
+      >
+        Üben &rarr;
+        <span className="alg-practice-launch-hint">
+          Alle drei Lipide mit Name und Struktur — ohne Punkten.
+        </span>
+      </button>
       {loadingHint && (
         <p className="alg-loading-hint">
           Ketcher und Lipid-Daten werden geladen&hellip;
@@ -657,11 +666,16 @@ function Level2View({
   );
 }
 
-function PracticeView({ lipidImages, targetsReady }) {
+function PracticeView({ onBack }) {
   return (
     <div className="alg-practice">
+      <p className="alg-level-back">
+        <button type="button" onClick={onBack}>
+          &larr; Zurück zur Auswahl
+        </button>
+      </p>
       <p className="alg-practice-hint">
-        Uebungs-Modus — alle drei Lipide mit Namen und Struktur. Kein Punkten,
+        Übungs-Modus — alle drei Lipide mit Namen und Struktur. Kein Punkten,
         kein Speichern.
       </p>
       {ARCHAEA_LIPIDS.map((lipid) => (
@@ -822,6 +836,35 @@ function Styles() {
         margin: 1rem 0 0;
         color: var(--site-muted);
         font-style: italic;
+      }
+
+      .alg-practice-launch {
+        appearance: none;
+        margin-top: 1rem;
+        padding: 0.7rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        align-items: flex-start;
+        text-align: left;
+        background: transparent;
+        border: 1px dashed var(--site-card-border);
+        border-radius: 0.7rem;
+        color: var(--site-muted);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+      }
+      .alg-practice-launch:hover {
+        background: var(--site-card-bg);
+        color: var(--site-body-text);
+        border-color: var(--site-card-border);
+      }
+      .alg-practice-launch-hint {
+        font-weight: 400;
+        font-size: 0.85rem;
+        color: var(--site-soft-muted);
       }
 
       /* LEVELS */
