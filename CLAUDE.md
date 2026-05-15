@@ -38,3 +38,13 @@ Code-Variablen bleiben kanonisch `node`/`Node`. Sichtbare UI-Texte sagen ausschl
 ## Build-Hinweis
 
 Astro verlangt Node >=18.20.8. `node --test` ist unabhaengig vom Astro-Build.
+
+## Deploy / Push-Regel
+
+**Direkt auf `master` pushen.** Vercel deployt nur `master` auf die echte Domaster — Feature-Branches helfen Sasha nicht, weil sie nicht in Produktion landen. Also nach Commit:
+
+1. Auf den vom Harness vorgegebenen Branch committen + pushen (Audit-Trail).
+2. **Danach** den Commit auf `master` pushen (`git push origin HEAD:master`), damit Vercel deployt.
+3. Keine Pull Requests aufmachen, keine Reviews abwarten — Sasha will, dass Aenderungen sofort in Produktion landen.
+
+Ausnahme: explizite Anweisung "nicht auf master" in der jeweiligen Session.
