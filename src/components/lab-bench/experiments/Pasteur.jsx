@@ -217,7 +217,8 @@ function Lab() {
     }
   }
 
-  // Pour-Mechanik: Flasche aus dem Regal auf einen Kolben gezogen.
+  // Pour-Mechanik: Flasche aus dem Regal auf einen Vessel gezogen.
+  // Jeder Vessel-Typ (Kolben, Becherglas, Reagenzglas) ist gueltiges Pour-Ziel.
   function handleSourceDropped(sourceType, target, helpers) {
     dbg('pasteur-source-dropped', {
       sourceType,
@@ -230,22 +231,17 @@ function Lab() {
       bump();
       return;
     }
-    if (target.type !== 'flask_erlenmeyer') {
-      dbg('pour-skip-wrong-target', { sourceType, targetType: target.type });
-      bump();
-      return;
-    }
     if (target.state?.liquid) {
       dbg('pour-skip-already-filled', { sourceType, current: target.state.liquid });
       bump();
       return;
     }
     if (sourceType === 'bottle_unsterile') {
-      dbg('pour-fill', { kind: 'unsterile' });
+      dbg('pour-fill', { kind: 'unsterile', target: target.type });
       helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
       award('liquid_in_flask');
     } else if (sourceType === 'bottle_sterile') {
-      dbg('pour-fill', { kind: 'sterile' });
+      dbg('pour-fill', { kind: 'sterile', target: target.type });
       helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
       award('liquid_in_flask');
     } else {

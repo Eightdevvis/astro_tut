@@ -211,11 +211,18 @@ export default function LabBench({
         return {
           id: p.id,
           type: p.type,
+          kind: pm.kind || null,
           bbox: { x: Math.round(p.x), y: Math.round(p.y), w: pm.w, h: pm.h },
           hit,
         };
       });
-      const target = placed.find((_, i) => checks[i].hit);
+      // Nur Vessels (Kolben, Becherglas, Reagenzglas) sind gueltige
+      // Pour-Ziele. Bei mehreren Treffern das spaeter-platzierte nehmen
+      // (typisch oben auf dem Stack, z. B. Kolben auf Stativ).
+      const hitVessels = placed.filter(
+        (p, i) => checks[i].hit && ITEM_META[p.type].kind === 'vessel',
+      );
+      const target = hitVessels.length > 0 ? hitVessels[hitVessels.length - 1] : null;
       dbg('source-drop', {
         sourceType: d.itemType,
         cur: { x: Math.round(d.cur.x), y: Math.round(d.cur.y) },

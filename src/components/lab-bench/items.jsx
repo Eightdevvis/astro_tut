@@ -31,24 +31,28 @@ export const ITEM_META = {
   flask_round: {
     w: 70,
     h: 100,
+    kind: 'vessel',
     interaction: 'rotate',
     label: 'Rundkolben',
   },
   flask_erlenmeyer: {
     w: 70,
     h: 100,
+    kind: 'vessel',
     interaction: 'rotate',
     label: 'Erlenmeyerkolben',
   },
   flask_pasteur: {
     w: 100,
     h: 150,
+    kind: 'vessel',
     interaction: 'rotate',
     label: 'Pasteur-Schwanenhalskolben',
   },
   test_tube: {
     w: 24,
     h: 90,
+    kind: 'vessel',
     label: 'Reagenzglas',
   },
   bottle_sterile: {
@@ -73,6 +77,7 @@ export const ITEM_META = {
   beaker: {
     w: 60,
     h: 80,
+    kind: 'vessel',
     interaction: 'menu',
     label: 'Becherglas',
   },
