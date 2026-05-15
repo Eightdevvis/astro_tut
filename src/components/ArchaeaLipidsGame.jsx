@@ -84,6 +84,14 @@ function similarityScore(userAtoms, targetAtoms) {
   return Math.round((weighted / weightSum) * 100);
 }
 
+// L1-Prompt-Bilder: Simolecule CDK Depict gibt fertige SVGs fuer einen SMILES.
+// Browser cached die Antworten anhand der URL. Reicht, weil unsere drei Lipide
+// fix sind. Vorher lief das ueber `ketcher.generateImage` — Ketcher mountet
+// aber im Preact-Compat-Setup nicht sauber, siehe enterL1-Kommentar.
+function lipidImageUrl(smiles) {
+  return `https://www.simolecule.com/cdkdepict/depict/bow/svg?smi=${encodeURIComponent(smiles)}&abbr=on&disp=bridgehead&zoom=1.0&hdisp=provided&showtitle=false`;
+}
+
 function useKetcherReady() {
   const [ketcher, setKetcher] = useState(null);
   const handleReady = (k) => {
@@ -137,78 +145,26 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     pushToServer(GAME_ID, updated);
   };
 
-  // Pre-rendered SVG-DataURLs pro Lipid (fuer L1-Prompts und L2-Reveal).
-  const [lipidImages, setLipidImages] = useState({});
-  // Atomzaehlungen sind statisch aus den SMILES ableitbar — kein Ketcher noetig.
-  // Vorher: 3 Indigo-Ops pro Lipid (`setMolecule` + `getMolfile`), die fuer
-  // Crenarchaeol Minuten brauchten und das gesamte Vorrendern blockten.
+  // Bilder pro Lipid kommen jetzt extern (Simolecule CDK Depict, siehe
+  // `lipidImageUrl`) — kein Ketcher-Render-Loop mehr. Browser-Cache haelt
+  // die drei URLs nach dem ersten Laden.
   const targetAtoms = LIPID_TARGET_ATOMS;
   // Targets sind bereit, sobald Ketcher mountet — Atomzaehlungen brauchen ihn nicht.
   const targetsReady = Boolean(ketcher);
+  // Dummy fuer kompatible View-Props (Practice/L2-Reveal greifen weiterhin
+  // auf "lipidImages" zu, holen sich aber per lipidImageUrl).
+  const lipidImages = useMemo(
+    () =>
+      Object.fromEntries(
+        ARCHAEA_LIPIDS.map((l) => [l.id, lipidImageUrl(l.smiles)]),
+      ),
+    [],
+  );
 
-  // Bilder vorbereiten, sobald Ketcher da ist. Inkrementell pro Lipid in den
-  // State schreiben — vorher kam alles zusammen am Ende der Schleife, sodass
-  // ein langsames letztes Lipid (Crenarchaeol-Layout!) auch die schnellen
-  // ersten unsichtbar machte.
+  // (Frueher: Ketcher-generateImage-Loop — komplett entfernt, weil Ketcher
+  // hier nicht sauber mountet und wir die Bilder eh extern beziehen.)
   useEffect(() => {
-    if (!ketcher) return;
-    let cancelled = false;
-    const urls = [];
-    // Wenn `generateImage` haengt (in der Vergangenheit beobachtet: Indigo-Layout
-    // fuer macrocyclische SMILES dauert ewig oder die WASM-Routine ist nicht
-    // verdrahtet), nicht ewig blockieren — nach 15 s aufgeben, weiterspringen
-    // und im Log sagen warum. Der User sieht dann "Bild fehlt" statt endlosem
-    // Spinner.
-    const withTimeout = (promise, ms, label) =>
-      Promise.race([
-        promise,
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error(`timeout ${ms}ms: ${label}`)), ms),
-        ),
-      ]);
-    (async () => {
-      dbg('render-loop-start', {
-        hasGenerateImage: typeof ketcher.generateImage === 'function',
-        hasSetMolecule: typeof ketcher.setMolecule === 'function',
-        ketcherKeys: ketcher ? Object.keys(ketcher).slice(0, 20) : null,
-      });
-      for (const lipid of ARCHAEA_LIPIDS) {
-        const t0 = performance.now();
-        dbg('lipid-generateImage-start', { id: lipid.id });
-        try {
-          const blob = await withTimeout(
-            ketcher.generateImage(lipid.smiles, { outputFormat: 'svg' }),
-            15000,
-            `generateImage ${lipid.id}`,
-          );
-          if (cancelled) {
-            dbg('lipid-cancelled-after-resolve', { id: lipid.id });
-            return;
-          }
-          const url = URL.createObjectURL(blob);
-          urls.push(url);
-          setLipidImages((prev) => ({ ...prev, [lipid.id]: url }));
-          dbg('lipid-generateImage-ok', {
-            id: lipid.id,
-            ms: Math.round(performance.now() - t0),
-            blobType: blob?.type || null,
-            blobSize: blob?.size || null,
-          });
-        } catch (err) {
-          dbg('lipid-generateImage-fail', {
-            id: lipid.id,
-            ms: Math.round(performance.now() - t0),
-            msg: String(err?.message || err),
-            name: err?.name || null,
-          });
-        }
-      }
-      dbg('render-loop-done');
-    })();
-    return () => {
-      cancelled = true;
-      urls.forEach((u) => URL.revokeObjectURL(u));
-    };
+    if (ketcher) dbg('ketcher-state-set', { keys: Object.keys(ketcher).slice(0, 20) });
   }, [ketcher]);
 
   // Ketcher-Bundle ist gross (mehrere MB inkl. WASM). Sobald die Game-Seite
@@ -229,10 +185,14 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
   const ensureEditor = () => setEditorMounted(true);
 
   const goHome = () => setMode('home');
-  const enterL1 = () => {
-    ensureEditor();
-    setMode('l1');
-  };
+  // Ketcher mounten wir NUR fuer L2 (User zeichnet selbst). L1 zeigt nur ein
+  // SVG-Bild der Target-Struktur — das holen wir extern via Simolecule CDK
+  // Depict (`lipidImageUrl`), kein Ketcher-Mount noetig. Hintergrund: Ketcher
+  // 3.12 + Preact-Compat-Shim crasht im Mount-Lifecycle ("'ci' in null"
+  // Endlosschleife + 4x null.render + ResizeObserver.observe(null)) — siehe
+  // Mikrobio-Debug-Log. Bis Ketcher hier sauber mountet, halten wir's aus L1
+  // raus.
+  const enterL1 = () => setMode('l1');
   const enterL2 = () => {
     ensureEditor();
     setMode('l2');
