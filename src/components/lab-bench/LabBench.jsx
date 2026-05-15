@@ -20,18 +20,19 @@ import { ITEM_META, renderItem, LabBenchDefs } from './items.jsx';
 // nur Display, kein Tracking — kommt mit der Game-Logik.
 
 const SCENE_W = 1000;
-const SCENE_H = 600;
+// Etwas hoeher als 600, damit der Stativ (180 px hoch) komplett in die
+// Schublade passt, ohne ueber die Tischkante zu kriechen.
+const SCENE_H = 640;
 
 const CLICK_THRESH_PX = 6;
 const CLICK_THRESH_MS = 260;
 const SNAP_RADIUS = 70;
 
 const ZONES = {
-  trash:          { x:  18, y: 480, w:  90, h: 100, label: 'Muelleimer' },
-  shelf:          { x: 560, y:  60, w: 360, h: 230, label: 'Regal' },
-  fridge:         { x:  60, y:  60, w: 160, h: 280, label: 'Kuehlschrank' },
-  rightSupplies:  { x: 870, y: 230, w: 120, h: 150, label: 'Versorgung' },
-  underTable:     { x: 230, y: 430, w: 540, h: 130, label: 'Schublade' },
+  trash:      { x:  18, y: 510, w:  90, h: 100, label: 'Muelleimer' },
+  shelf:      { x: 560, y:  60, w: 360, h: 230, label: 'Regal' },
+  fridge:     { x:  60, y:  60, w: 160, h: 280, label: 'Kuehlschrank' },
+  underTable: { x: 130, y: 425, w: 800, h: 195, label: 'Schublade' },
 };
 
 // Default-Inventar (wird genutzt wenn keine `inventory`-Prop kommt). Position
@@ -72,6 +73,7 @@ export default function LabBench({
   actionsForItem,
   onAction,
   onPlacedChange,
+  onSourceDropped,  // (sourceType, targetItem|null, helpers) - Flaschen-auf-Kolben
 } = {}) {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
@@ -181,6 +183,30 @@ export default function LabBench({
     }
 
     const meta = ITEM_META[d.itemType];
+
+    // Source-Items (Flaschen): nicht auf den Tisch legen, sondern Pour-Event
+    // ausloesen, wenn das Drop ueber einem platzierten Item landet.
+    if (meta.kind === 'source' && d.cloneFromInventory && onSourceDropped) {
+      const target = placed.find((p) => {
+        const pm = ITEM_META[p.type];
+        return (
+          d.cur.x >= p.x &&
+          d.cur.x <= p.x + pm.w &&
+          d.cur.y >= p.y &&
+          d.cur.y <= p.y + pm.h
+        );
+      });
+      const helpers = target
+        ? {
+            update: (partial) => updateItemState(target.id, partial),
+            remove: () => removeItemById(target.id),
+            changeType: (newType) => setItemTypeById(target.id, newType),
+            placed,
+          }
+        : { placed };
+      onSourceDropped(d.itemType, target || null, helpers);
+      return;
+    }
     let dropX = d.cur.x - d.offsetX;
     let dropY = d.cur.y - d.offsetY;
 
@@ -316,8 +342,8 @@ export default function LabBench({
         <rect x="0" y="0" width={SCENE_W} height={SCENE_H} fill="url(#lb-wall)" />
 
         {/* Boden */}
-        <rect x="0" y="560" width={SCENE_W} height="40" fill="#7a6648" />
-        <line x1="0" y1="560" x2={SCENE_W} y2="560" stroke="#4a3920" stroke-width="2" />
+        <rect x="0" y="620" width={SCENE_W} height="20" fill="#7a6648" />
+        <line x1="0" y1="620" x2={SCENE_W} y2="620" stroke="#4a3920" stroke-width="2" />
 
         {/* Regal hinten */}
         <SceneShelf zone={ZONES.shelf} />
@@ -357,9 +383,6 @@ export default function LabBench({
         >
           SCHUBLADE
         </text>
-
-        {/* Versorgungs-Halterung rechts */}
-        <SceneRightSupplies zone={ZONES.rightSupplies} />
 
         {/* Muelleimer */}
         <SceneTrash zone={ZONES.trash} />
@@ -591,37 +614,6 @@ function SceneFridge({ zone, open, onClick }) {
           </text>
         </>
       )}
-    </g>
-  );
-}
-
-function SceneRightSupplies({ zone }) {
-  return (
-    <g>
-      {/* Hintergrundpaneel — Wand-Schiene */}
-      <rect
-        x={zone.x - 4}
-        y={zone.y - 6}
-        width={zone.w + 8}
-        height={zone.h + 12}
-        fill="rgba(0,0,0,0.05)"
-        stroke="rgba(0,0,0,0.18)"
-        stroke-width="1.5"
-        stroke-dasharray="6 4"
-        rx="6"
-      />
-      <text
-        x={zone.x + zone.w / 2}
-        y={zone.y - 12}
-        text-anchor="middle"
-        font-size="10"
-        font-weight="700"
-        letter-spacing="0.08em"
-        fill="rgba(0,0,0,0.45)"
-        font-family="ui-sans-serif, system-ui, sans-serif"
-      >
-        VERSORGUNG
-      </text>
     </g>
   );
 }

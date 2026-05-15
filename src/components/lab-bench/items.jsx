@@ -54,14 +54,14 @@ export const ITEM_META = {
   bottle_sterile: {
     w: 50,
     h: 90,
-    interaction: 'pour',
+    kind: 'source',  // wird beim Drop in pour-Event verwandelt, nicht platziert
     label: 'Sterile Fluessigkeit',
     liquidColor: '#f0e6c8',
   },
   bottle_unsterile: {
     w: 50,
     h: 90,
-    interaction: 'pour',
+    kind: 'source',
     label: 'Unsterile Fluessigkeit',
     liquidColor: '#c8a55a',
   },

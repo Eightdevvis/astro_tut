@@ -67,25 +67,28 @@ function Lab() {
     setIdleActions((n) => n + 1);
   }
 
-  // Inventar fuer Pasteur — schlanker als das Default. Im Regal Flaschen,
-  // in der Schublade Glaswaren + Zange, rechts Bunsen + Stativ.
+  // Inventar fuer Pasteur. Flaschen im Regal (Source-Items, drag-to-pour),
+  // alles andere in der Schublade. Items "stehen" mit ihrer Unterkante
+  // ungefaehr auf y=615 (Schubladen-Boden).
   const inventory = useMemo(
     () => [
+      // Regal: Flaschen
       { type: 'bottle_sterile',    x: 600, y: 130 },
       { type: 'bottle_unsterile',  x: 700, y: 130 },
       { type: 'bottle_sterile',    x: 800, y: 210 },
       { type: 'bottle_unsterile',  x: 870, y: 210 },
 
-      { type: 'flask_erlenmeyer', x: 260, y: 450 },
-      { type: 'flask_pasteur',    x: 350, y: 410 },
-      { type: 'beaker',           x: 460, y: 470 },
-      { type: 'test_tube',        x: 540, y: 450 },
-      { type: 'test_tube',        x: 572, y: 450 },
-      { type: 'tongs',            x: 620, y: 460 },
-      { type: 'petri_dish',       x: 690, y: 520 },
-
-      { type: 'bunsen',           x: 880, y: 250 },
-      { type: 'stand',            x: 880, y: 380 },
+      // Schublade
+      { type: 'stand',             x: 160, y: 435 },  // 110x180
+      { type: 'bunsen',            x: 290, y: 495 },  // 70x120
+      { type: 'flask_pasteur',     x: 380, y: 465 },  // 100x150
+      { type: 'flask_round',       x: 500, y: 515 },  // 70x100
+      { type: 'flask_erlenmeyer',  x: 590, y: 515 },  // 70x100
+      { type: 'beaker',            x: 680, y: 535 },  // 60x80
+      { type: 'tongs',             x: 755, y: 525 },  // 40x90
+      { type: 'test_tube',         x: 810, y: 525 },
+      { type: 'test_tube',         x: 842, y: 525 },
+      { type: 'petri_dish',        x: 870, y: 595 },  // 60x20
     ],
     [],
   );
@@ -212,6 +215,31 @@ function Lab() {
     }
   }
 
+  // Pour-Mechanik: Flasche aus dem Regal auf einen Kolben gezogen.
+  function handleSourceDropped(sourceType, target, helpers) {
+    if (!target) {
+      bump();
+      return;
+    }
+    if (target.type !== 'flask_erlenmeyer') {
+      bump();
+      return;
+    }
+    if (target.state?.liquid) {
+      bump();
+      return;
+    }
+    if (sourceType === 'bottle_unsterile') {
+      helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
+      award('liquid_in_flask');
+    } else if (sourceType === 'bottle_sterile') {
+      helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
+      award('liquid_in_flask');
+    } else {
+      bump();
+    }
+  }
+
   const total = progress.size;
   const max = PROGRESS_TARGETS.length;
 
@@ -224,12 +252,14 @@ function Lab() {
         actionsForItem={actionsForItem}
         onAction={handleAction}
         onPlacedChange={onPlacedChange}
+        onSourceDropped={handleSourceDropped}
       />
       <p className="lab-hint">
-        Smiley faellt nach drei Aktionen ohne Fortschritt eine Stufe. Reihenfolge
-        ist nicht starr — Hauptsache du produzierst die richtigen Zustaende
-        (Kolben aufs Stativ, Fluessigkeit, Bunsen, sterilisieren, Hals ziehen,
-        kippen).
+        Items aus der Schublade ziehen, aufs Stativ snappen. Fluessigkeit
+        einfuellen: Flasche aus dem Regal auf den Kolben ziehen. Klick auf den
+        Erlenmeyer oeffnet das Aktions-Menue (Bunsen drunter, sterilisieren,
+        Hals ziehen mit Zange, kippen). Smiley faellt nach drei Aktionen ohne
+        Fortschritt — Reihenfolge ist sonst frei.
       </p>
       <LabStyles />
     </div>
@@ -275,11 +305,12 @@ function labelForEvent(id) {
   }
 }
 
-// Mood-Skala: 0..2 idle = +1 (lustig), 3..5 idle = 0 (neutral), 6+ = -2 (traurig).
+// Drei klare Stufen: am Anfang sehr happy, nach 3 Idle-Aktionen neutral,
+// nach 6+ traurig. Werte werden auf MoodSmiley-Mundkurve gemappt (-3..+3).
 function computeMood(idleActions) {
-  if (idleActions <= 2) return 1;
+  if (idleActions <= 2) return 3;
   if (idleActions <= 5) return 0;
-  return -2;
+  return -3;
 }
 
 function Intro({ onContinue }) {
