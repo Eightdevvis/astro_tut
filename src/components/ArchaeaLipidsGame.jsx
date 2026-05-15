@@ -339,17 +339,15 @@ function HomeView({ progress, onL1, onL2, targetsReady, editorMounted }) {
         </button>
         <button
           type="button"
-          className="alg-level-card alg-level-card--broken"
+          className="alg-level-card"
           onClick={onL2}
-          disabled
-          title="Level 2 funktioniert grad nicht — Ketcher-Editor crasht beim Mount, kommt zurueck."
+          disabled={loadingHint}
         >
-          <span className="alg-level-card-tag">Level 2 · kaputt</span>
+          <span className="alg-level-card-tag">Level 2</span>
           <span className="alg-level-card-title">Strukturen bauen</span>
           <span className="alg-level-card-desc">
-            Geplant: Name oben, Editor unten, Lipid mit Ketcher nachbauen.
-            Aktuell crasht der Editor beim Mount — kommt sobald ein leichterer
-            Molekuel-Editor eingebaut ist.
+            Name oben, Editor unten. Mit Ketcher das Lipid nachbauen, pruefen,
+            sehen wie nah du dran warst.
           </span>
           <span className="alg-level-card-progress-row">
             <span className="alg-level-card-bar">
@@ -779,14 +777,6 @@ function Styles() {
       .alg-level-card:disabled {
         opacity: 0.6;
         cursor: progress;
-      }
-      .alg-level-card--broken {
-        opacity: 0.5;
-        cursor: not-allowed;
-        filter: grayscale(0.6);
-      }
-      .alg-level-card--broken .alg-level-card-tag {
-        color: #b04040;
       }
       .alg-level-card-tag {
         font-size: 0.8rem;
