@@ -1,0 +1,66 @@
+---
+import Nav2 from '../../../components/Nav2.astro';
+import SiteFontOverrides from '../../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../../components/ThemeInit.astro';
+import ThemeClient from '../../../components/ThemeClient.astro';
+import BewareOfBugsBanner from '../../../components/BewareOfBugsBanner.astro';
+import PageFavicon from '../../../components/PageFavicon.astro';
+import ExtremophileGame from '../../../components/ExtremophileGame.jsx';
+import { getUsernameFromCookies } from '../../../lib/session.js';
+import { hasPermission } from '../../../lib/permissions.js';
+import '../../../styles/global.css';
+
+const username = await getUsernameFromCookies(Astro.cookies);
+const canUseMinigames = Boolean(username) && (await hasPermission(username, 'super_access'));
+if (!canUseMinigames) {
+  return Astro.redirect('/');
+}
+---
+
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <PageFavicon icon="minigames" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>Extremophile · Mikrobiologie · Minigames</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="subpage" />
+    <header class="exp-kicker">
+      <p><a href="/minigames/mikrobiologie">&larr; Mikrobiologie</a></p>
+    </header>
+    <main class="exp-main">
+      <ExtremophileGame client:load />
+    </main>
+    <ThemeClient />
+    <BewareOfBugsBanner permission="minigames_access" />
+  </body>
+</html>
+
+<style>
+  body {
+    background-color: var(--mg-page-bg);
+    margin: 0;
+    padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+    color: var(--site-body-text);
+  }
+  .exp-kicker {
+    width: 100%;
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 1.6rem 1rem 0;
+    box-sizing: border-box;
+    font-size: 0.9rem;
+    color: var(--site-soft-muted);
+  }
+  .exp-kicker a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .exp-kicker a:hover { text-decoration: underline; }
+  .exp-main { margin-top: 0.4rem; }
+</style>

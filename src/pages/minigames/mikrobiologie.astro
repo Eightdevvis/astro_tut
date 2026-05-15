@@ -7,6 +7,7 @@ import BewareOfBugsBanner from '../../components/BewareOfBugsBanner.astro';
 import PageFavicon from '../../components/PageFavicon.astro';
 import MoleculeBuilder from '../../components/MoleculeBuilder.jsx';
 import ArchaeaLipidsMikrobioCard from '../../components/ArchaeaLipidsMikrobioCard.jsx';
+import ExtremophileMikrobioCard from '../../components/ExtremophileMikrobioCard.jsx';
 import { getUsernameFromCookies } from '../../lib/session.js';
 import { hasPermission } from '../../lib/permissions.js';
 import '../../styles/global.css';
@@ -42,6 +43,7 @@ if (!canUseMinigames) {
 
     <section class="mb-games" aria-label="Minigames">
       <ArchaeaLipidsMikrobioCard client:idle />
+      <ExtremophileMikrobioCard client:idle />
     </section>
 
     <details class="mb-tools">

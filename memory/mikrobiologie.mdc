@@ -9,7 +9,7 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 ## Seitenstruktur
 
 - Header (Titel + Lead).
-- `<section.mb-games>` — Minigame-Karten-Grid. Aktuell eine Karte: "Archaea: Membran: Lipide" (siehe unten).
+- `<section.mb-games>` — Minigame-Karten-Grid. Aktuell zwei Karten: "Archaea: Membran: Lipide" und "Extremophile" (siehe unten).
 - `<details.mb-tools>` — aufklappbarer Drawer "Werkzeuge & Vorlagen". Drinnen sitzt der `MoleculeBuilder` als erstes (zurzeit einziges) Tool. Weitere Tools/Vorlagen kommen hier rein, nicht oben in den Minigame-Bereich.
 
 ## Minigame: Archaea: Membran: Lipide
@@ -24,6 +24,17 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - Bewertungsschwellen: `src/lib/scoring-scale.js` (Standard 85/95/100 — siehe `memory/scoring-scale.mdc`).
 - Konfetti: `src/components/ArchaeaLipidsConfetti.jsx`, getriggert ab 85 %.
 - Ketcher-Mount: lazy beim ersten Level-Klick; im L1-Mode hidden (`position:fixed; left:-10000px; visibility:hidden` mit echten Dimensionen, damit Canvas nicht kollabiert), im L2-Mode in der Flow sichtbar. SVG-Renderings + Atomzaehlungen aller drei Targets werden einmalig nach Ketcher-Ready vorberechnet.
+
+## Minigame: Extremophile
+
+- Route: `src/pages/minigames/mikrobiologie/extremophile.astro`.
+- Spielkomponente: `src/components/ExtremophileGame.jsx` (single-island, Preact).
+- Icons: `src/components/ExtremophileIcons.jsx` — sechs einfache SVGs (flame, snowflake, acid, alkali, pressure, salt). Bewusst grob.
+- Karte auf Mikrobio-Seite: `src/components/ExtremophileMikrobioCard.jsx` (client:idle).
+- Daten: `src/lib/extremophile.js` — sechs Kategorien (Hyperthermophile, Psychrophile, Acidophile, Alkaliphile, Barophile, Halophile) mit jeweils einer Beispielart aus Lehrbuch-Tabelle. Pro Kategorie sechs Fragen (`QUESTIONS`): Art, Gruppe, Habitat, Optimum, Min, Max.
+- Antwort-Pruefung in `checkAnswer()`: Name/Gruppe exakt (normalisiert), Habitat lenient (Alternativen + Wortueberschneidung), Numerisch via Erstzahl-Parsing (deutsche Notation "0,7" / "−12" wird normalisiert).
+- Persistenz: localStorage Key `mikrobio:extremophile:v1` mit "ever correct"-Flag pro (Kategorie, Frage). Card-Prozent = jemals-richtige / (6 Kategorien × 6 Fragen).
+- Spielfluss: Home-Grid mit 6 Tiles. Tile-Klick startet Quiz; andere Tiles werden ausgeblendet (nur die aktive Kategorie zeigt das Icon zentral). Fragen sequenziell; nach Pruefen klatscht ein ✓ oder ✗ als Pop-Animation auf das Icon (`ex-marker-pop`, 0.9 s), dann naechste Frage nach 1.1 s. Pill-Strip oben zeigt pro Frage den Status (Pending/Current/OK/Bad). Am Ende Summary mit Back-Button.
 
 ## Rechte/Freigabe
 
@@ -55,6 +66,12 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 | Archaea-Lipide Konfetti | `src/components/ArchaeaLipidsConfetti.jsx` |
 | Archaea-Lipide Daten | `src/lib/archaea-lipids.js` |
 | Archaea-Lipide Persistenz | `src/lib/archaea-lipids-progress.js` |
+| Extremophile Game-Seite | `src/pages/minigames/mikrobiologie/extremophile.astro` |
+| Extremophile Game (Insel) | `src/components/ExtremophileGame.jsx` |
+| Extremophile SVG-Icons | `src/components/ExtremophileIcons.jsx` |
+| Extremophile Karte (Mikrobio) | `src/components/ExtremophileMikrobioCard.jsx` |
+| Extremophile Daten + Pruefer | `src/lib/extremophile.js` |
+| Extremophile Persistenz | `src/lib/extremophile-progress.js` |
 | Bewertungs-Standardskala | `src/lib/scoring-scale.js` |
 | Builder-Wrapper (Toggle + Lazy + Suspense) | `src/components/MoleculeBuilder.jsx` |
 | Builder-Canvas (Ketcher-Mount, exportiert `onReady` Callback) | `src/components/MoleculeBuilderCanvas.jsx` |
