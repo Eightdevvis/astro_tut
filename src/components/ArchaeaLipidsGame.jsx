@@ -298,11 +298,18 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
             <div className="alg-editor-loading">Ketcher laedt&hellip;</div>
           }
         >
+          {/*
+            Ketcher/Konva crasht beim Mount in einem off-screen-Container
+            (`position:fixed; left:-10000px`) — endlose `'ci' in null` und
+            `ResizeObserver.observe(null)`-Fehler, weil interne DOM-Lookups
+            ins Leere greifen. Bis dafuer eine saubere Loesung steht, mounten
+            wir den Editor *immer* in seinem sichtbaren Layout-Slot.
+            UX-Trade-Off in L1: Editor ist sichtbar unter dem Quiz; in L2
+            ist er ohnehin das Hauptelement.
+          */}
           <div
-            className={`alg-editor-shell ${
-              mode === 'l2' ? 'alg-editor-shell--visible' : 'alg-editor-shell--hidden'
-            }`}
-            aria-hidden={mode !== 'l2'}
+            className="alg-editor-shell alg-editor-shell--visible"
+            aria-hidden={mode === 'l1'}
           >
             <MoleculeBuilderCanvas onReady={onKetcherReady} />
           </div>
