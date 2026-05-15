@@ -11,8 +11,7 @@
     "test:rpg": "node --test tests/rpg-consistency.test.js",
     "test:quality": "node --test 'tests/*.test.js'",
     "db:init-turso": "node scripts/init_turso.js",
-    "rpg:check-migration": "node scripts/check_rpg_tree_migration.js",
-    "debug:mb": "node scripts/debug-mikrobiologie.mjs"
+    "rpg:check-migration": "node scripts/check_rpg_tree_migration.js"
   },
   "dependencies": {
     "@astrojs/node": "^9.5.3",

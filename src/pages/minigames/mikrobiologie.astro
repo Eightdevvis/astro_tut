@@ -34,10 +34,28 @@ if (!canUseMinigames) {
       <p class="mb-page-kicker"><a href="/minigames">← Spielwiese</a></p>
       <h1 class="mb-page-title">Mikrobiologie</h1>
       <p class="mb-page-lead">
-        Petrischale fuer Strukturformeln. Den Knopf druecken, Atome auf das Brett legen, Bindungen ziehen, Ringe einklicken.
+        Hier kommen die kleinen Mikrobio-Minigames hin. Werkzeuge und Vorlagen, die ueber mehrere Spiele hinweg nuetzlich sind,
+        liegen unten im aufklappbaren Werkzeug-Drawer.
       </p>
     </header>
-    <MoleculeBuilder client:only="preact" />
+
+    <section class="mb-games" aria-label="Minigames">
+      <p class="mb-games-empty">Noch keine Minigames hier. Bald.</p>
+    </section>
+
+    <details class="mb-tools">
+      <summary class="mb-tools-summary">
+        <span class="mb-tools-title">Werkzeuge &amp; Vorlagen</span>
+        <span class="mb-tools-hint">aufklappen</span>
+      </summary>
+      <div class="mb-tools-body">
+        <p class="mb-tools-lead">
+          Gemeinsame Werkzeuge fuer die Minigames oben. Aktuell: der Molecule Builder fuer Strukturformeln.
+        </p>
+        <MoleculeBuilder client:only="preact" />
+      </div>
+    </details>
+
     <p class="mb-page-back">
       <a href="/minigames">← Alle Minigames</a>
     </p>
@@ -56,6 +74,8 @@ if (!canUseMinigames) {
   }
 
   header.mb-page-head,
+  .mb-games,
+  .mb-tools,
   .mb-page-back {
     width: 100%;
     max-width: 56rem;
@@ -97,6 +117,84 @@ if (!canUseMinigames) {
     line-height: 1.55;
     color: var(--site-muted);
     overflow-wrap: break-word;
+  }
+
+  .mb-games {
+    margin-top: 1.5rem;
+    min-height: 8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--site-card-border);
+    border-radius: 0.9rem;
+    background: transparent;
+  }
+
+  .mb-games-empty {
+    margin: 0;
+    color: var(--site-soft-muted);
+    font-style: italic;
+  }
+
+  .mb-tools {
+    margin-top: 1.5rem;
+    border: 1px solid var(--site-card-border);
+    border-radius: 0.9rem;
+    background: var(--site-card-bg);
+    box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+    overflow: hidden;
+  }
+
+  .mb-tools-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 1.1rem;
+    font-weight: 600;
+  }
+
+  .mb-tools-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mb-tools-summary::before {
+    content: '▸';
+    margin-right: 0.45rem;
+    color: var(--site-muted);
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  details[open] > .mb-tools-summary::before {
+    transform: rotate(90deg);
+  }
+
+  .mb-tools-title {
+    flex: 1;
+  }
+
+  .mb-tools-hint {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--site-soft-muted);
+  }
+
+  details[open] > .mb-tools-summary .mb-tools-hint {
+    visibility: hidden;
+  }
+
+  .mb-tools-body {
+    padding: 0.4rem 1.1rem 1.2rem;
+    border-top: 1px solid var(--site-card-border);
+  }
+
+  .mb-tools-lead {
+    margin: 0.6rem 0 1rem;
+    color: var(--site-muted);
+    line-height: 1.5;
   }
 
   .mb-page-back {
