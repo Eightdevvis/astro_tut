@@ -3,6 +3,7 @@ import LoginWidget from './LoginWidget.jsx';
 import ThemeToggle from './ThemeToggle.astro';
 import { getSessionUserFromCookies } from '../lib/session.js';
 import { hasPermission } from '../lib/permissions.js';
+import { getGitInfo } from '../lib/git-info.js';
 
 interface Props {
   /** Startseite: nur Icon-Leiste (fixiert). Großer Titel liegt im Fluss auf `index.astro`. Sonst: Haus-Icon zur Startseite. */
@@ -17,6 +18,12 @@ const showRpgNav = Boolean(username) && (await hasPermission(username, 'rpg_acce
 const showBlogpostNav = Boolean(username) && (await hasPermission(username, 'blogpost_poster'));
 // Minigames vorerst nur Superuser — Architektur-Umbau laeuft.
 const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'super_access'));
+const isSuperuser = Boolean(username) && (await hasPermission(username, 'super_access'));
+const gitInfo = isSuperuser ? getGitInfo() : null;
+const gitBadgeLabel = gitInfo?.branch || gitInfo?.shortSha || null;
+const gitBadgeTitle = gitInfo
+  ? `Branch: ${gitInfo.branch ?? '?'}\nCommit: ${gitInfo.shortSha ?? '?'}`
+  : '';
 ---
 
 <nav class:list={['nav2', isHome && 'nav2--home']} aria-label="Hauptnavigation">
@@ -143,6 +150,34 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
       </details>
     </div>
     <div class="nav2-right">
+      {
+        isSuperuser && gitBadgeLabel && (
+          <span class="nav2-git-badge" title={gitBadgeTitle} aria-label={`Git: ${gitBadgeLabel}`}>
+            <svg
+              class="nav2-git-badge-ic"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="6" cy="6" r="2.2" />
+              <circle cx="6" cy="18" r="2.2" />
+              <circle cx="18" cy="12" r="2.2" />
+              <path d="M6 8v8" />
+              <path d="M8 18h4a4 4 0 0 0 4-4v-2" />
+            </svg>
+            <span class="nav2-git-badge-label">{gitBadgeLabel}</span>
+            {gitInfo?.shortSha && gitInfo.branch && (
+              <span class="nav2-git-badge-sha">@{gitInfo.shortSha}</span>
+            )}
+          </span>
+        )
+      }
       {
         isHome && (
           <div class="nav2-theme-bar">
@@ -354,6 +389,50 @@ const showMinigamesNav = Boolean(username) && (await hasPermission(username, 'su
     align-items: center;
     justify-content: center;
     margin-right: 0.15rem;
+  }
+
+  .nav2-git-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-right: 0.4rem;
+    padding: 0.2rem 0.55rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    line-height: 1;
+    color: var(--nav2-fg);
+    background: var(--nav2-drawer-hover, rgba(127, 127, 127, 0.18));
+    border: 1px solid var(--nav2-drawer-border, rgba(127, 127, 127, 0.35));
+    border-radius: 999px;
+    white-space: nowrap;
+    max-width: 22ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: help;
+    user-select: text;
+  }
+
+  .nav2-git-badge-ic {
+    flex-shrink: 0;
+    opacity: 0.8;
+  }
+
+  .nav2-git-badge-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nav2-git-badge-sha {
+    opacity: 0.65;
+  }
+
+  @media screen and (max-width: 480px) {
+    .nav2-git-badge {
+      max-width: 10ch;
+    }
+    .nav2-git-badge-sha {
+      display: none;
+    }
   }
 
   .nav2-icon {
