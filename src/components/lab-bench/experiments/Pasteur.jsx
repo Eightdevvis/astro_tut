@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import LabBench from '../LabBench.jsx';
 import { ITEM_META } from '../items.jsx';
+import MikrobioDebugPanel from '../../MikrobioDebugPanel.jsx';
+import { dbg } from '../../../lib/mikrobio-debug.js';
 
 // Pasteur-Experiment-Wrapper:
 //   1. Intro-Szene: Pasteur-Portrait + Gedanken-Blase + Weiter-Knopf.
@@ -217,22 +219,33 @@ function Lab() {
 
   // Pour-Mechanik: Flasche aus dem Regal auf einen Kolben gezogen.
   function handleSourceDropped(sourceType, target, helpers) {
+    dbg('pasteur-source-dropped', {
+      sourceType,
+      targetType: target?.type || null,
+      targetId: target?.id || null,
+      targetState: target?.state || null,
+    });
     if (!target) {
+      dbg('pour-skip-no-target', { sourceType });
       bump();
       return;
     }
     if (target.type !== 'flask_erlenmeyer') {
+      dbg('pour-skip-wrong-target', { sourceType, targetType: target.type });
       bump();
       return;
     }
     if (target.state?.liquid) {
+      dbg('pour-skip-already-filled', { sourceType, current: target.state.liquid });
       bump();
       return;
     }
     if (sourceType === 'bottle_unsterile') {
+      dbg('pour-fill', { kind: 'unsterile' });
       helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
       award('liquid_in_flask');
     } else if (sourceType === 'bottle_sterile') {
+      dbg('pour-fill', { kind: 'sterile' });
       helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
       award('liquid_in_flask');
     } else {
@@ -262,6 +275,7 @@ function Lab() {
         Fortschritt — Reihenfolge ist sonst frei.
       </p>
       <LabStyles />
+      <MikrobioDebugPanel />
     </div>
   );
 }

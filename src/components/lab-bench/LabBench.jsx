@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { ITEM_META, renderItem, LabBenchDefs } from './items.jsx';
+import { dbg } from '../../lib/mikrobio-debug.js';
 
 // Bio/Chemie-Labor-Szene. Reusable Engine: wir geben spaeter pro Experiment
 // einen Config-Block rein (Inventar-Items + Snap-Regeln + Ziel-Setup). Aktuell
@@ -164,18 +165,31 @@ export default function LabBench({
     const dt = Date.now() - d.startTime;
     const dist = Math.hypot(d.cur.x - d.start.x, d.cur.y - d.start.y);
     const isClick = dist < CLICK_THRESH_PX && dt < CLICK_THRESH_MS;
+    dbg('drop', {
+      type: d.itemType,
+      cloneFromInventory: !!d.cloneFromInventory,
+      originId: d.originId || null,
+      cur: { x: Math.round(d.cur.x), y: Math.round(d.cur.y) },
+      start: { x: Math.round(d.start.x), y: Math.round(d.start.y) },
+      offset: { x: Math.round(d.offsetX), y: Math.round(d.offsetY) },
+      dt,
+      dist: Math.round(dist),
+      isClick,
+      placedCount: placed.length,
+    });
 
     if (isClick && d.originId) {
       interactPlaced(d.originId);
       return;
     }
     if (isClick && d.cloneFromInventory) {
-      // Click auf Inventar-Item: ignorieren (keine Spawn-by-Click).
+      dbg('drop-ignored-click-on-inventory', { type: d.itemType });
       return;
     }
 
     // Trash?
     if (pointInRect(d.cur.x, d.cur.y, ZONES.trash)) {
+      dbg('drop-trash', { originId: d.originId || null });
       if (d.originId) {
         setPlaced((prev) => prev.filter((p) => p.id !== d.originId));
       }
@@ -187,14 +201,29 @@ export default function LabBench({
     // Source-Items (Flaschen): nicht auf den Tisch legen, sondern Pour-Event
     // ausloesen, wenn das Drop ueber einem platzierten Item landet.
     if (meta.kind === 'source' && d.cloneFromInventory && onSourceDropped) {
-      const target = placed.find((p) => {
+      const checks = placed.map((p) => {
         const pm = ITEM_META[p.type];
-        return (
+        const hit =
           d.cur.x >= p.x &&
           d.cur.x <= p.x + pm.w &&
           d.cur.y >= p.y &&
-          d.cur.y <= p.y + pm.h
-        );
+          d.cur.y <= p.y + pm.h;
+        return {
+          id: p.id,
+          type: p.type,
+          bbox: { x: Math.round(p.x), y: Math.round(p.y), w: pm.w, h: pm.h },
+          hit,
+        };
+      });
+      const target = placed.find((_, i) => checks[i].hit);
+      dbg('source-drop', {
+        sourceType: d.itemType,
+        cur: { x: Math.round(d.cur.x), y: Math.round(d.cur.y) },
+        targetFound: !!target,
+        targetId: target?.id || null,
+        targetType: target?.type || null,
+        candidates: checks,
+        hasOnSourceDropped: typeof onSourceDropped === 'function',
       });
       const helpers = target
         ? {
@@ -269,21 +298,25 @@ export default function LabBench({
   }
 
   function updateItemState(id, partial) {
+    dbg('item-update', { id, partial });
     setPlaced((prev) =>
       prev.map((p) => (p.id === id ? { ...p, state: { ...(p.state || {}), ...partial } } : p)),
     );
   }
 
   function removeItemById(id) {
+    dbg('item-remove', { id });
     setPlaced((prev) => prev.filter((p) => p.id !== id));
   }
 
   function setItemTypeById(id, newType) {
+    dbg('item-changetype', { id, newType });
     setPlaced((prev) => prev.map((p) => (p.id === id ? { ...p, type: newType } : p)));
   }
 
   function addItemAt(type, x, y, state = {}) {
     const id = `p${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    dbg('item-add', { id, type, x: Math.round(x), y: Math.round(y), state });
     setPlaced((prev) => [...prev, { id, type, x, y, state }]);
     return id;
   }
@@ -665,7 +698,12 @@ function MoodSmiley({ mood, x, y }) {
   const happy = m / 3; // -1..+1
   // Mund-Endpunkte gleich, Kontroll-Y variabel
   const mouthYBase = 36;
-  const mouthCtrlY = mouthYBase - happy * 8; // happy = nach unten gekruemmt (laecheln), sad = nach oben
+  // Mund-Endpunkte gleich, Kontroll-Y variabel.
+  // happy=+1 (frohlocken) -> Kontrollpunkt UNTER den Endpunkten (groesseres y
+  // in SVG = visuell tiefer) -> Mund kruemmt sich runter -> LAECHELN.
+  // happy=-1 (mies) -> Kontrollpunkt OBER -> Mund kruemmt sich rauf -> Frown.
+  // (Vorher war Vorzeichen invertiert, gluecklicher Mood zeigte Frown.)
+  const mouthCtrlY = mouthYBase + happy * 8;
   // Augenform: happy = halbmond, sad = kleine Punkte
   const colorBg = happy >= 0.3 ? '#cfeed6' : happy <= -0.3 ? '#f3d5d5' : '#e7ecf0';
   const colorRing = happy >= 0.3 ? '#3a8754' : happy <= -0.3 ? '#a23a3a' : '#5a6a76';
