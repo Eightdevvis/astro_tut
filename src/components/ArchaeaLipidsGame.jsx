@@ -19,8 +19,20 @@ import {
 import { tierFromScore, isPassing, SCORE_TIERS } from '../lib/scoring-scale.js';
 import { syncOnMount, pushToServer } from '../lib/minigame-progress-sync.js';
 import ArchaeaLipidsConfetti from './ArchaeaLipidsConfetti.jsx';
+import MikrobioDebugPanel from './MikrobioDebugPanel.jsx';
+import { dbg } from '../lib/mikrobio-debug.js';
 
-const MoleculeBuilderCanvas = lazy(() => import('./MoleculeBuilderCanvas.jsx'));
+const MoleculeBuilderCanvas = lazy(async () => {
+  dbg('canvas-chunk-import-start');
+  try {
+    const mod = await import('./MoleculeBuilderCanvas.jsx');
+    dbg('canvas-chunk-import-done', { hasDefault: Boolean(mod?.default) });
+    return mod;
+  } catch (err) {
+    dbg('canvas-chunk-import-failed', { msg: String(err?.message || err) });
+    throw err;
+  }
+});
 
 // Atomzaehlung aus einem MOL-File-String. MOL-V2000-Atomblock-Format:
 // jede Atom-Zeile ist 70+ Zeichen, Spalten 31-34 enthalten das Element-Symbol.
@@ -74,7 +86,13 @@ function similarityScore(userAtoms, targetAtoms) {
 
 function useKetcherReady() {
   const [ketcher, setKetcher] = useState(null);
-  const handleReady = (k) => setKetcher(k);
+  const handleReady = (k) => {
+    dbg('useKetcherReady-setKetcher', {
+      type: typeof k,
+      hasGenerateImage: typeof k?.generateImage === 'function',
+    });
+    setKetcher(k);
+  };
   return [ketcher, handleReady];
 }
 
@@ -86,6 +104,22 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
   // gerendert werden koennen.
   const [editorMounted, setEditorMounted] = useState(initialMode === 'practice');
   const [ketcher, onKetcherReady] = useKetcherReady();
+
+  useEffect(() => {
+    dbg('game-mount', {
+      ua:
+        typeof navigator !== 'undefined'
+          ? navigator.userAgent.slice(0, 120)
+          : null,
+      initialMode,
+      editorMounted,
+    });
+    return () => dbg('game-unmount');
+  }, []);
+
+  useEffect(() => {
+    dbg('mode-change', { mode, editorMounted });
+  }, [mode, editorMounted]);
 
   // Server-Sync auf Mount: lokalen Progress mit Server mergen (falls eingeloggt).
   useEffect(() => {
@@ -133,28 +167,43 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
         ),
       ]);
     (async () => {
-      console.log('[ArchaeaLipids] ketcher ready, rendering targets', {
+      dbg('render-loop-start', {
         hasGenerateImage: typeof ketcher.generateImage === 'function',
+        hasSetMolecule: typeof ketcher.setMolecule === 'function',
+        ketcherKeys: ketcher ? Object.keys(ketcher).slice(0, 20) : null,
       });
       for (const lipid of ARCHAEA_LIPIDS) {
         const t0 = performance.now();
+        dbg('lipid-generateImage-start', { id: lipid.id });
         try {
           const blob = await withTimeout(
             ketcher.generateImage(lipid.smiles, { outputFormat: 'svg' }),
             15000,
             `generateImage ${lipid.id}`,
           );
-          if (cancelled) return;
+          if (cancelled) {
+            dbg('lipid-cancelled-after-resolve', { id: lipid.id });
+            return;
+          }
           const url = URL.createObjectURL(blob);
           urls.push(url);
           setLipidImages((prev) => ({ ...prev, [lipid.id]: url }));
-          console.log(
-            `[ArchaeaLipids] ${lipid.id} rendered in ${Math.round(performance.now() - t0)}ms`,
-          );
+          dbg('lipid-generateImage-ok', {
+            id: lipid.id,
+            ms: Math.round(performance.now() - t0),
+            blobType: blob?.type || null,
+            blobSize: blob?.size || null,
+          });
         } catch (err) {
-          console.error('[ArchaeaLipids] generateImage failed for', lipid.id, err);
+          dbg('lipid-generateImage-fail', {
+            id: lipid.id,
+            ms: Math.round(performance.now() - t0),
+            msg: String(err?.message || err),
+            name: err?.name || null,
+          });
         }
       }
+      dbg('render-loop-done');
     })();
     return () => {
       cancelled = true;
@@ -166,7 +215,15 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
   // mountet, den Lazy-Chunk schonmal im Hintergrund holen — dann ist er beim
   // Klick auf L1/L2 idealerweise schon im Cache.
   useEffect(() => {
-    import('./MoleculeBuilderCanvas.jsx').catch(() => {});
+    const t0 = performance.now();
+    dbg('prefetch-start');
+    import('./MoleculeBuilderCanvas.jsx')
+      .then(() =>
+        dbg('prefetch-done', { ms: Math.round(performance.now() - t0) }),
+      )
+      .catch((err) =>
+        dbg('prefetch-failed', { msg: String(err?.message || err) }),
+      );
   }, []);
 
   const ensureEditor = () => setEditorMounted(true);
@@ -253,6 +310,7 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
       )}
 
       <Styles />
+      <MikrobioDebugPanel />
     </section>
   );
 }
