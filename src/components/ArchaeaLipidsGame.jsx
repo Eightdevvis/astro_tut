@@ -120,16 +120,37 @@ export default function ArchaeaLipidsGame({ mode: initialMode = 'play' }) {
     if (!ketcher) return;
     let cancelled = false;
     const urls = [];
+    // Wenn `generateImage` haengt (in der Vergangenheit beobachtet: Indigo-Layout
+    // fuer macrocyclische SMILES dauert ewig oder die WASM-Routine ist nicht
+    // verdrahtet), nicht ewig blockieren — nach 15 s aufgeben, weiterspringen
+    // und im Log sagen warum. Der User sieht dann "Bild fehlt" statt endlosem
+    // Spinner.
+    const withTimeout = (promise, ms, label) =>
+      Promise.race([
+        promise,
+        new Promise((_, rej) =>
+          setTimeout(() => rej(new Error(`timeout ${ms}ms: ${label}`)), ms),
+        ),
+      ]);
     (async () => {
+      console.log('[ArchaeaLipids] ketcher ready, rendering targets', {
+        hasGenerateImage: typeof ketcher.generateImage === 'function',
+      });
       for (const lipid of ARCHAEA_LIPIDS) {
+        const t0 = performance.now();
         try {
-          const blob = await ketcher.generateImage(lipid.smiles, {
-            outputFormat: 'svg',
-          });
+          const blob = await withTimeout(
+            ketcher.generateImage(lipid.smiles, { outputFormat: 'svg' }),
+            15000,
+            `generateImage ${lipid.id}`,
+          );
           if (cancelled) return;
           const url = URL.createObjectURL(blob);
           urls.push(url);
           setLipidImages((prev) => ({ ...prev, [lipid.id]: url }));
+          console.log(
+            `[ArchaeaLipids] ${lipid.id} rendered in ${Math.round(performance.now() - t0)}ms`,
+          );
         } catch (err) {
           console.error('[ArchaeaLipids] generateImage failed for', lipid.id, err);
         }
@@ -978,7 +999,7 @@ function Styles() {
         top: 0;
         width: 900px;
         height: 600px;
-        visibility: hidden;
+        opacity: 0;
         pointer-events: none;
         border: 0;
         box-shadow: none;

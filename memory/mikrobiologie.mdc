@@ -28,6 +28,9 @@ description: Mikrobiologie-Minigame-Seite + Molecule Builder (Ketcher) — Pfade
 - **Atomzaehlungen statisch aus SMILES** (`atomCountsFromSmiles` + `LIPID_TARGET_ATOMS` in `archaea-lipids.js`), nicht via Ketcher. Vorher: pro Lipid `setMolecule` + `getMolfile` — Indigo-Layout fuer Crenarchaeol (macrocyclisch, mehrere Cyclopentane) brauchte Minuten und blockte alles. Parser ist heuristisch fuer das Alphabet C/O/P/N/S + ein-/zweibuchstabige Elemente in `[...]`; deckt unsere SMILES exakt ab.
 - **L1-Bilder inkrementell:** `setLipidImages` schreibt per Lipid sofort in den State (`(prev) => ({...prev, [id]: url})`), nicht erst nach dem ganzen Loop. Vorher konnte ein langsames letztes Lipid die schnellen ersten unsichtbar machen, obwohl sie laengst fertig waren.
 - `targetsReady` ist jetzt einfach `Boolean(ketcher)` — Atomzaehlungen sind sync da, sobald Ketcher mountet, kann L2 starten.
+- **Hidden-Editor: `opacity: 0` statt `visibility: hidden`.** Mit `visibility: hidden` paintet die Konva-Canvas in einigen Browsern nicht, und `ketcher.generateImage` zieht seinen Snapshot aus genau dieser Canvas — Folge: endloses Rendering. `opacity: 0; pointer-events: none` haelt die Canvas paintbar, optisch aber unsichtbar.
+- **`MoleculeBuilderCanvas`: latest-init-wins.** `initedRef`-Guard ist weg — Ketcher feuert `onInit` zweimal, und der erste Aufruf kommt mit einem halb-verdrahteten Editor (Indigo-Service noch nicht ready), der zweite ist der echte. Per Ref nur den ersten zu nehmen hat `generateImage` ins Leere laufen lassen.
+- **`generateImage` mit 15 s Timeout** im Game-useEffect — wenn Indigo trotzdem haengt, einfach weiter zum naechsten Lipid statt blockieren. Plus `console.log` mit Render-Dauer pro Lipid fuer Debugging.
 
 ## Minigame: Extremophile
 

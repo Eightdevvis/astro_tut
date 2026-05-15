@@ -1,17 +1,15 @@
 import 'ketcher-react/dist/index.css';
-import { useRef } from 'preact/hooks';
 import { Editor } from 'ketcher-react';
 import { StandaloneStructServiceProvider } from 'ketcher-standalone';
 
 const structServiceProvider = new StandaloneStructServiceProvider();
 
 export default function MoleculeBuilderCanvas({ onReady }) {
-  // Ketcher's outer Editor-Wrapper feuert `onInit` zweimal, weil sein innerer
-  // `MicromoleculesEditor` einen Init-Cycle fuer React-StrictMode hat, den
-  // Preact-Suspense ungewollt mit triggert. Nur den ersten Init durchlassen —
-  // `window.ketcher` aktualisieren wir aber immer (latest wins).
-  const initedRef = useRef(false);
-
+  // Ketcher feuert `onInit` manchmal zweimal — der erste Aufruf kommt mit einem
+  // halb-initialisierten Editor (Indigo-Service noch nicht verdrahtet), der
+  // zweite ist der voll funktionsfaehige. Vorher haben wir per Ref nur den
+  // ersten durchgelassen — Folge: `ketcher.generateImage` hing endlos, weil
+  // der Service-Worker fehlte. Jetzt latest-wins (wie schon bei `window.ketcher`).
   return (
     <div className="mb-ketcher-host">
       <Editor
@@ -26,8 +24,6 @@ export default function MoleculeBuilderCanvas({ onReady }) {
           if (typeof window !== 'undefined') {
             window.ketcher = ketcher;
           }
-          if (initedRef.current) return;
-          initedRef.current = true;
           onReady?.(ketcher);
         }}
       />
