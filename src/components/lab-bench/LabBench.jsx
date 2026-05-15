@@ -34,9 +34,10 @@ const ZONES = {
   underTable:     { x: 230, y: 430, w: 540, h: 130, label: 'Schublade' },
 };
 
-// Demo-Inventar fuer Pasteur. Position (x,y) sind die Eckkoordinaten *im* der
-// jeweiligen Zone, in SVG-Einheiten.
-const INVENTORY = [
+// Default-Inventar (wird genutzt wenn keine `inventory`-Prop kommt). Position
+// (x,y) sind die Eckkoordinaten *in* der jeweiligen Zone, in SVG-Einheiten.
+// Pro Experiment kann das via Prop ueberschrieben werden.
+const DEFAULT_INVENTORY = [
   { type: 'bottle_sterile',    x: 600, y: 130 }, // Regal
   { type: 'bottle_unsterile',  x: 680, y: 130 },
   { type: 'bottle_sterile',    x: 760, y: 210 },
@@ -46,17 +47,17 @@ const INVENTORY = [
   { type: 'test_tube',         x: 282, y: 450 },
   { type: 'test_tube',         x: 314, y: 450 },
   { type: 'petri_dish',        x: 360, y: 520 },
-  { type: 'flask_round',       x: 440, y: 450 },
-  { type: 'flask_erlenmeyer',  x: 520, y: 450 },
-  { type: 'flask_pasteur',     x: 610, y: 410 },
-  { type: 'beaker',            x: 720, y: 470 },
+  { type: 'flask_round',       x: 430, y: 450 },
+  { type: 'flask_erlenmeyer',  x: 510, y: 450 },
+  { type: 'flask_pasteur',     x: 600, y: 410 },
+  { type: 'beaker',            x: 710, y: 470 },
+  { type: 'tongs',             x: 770, y: 460 },
 
   { type: 'bunsen',            x: 880, y: 250 }, // Versorgung rechts
   { type: 'stand',             x: 880, y: 380, anchor: 'baseline' },
 ];
 
-// Items im Kuehlschrank — bei Pasteur leer, fuer kuenftige Experimente.
-const FRIDGE_INVENTORY = [
+const DEFAULT_FRIDGE_INVENTORY = [
   // { type: 'bottle_xy', x: 110, y: 200 },
 ];
 
@@ -64,13 +65,29 @@ function pointInRect(px, py, r) {
   return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 }
 
-export default function LabBench() {
+export default function LabBench({
+  inventory = DEFAULT_INVENTORY,
+  fridgeInventory = DEFAULT_FRIDGE_INVENTORY,
+  mood = 0,
+  actionsForItem,
+  onAction,
+  onPlacedChange,
+} = {}) {
   const svgRef = useRef(null);
   const dragRef = useRef(null);
   const [placed, setPlaced] = useState([]);
   const [, forceRender] = useState(0);
-  const [mood] = useState(0); // wird spaeter von Game-Logik gesteuert
   const [fridgeOpen, setFridgeOpen] = useState(false);
+  // Menu state fuer Klick-auf-Item: { itemId, x, y, actions }
+  const [menu, setMenu] = useState(null);
+  // Tongs-Position pro Animations-Frame fuer Glas-Zieh-Effekt: { x, y } | null
+  const [pulledOverlay, setPulledOverlay] = useState(null);
+
+  // Parent ueber Aenderungen am Tisch informieren (z. B. fuer Snap-getriggerte
+  // Progress-Events wie "Erlenmeyer auf Stativ").
+  useEffect(() => {
+    onPlacedChange?.(placed);
+  }, [placed, onPlacedChange]);
 
   // Pointer-Position in SVG-Koordinaten
   function svgPoint(e) {
@@ -201,20 +218,88 @@ export default function LabBench() {
   }
 
   function interactPlaced(id) {
+    const item = placed.find((p) => p.id === id);
+    if (!item) return;
+    if (actionsForItem) {
+      const actions = actionsForItem(item, placed);
+      if (actions && actions.length > 0) {
+        const meta = ITEM_META[item.type];
+        setMenu({
+          itemId: id,
+          x: item.x + meta.w + 8,
+          y: item.y,
+          actions,
+        });
+        return;
+      }
+    }
+    // Fallback ohne actionsForItem-Prop: alte Toggle-/Rotate-Logik.
+    const meta = ITEM_META[item.type];
+    if (meta.interaction === 'toggle') {
+      updateItemState(id, { on: !item.state?.on });
+    } else if (meta.interaction === 'rotate') {
+      updateItemState(id, { tilted: !item.state?.tilted });
+    }
+  }
+
+  function updateItemState(id, partial) {
     setPlaced((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const meta = ITEM_META[p.type];
-        if (meta.interaction === 'toggle') {
-          return { ...p, state: { ...(p.state || {}), on: !p.state?.on } };
-        }
-        if (meta.interaction === 'rotate') {
-          return { ...p, state: { ...(p.state || {}), tilted: !p.state?.tilted } };
-        }
-        return p;
-      }),
+      prev.map((p) => (p.id === id ? { ...p, state: { ...(p.state || {}), ...partial } } : p)),
     );
   }
+
+  function removeItemById(id) {
+    setPlaced((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function setItemTypeById(id, newType) {
+    setPlaced((prev) => prev.map((p) => (p.id === id ? { ...p, type: newType } : p)));
+  }
+
+  function addItemAt(type, x, y, state = {}) {
+    const id = `p${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    setPlaced((prev) => [...prev, { id, type, x, y, state }]);
+    return id;
+  }
+
+  function findPlaced(predicate) {
+    return placed.find(predicate) || null;
+  }
+
+  function handleActionClick(actionId) {
+    if (!menu) return;
+    const item = placed.find((p) => p.id === menu.itemId);
+    setMenu(null);
+    if (!item) return;
+    const helpers = {
+      update: (partial) => updateItemState(item.id, partial),
+      remove: () => removeItemById(item.id),
+      changeType: (newType) => setItemTypeById(item.id, newType),
+      addAt: (type, x, y, state) => addItemAt(type, x, y, state),
+      findPlaced,
+      placed,
+      runPullAnimation: (overlay, durationMs = 1400) => {
+        setPulledOverlay(overlay);
+        setTimeout(() => setPulledOverlay(null), durationMs);
+      },
+    };
+    onAction?.(actionId, item, helpers);
+  }
+
+  // Klick irgendwo ausserhalb des Menus schliesst es.
+  useEffect(() => {
+    if (!menu) return undefined;
+    function onDocDown(e) {
+      // Wir feuern das Schliessen, sobald der naechste pointerdown ausserhalb
+      // eines `.lb-menu`-Knotens kommt. Der Klick auf einen Menu-Button selbst
+      // triggert handleActionClick, das setMenu(null) eh aufruft.
+      const target = e.target;
+      if (target && target.closest?.('.lb-menu')) return;
+      setMenu(null);
+    }
+    document.addEventListener('pointerdown', onDocDown, true);
+    return () => document.removeEventListener('pointerdown', onDocDown, true);
+  }, [menu]);
 
   const drag = dragRef.current;
 
@@ -280,7 +365,7 @@ export default function LabBench() {
         <SceneTrash zone={ZONES.trash} />
 
         {/* Inventar-Items in den Zonen */}
-        {INVENTORY.map((inv, idx) => (
+        {inventory.map((inv, idx) => (
           <g
             key={`inv-${inv.type}-${idx}`}
             transform={`translate(${inv.x},${inv.y})`}
@@ -294,7 +379,7 @@ export default function LabBench() {
 
         {/* Kuehlschrank-Inhalt (nur sichtbar wenn offen) */}
         {fridgeOpen &&
-          FRIDGE_INVENTORY.map((inv, idx) => (
+          fridgeInventory.map((inv, idx) => (
             <g
               key={`fridge-${inv.type}-${idx}`}
               transform={`translate(${inv.x},${inv.y})`}
@@ -372,6 +457,75 @@ export default function LabBench() {
               >
                 {renderItem(drag.itemType, drag.state || {})}
               </g>
+            </g>
+          );
+        })()}
+
+        {/* Glas-Zieh-Overlay: temporaer Tongs + Bunsen-Drift fuer
+            Pull-Animation. Wird via helpers.runPullAnimation gesetzt. */}
+        {pulledOverlay && (
+          <g className="lb-pull-overlay" style={{ pointerEvents: 'none' }}>
+            {pulledOverlay.bunsen && (
+              <g transform={`translate(${pulledOverlay.bunsen.x},${pulledOverlay.bunsen.y})`}>
+                {renderItem('bunsen', { on: true })}
+              </g>
+            )}
+            {pulledOverlay.tongs && (
+              <g transform={`translate(${pulledOverlay.tongs.x},${pulledOverlay.tongs.y})`}>
+                {renderItem('tongs', {})}
+              </g>
+            )}
+          </g>
+        )}
+
+        {/* Aktion-Menue */}
+        {menu && (() => {
+          const w = 220;
+          const rowH = 30;
+          const h = menu.actions.length * rowH + 16;
+          const x = Math.max(8, Math.min(menu.x, SCENE_W - w - 8));
+          const y = Math.max(8, Math.min(menu.y, SCENE_H - h - 8));
+          return (
+            <g className="lb-menu" transform={`translate(${x},${y})`}>
+              <rect
+                x="0"
+                y="0"
+                width={w}
+                height={h}
+                fill="#ffffff"
+                stroke="#3a3a3a"
+                stroke-width="1.4"
+                rx="6"
+                style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))' }}
+              />
+              {menu.actions.map((a, i) => (
+                <g
+                  key={a.id}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    handleActionClick(a.id);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <rect
+                    x="4"
+                    y={8 + i * rowH}
+                    width={w - 8}
+                    height={rowH - 4}
+                    rx="3"
+                    fill="rgba(106, 140, 175, 0.08)"
+                  />
+                  <text
+                    x="12"
+                    y={8 + i * rowH + rowH / 2 + 4}
+                    font-size="13"
+                    fill="#1a1a1a"
+                    font-family="ui-sans-serif, system-ui, sans-serif"
+                  >
+                    {a.label}
+                  </text>
+                </g>
+              ))}
             </g>
           );
         })()}

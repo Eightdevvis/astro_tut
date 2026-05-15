@@ -73,8 +73,13 @@ export const ITEM_META = {
   beaker: {
     w: 60,
     h: 80,
-    interaction: 'pour',
+    interaction: 'menu',
     label: 'Becherglas',
+  },
+  tongs: {
+    w: 40,
+    h: 90,
+    label: 'Tiegelzange',
   },
 };
 
@@ -100,9 +105,33 @@ export function renderItem(type, state = {}) {
       return <PetriDish />;
     case 'beaker':
       return <Beaker state={state} />;
+    case 'tongs':
+      return <Tongs />;
     default:
       return null;
   }
+}
+
+// Liquid + Kontaminations-Overlay: zeichnet schmutzige Punkte ueber die
+// Fluessigkeit, wenn `state.contaminated` gesetzt ist. Wird von den Flask-
+// Renderern aufgerufen, nachdem die Fluessigkeit gezeichnet wurde.
+function ContaminationDots({ cx, cy, rx, ry, count = 14 }) {
+  // Pseudo-zufaellig aber deterministisch — gleiche Punkte fuer gleiche IDs.
+  const dots = [];
+  for (let i = 0; i < count; i++) {
+    const a = (i * 137.5) * (Math.PI / 180);
+    const r = (0.35 + ((i * 13) % 100) / 200) * Math.min(rx, ry);
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r * 0.7;
+    dots.push({ x, y, r: 0.7 + (i % 3) * 0.4 });
+  }
+  return (
+    <g>
+      {dots.map((d, i) => (
+        <circle key={i} cx={d.x} cy={d.y} r={d.r} fill="#3a2a1a" opacity="0.7" />
+      ))}
+    </g>
+  );
 }
 
 // ----- Einzelne Items -----
@@ -171,6 +200,7 @@ function Stand() {
 
 function RoundFlask({ state }) {
   const fill = state?.liquidColor;
+  const contaminated = state?.contaminated;
   return (
     <g>
       {/* Hals */}
@@ -179,11 +209,14 @@ function RoundFlask({ state }) {
       <ellipse cx="35" cy="68" rx="30" ry="28" fill="#e8f4fa" stroke="#5b8dbf" stroke-width="1.6" />
       {/* Fluessigkeit */}
       {fill && (
-        <path
-          d="M9 70 A 30 28 0 0 0 61 70 L 61 78 A 30 28 0 0 1 9 78 Z"
-          fill={fill}
-          opacity="0.85"
-        />
+        <>
+          <path
+            d="M9 70 A 30 28 0 0 0 61 70 L 61 78 A 30 28 0 0 1 9 78 Z"
+            fill={fill}
+            opacity="0.85"
+          />
+          {contaminated && <ContaminationDots cx={35} cy={74} rx={22} ry={8} count={16} />}
+        </>
       )}
       {/* Glanz */}
       <path d="M14 60 Q 14 50, 25 46" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
@@ -193,10 +226,29 @@ function RoundFlask({ state }) {
 
 function ErlenmeyerFlask({ state }) {
   const fill = state?.liquidColor;
+  const contaminated = state?.contaminated;
+  const neck = state?.neck || 'straight';
   return (
     <g>
-      {/* Hals */}
-      <rect x="29" y="6" width="12" height="22" fill="#e8f4fa" stroke="#5b8dbf" stroke-width="1.6" />
+      {/* Hals — gerade oder Schwanenhals */}
+      {neck === 'straight' ? (
+        <rect x="29" y="6" width="12" height="22" fill="#e8f4fa" stroke="#5b8dbf" stroke-width="1.6" />
+      ) : (
+        <path
+          d="M29 28 L29 16
+             C 29 6, 50 8, 50 22
+             C 50 38, 70 38, 70 22
+             C 70 8, 88 8, 92 16
+             L 96 12
+             C 92 -2, 70 -2, 60 12
+             C 50 26, 40 26, 40 10
+             L 40 6 L 29 6 Z"
+          fill="#e8f4fa"
+          stroke="#5b8dbf"
+          stroke-width="1.6"
+          stroke-linejoin="round"
+        />
+      )}
       {/* Konisches Gefaess */}
       <path
         d="M29 28 L12 92 L58 92 L41 28 Z"
@@ -207,11 +259,10 @@ function ErlenmeyerFlask({ state }) {
       />
       {/* Fluessigkeit */}
       {fill && (
-        <path
-          d="M19 72 L 12 92 L 58 92 L 51 72 Z"
-          fill={fill}
-          opacity="0.85"
-        />
+        <>
+          <path d="M19 72 L 12 92 L 58 92 L 51 72 Z" fill={fill} opacity="0.85" />
+          {contaminated && <ContaminationDots cx={35} cy={82} rx={20} ry={9} count={18} />}
+        </>
       )}
       {/* Glanz */}
       <line x1="22" y1="50" x2="18" y2="80" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0.6" />
@@ -257,14 +308,47 @@ function PasteurFlask({ state }) {
       )}
       {/* Fluessigkeit */}
       {fill && (
-        <path
-          d="M9 110 A 30 28 0 0 0 61 110 L 61 120 A 30 28 0 0 1 9 120 Z"
-          fill={fill}
-          opacity="0.85"
-        />
+        <>
+          <path
+            d="M9 110 A 30 28 0 0 0 61 110 L 61 120 A 30 28 0 0 1 9 120 Z"
+            fill={fill}
+            opacity="0.85"
+          />
+          {state?.contaminated && <ContaminationDots cx={35} cy={114} rx={22} ry={8} count={16} />}
+        </>
       )}
       {/* Glanz */}
       <path d="M14 100 Q 14 90, 25 86" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+    </g>
+  );
+}
+
+function Tongs() {
+  return (
+    <g>
+      {/* Pivot oben */}
+      <circle cx="20" cy="10" r="4" fill="#5a5a5a" stroke="#2a2a2a" stroke-width="0.8" />
+      {/* Linker Arm */}
+      <path
+        d="M 20 10 Q 14 30 8 80"
+        fill="none"
+        stroke="#8a8a8a"
+        stroke-width="3.5"
+        stroke-linecap="round"
+      />
+      {/* Rechter Arm */}
+      <path
+        d="M 20 10 Q 26 30 32 80"
+        fill="none"
+        stroke="#8a8a8a"
+        stroke-width="3.5"
+        stroke-linecap="round"
+      />
+      {/* Greifpads unten */}
+      <circle cx="8" cy="80" r="4.5" fill="#5a5a5a" stroke="#2a2a2a" stroke-width="0.8" />
+      <circle cx="32" cy="80" r="4.5" fill="#5a5a5a" stroke="#2a2a2a" stroke-width="0.8" />
+      {/* Griff-Indikator (Spannungs-Schraube) */}
+      <rect x="16" y="20" width="8" height="3" fill="#666" rx="1" />
     </g>
   );
 }

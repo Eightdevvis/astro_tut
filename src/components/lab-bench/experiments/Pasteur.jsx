@@ -1,16 +1,36 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import LabBench from '../LabBench.jsx';
+import { ITEM_META } from '../items.jsx';
 
 // Pasteur-Experiment-Wrapper:
 //   1. Intro-Szene: Pasteur-Portrait + Gedanken-Blase + Weiter-Knopf.
-//      Funktional auch ein Loading-Buffer fuer den LabBench (SVGs/Items).
-//   2. Weiter-Klick: LabBench-Szene aktiviert.
+//   2. Lab-Phase: LabBench mit Pasteur-spezifischen Aktionen + Progress-
+//      Tracking. Smiley faellt eine Stufe nach 3 Aktionen ohne Fortschritt.
+//
+// Progress-Events (jeder einmalig +1 Punkt):
+//   flask_on_stand:    Erlenmeyer aufs Stativ gestellt (Snap erkannt).
+//   liquid_in_flask:   Fluessigkeit (sterile od. unsterile) eingefuellt.
+//   bunsen_below:      Bunsen unter den Kolben.
+//   sterilized:        Bunsen an + drunter + Fluessigkeit drin.
+//   bunsen_at_neck:    Bunsen an den Hals gehalten (Vorbereitung Glaszug).
+//   neck_pulled:       Hals zum Schwanenhals gezogen (mit Zange).
+//   tipped:            Kolben gekippt (kontaminiert dann je nach Setup).
 //
 // Per `?skip=1` springt die Intro fuer Debugging weg.
+
+const PROGRESS_TARGETS = [
+  'flask_on_stand',
+  'liquid_in_flask',
+  'bunsen_below',
+  'sterilized',
+  'bunsen_at_neck',
+  'neck_pulled',
+  'tipped',
+];
+
 export default function Pasteur({ skipIntro = false }) {
   const [phase, setPhase] = useState(skipIntro ? 'lab' : 'intro');
 
-  // Bei Phase-Wechsel zum Scroll-Top, damit der LabBench oben anfaengt.
   useEffect(() => {
     if (phase === 'lab' && typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -20,7 +40,246 @@ export default function Pasteur({ skipIntro = false }) {
   if (phase === 'intro') {
     return <Intro onContinue={() => setPhase('lab')} />;
   }
-  return <LabBench />;
+  return <Lab />;
+}
+
+function Lab() {
+  // Set der bereits erreichten Meilensteine.
+  const [progress, setProgress] = useState(() => new Set());
+  // Zaehler an Aktionen seit dem letzten Progress-Event.
+  const [idleActions, setIdleActions] = useState(0);
+  // Wird gesetzt von LabBench, wenn `flask_on_stand` getriggert wurde.
+  const placedReportRef = useRef({});
+
+  const mood = computeMood(idleActions);
+
+  function award(event) {
+    setProgress((prev) => {
+      if (prev.has(event)) return prev;
+      const next = new Set(prev);
+      next.add(event);
+      return next;
+    });
+    setIdleActions(0);
+  }
+
+  function bump() {
+    setIdleActions((n) => n + 1);
+  }
+
+  // Inventar fuer Pasteur — schlanker als das Default. Im Regal Flaschen,
+  // in der Schublade Glaswaren + Zange, rechts Bunsen + Stativ.
+  const inventory = useMemo(
+    () => [
+      { type: 'bottle_sterile',    x: 600, y: 130 },
+      { type: 'bottle_unsterile',  x: 700, y: 130 },
+      { type: 'bottle_sterile',    x: 800, y: 210 },
+      { type: 'bottle_unsterile',  x: 870, y: 210 },
+
+      { type: 'flask_erlenmeyer', x: 260, y: 450 },
+      { type: 'flask_pasteur',    x: 350, y: 410 },
+      { type: 'beaker',           x: 460, y: 470 },
+      { type: 'test_tube',        x: 540, y: 450 },
+      { type: 'test_tube',        x: 572, y: 450 },
+      { type: 'tongs',            x: 620, y: 460 },
+      { type: 'petri_dish',       x: 690, y: 520 },
+
+      { type: 'bunsen',           x: 880, y: 250 },
+      { type: 'stand',            x: 880, y: 380 },
+    ],
+    [],
+  );
+
+  // Hilfsfunktionen, die auf `placed`-Snapshots aus dem LabBench operieren.
+  // Werden in actionsForItem benutzt.
+  function isOnStand(flask, placed) {
+    return placed.some(
+      (p) =>
+        p.type === 'stand' &&
+        Math.abs((p.x + ITEM_META.stand.snapSlots[0].x) - (flask.x + ITEM_META[flask.type].w / 2)) < 50 &&
+        Math.abs((p.y + ITEM_META.stand.snapSlots[0].y) - (flask.y + ITEM_META[flask.type].h / 2)) < 50,
+    );
+  }
+  function hasPlacedTongs(placed) {
+    return placed.some((p) => p.type === 'tongs');
+  }
+
+  // Aktionen je nach Item-Typ + State + Nachbarn.
+  function actionsForItem(item, placed) {
+    if (item.type === 'flask_erlenmeyer') {
+      const s = item.state || {};
+      const onStand = isOnStand(item, placed);
+      const list = [];
+      if (!onStand) {
+        list.push({ id: 'note_off_stand', label: 'Erst aufs Stativ stellen' });
+        return list;
+      }
+      if (!s.liquid) {
+        list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
+        list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
+      }
+      if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
+      if (!s.bunsenAtNeck && s.neck !== 'swan')
+        list.push({ id: 'bunsen_at_neck', label: 'Bunsen an Hals halten' });
+      if (s.bunsenBelow && s.liquid && !s.sterilized)
+        list.push({ id: 'sterilize', label: 'Anzuenden + Sterilisieren' });
+      if (s.bunsenAtNeck && s.neck !== 'swan' && hasPlacedTongs(placed))
+        list.push({ id: 'pull_neck', label: 'Glas ziehen (mit Zange)' });
+      if (s.liquid && !s.tipped)
+        list.push({ id: 'tip', label: 'Flasche kippen' });
+      list.push({ id: 'clear_actions', label: '— Bunsen/Zange abnehmen —' });
+      return list;
+    }
+    if (item.type === 'bunsen') {
+      return [
+        { id: 'toggle_on', label: item.state?.on ? 'Ausmachen' : 'Anzuenden' },
+      ];
+    }
+    if (item.type === 'flask_pasteur' || item.type === 'flask_round') {
+      return [{ id: 'note_use_erlenmeyer', label: 'Pasteur arbeitet mit dem Erlenmeyer' }];
+    }
+    return null;
+  }
+
+  function handleAction(actionId, item, helpers) {
+    switch (actionId) {
+      case 'fill_unsterile':
+        helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
+        award('liquid_in_flask');
+        return;
+      case 'fill_sterile':
+        helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
+        award('liquid_in_flask');
+        return;
+      case 'bunsen_below':
+        helpers.update({ bunsenBelow: true });
+        award('bunsen_below');
+        return;
+      case 'bunsen_at_neck':
+        helpers.update({ bunsenAtNeck: true });
+        award('bunsen_at_neck');
+        return;
+      case 'sterilize':
+        helpers.update({ sterilized: true });
+        award('sterilized');
+        return;
+      case 'pull_neck':
+        helpers.runPullAnimation(
+          {
+            bunsen: { x: item.x - 60, y: item.y - 30 },
+            tongs:  { x: item.x + ITEM_META[item.type].w + 10, y: item.y - 20 },
+          },
+          1500,
+        );
+        setTimeout(() => {
+          helpers.update({ neck: 'swan', bunsenAtNeck: false });
+          award('neck_pulled');
+        }, 1400);
+        return;
+      case 'tip':
+        helpers.update({
+          tipped: true,
+          tilted: true,
+          // Wenn nicht steril -> kontaminiert. Schwanenhals + steril bleibt sauber.
+          contaminated:
+            (item.state?.liquid === 'unsterile' && !item.state?.sterilized) ||
+            (item.state?.neck !== 'swan' && item.state?.liquid === 'unsterile'),
+        });
+        award('tipped');
+        return;
+      case 'clear_actions':
+        helpers.update({ bunsenBelow: false, bunsenAtNeck: false });
+        bump();
+        return;
+      case 'toggle_on':
+        helpers.update({ on: !item.state?.on });
+        bump();
+        return;
+      default:
+        bump();
+        return;
+    }
+  }
+
+  // LabBench meldet bei Drop, wenn ein Item snap-gesetzt wurde. Wir checken
+  // im Render-Effekt, ob ein neuer Erlenmeyer aufs Stativ gelandet ist.
+  function onPlacedChange(placed) {
+    placedReportRef.current.placed = placed;
+    // Heuristik: wenn ein Erlenmeyer auf einem Stand-Snap-Slot sitzt -> award.
+    const flaskOnStand = placed.some((p) => p.type === 'flask_erlenmeyer' && isOnStand(p, placed));
+    if (flaskOnStand && !progress.has('flask_on_stand')) {
+      award('flask_on_stand');
+    }
+  }
+
+  const total = progress.size;
+  const max = PROGRESS_TARGETS.length;
+
+  return (
+    <div className="lab-wrap">
+      <ProgressStrip done={total} max={max} progress={progress} />
+      <LabBench
+        inventory={inventory}
+        mood={mood}
+        actionsForItem={actionsForItem}
+        onAction={handleAction}
+        onPlacedChange={onPlacedChange}
+      />
+      <p className="lab-hint">
+        Smiley faellt nach drei Aktionen ohne Fortschritt eine Stufe. Reihenfolge
+        ist nicht starr — Hauptsache du produzierst die richtigen Zustaende
+        (Kolben aufs Stativ, Fluessigkeit, Bunsen, sterilisieren, Hals ziehen,
+        kippen).
+      </p>
+      <LabStyles />
+    </div>
+  );
+}
+
+function ProgressStrip({ done, max, progress }) {
+  return (
+    <div className="lab-progress">
+      <div className="lab-progress-row">
+        <span className="lab-progress-label">Experiment-Fortschritt</span>
+        <span className="lab-progress-value">
+          {done} / {max}
+        </span>
+      </div>
+      <div className="lab-progress-bar">
+        <div
+          className="lab-progress-fill"
+          style={{ width: `${Math.round((done / max) * 100)}%` }}
+        />
+      </div>
+      <ul className="lab-progress-list">
+        {PROGRESS_TARGETS.map((id) => (
+          <li key={id} className={`lab-progress-chip ${progress.has(id) ? 'lab-progress-chip--done' : ''}`}>
+            {labelForEvent(id)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function labelForEvent(id) {
+  switch (id) {
+    case 'flask_on_stand': return 'Kolben auf Stativ';
+    case 'liquid_in_flask': return 'Fluessigkeit drin';
+    case 'bunsen_below':   return 'Bunsen drunter';
+    case 'sterilized':     return 'Sterilisiert';
+    case 'bunsen_at_neck': return 'Bunsen an Hals';
+    case 'neck_pulled':    return 'Hals gezogen';
+    case 'tipped':         return 'Gekippt';
+    default: return id;
+  }
+}
+
+// Mood-Skala: 0..2 idle = +1 (lustig), 3..5 idle = 0 (neutral), 6+ = -2 (traurig).
+function computeMood(idleActions) {
+  if (idleActions <= 2) return 1;
+  if (idleActions <= 5) return 0;
+  return -2;
 }
 
 function Intro({ onContinue }) {
@@ -40,70 +299,25 @@ function Intro({ onContinue }) {
 }
 
 function PasteurPortrait() {
-  // Stilisiertes Halbportrait. ~140 breit, ~210 hoch. Positioniert links.
   return (
     <g transform="translate(60, 60)">
-      {/* Schulter / Anzug */}
-      <path
-        d="M -10 175 Q 70 185 150 175 L 165 215 L -25 215 Z"
-        fill="#2a2f4a"
-        stroke="#1a1f3a"
-        stroke-width="1.2"
-        stroke-linejoin="round"
-      />
-      {/* Hemdkragen-V */}
+      <path d="M -10 175 Q 70 185 150 175 L 165 215 L -25 215 Z" fill="#2a2f4a" stroke="#1a1f3a" stroke-width="1.2" stroke-linejoin="round" />
       <path d="M 55 180 L 70 196 L 85 180 L 85 168 L 55 168 Z" fill="#f0e8d8" stroke="#9c8a64" stroke-width="0.8" />
-      {/* Fliege */}
       <path d="M 55 175 L 42 182 L 55 189 Z" fill="#4a2a1a" stroke="#1a0a00" stroke-width="0.6" />
       <path d="M 85 175 L 98 182 L 85 189 Z" fill="#4a2a1a" stroke="#1a0a00" stroke-width="0.6" />
       <circle cx="70" cy="182" r="3" fill="#3a1a0a" />
-      {/* Kopf-Oval */}
       <ellipse cx="70" cy="90" rx="48" ry="58" fill="#f4d8b8" stroke="#7a5a3a" stroke-width="1.5" />
-      {/* Haar: Seitenpartien + duenner Streifen oben */}
-      <path
-        d="M 24 80 Q 18 48 28 30 Q 36 32 32 80 Z"
-        fill="#9c9c9c"
-        stroke="#6a6a6a"
-        stroke-width="0.8"
-      />
-      <path
-        d="M 116 80 Q 122 48 112 30 Q 104 32 108 80 Z"
-        fill="#9c9c9c"
-        stroke="#6a6a6a"
-        stroke-width="0.8"
-      />
-      <path
-        d="M 30 38 Q 70 28 110 38 Q 110 46 70 42 Q 30 46 30 38 Z"
-        fill="#9c9c9c"
-        stroke="#6a6a6a"
-        stroke-width="0.8"
-      />
-      {/* Augenbrauen */}
+      <path d="M 24 80 Q 18 48 28 30 Q 36 32 32 80 Z" fill="#9c9c9c" stroke="#6a6a6a" stroke-width="0.8" />
+      <path d="M 116 80 Q 122 48 112 30 Q 104 32 108 80 Z" fill="#9c9c9c" stroke="#6a6a6a" stroke-width="0.8" />
+      <path d="M 30 38 Q 70 28 110 38 Q 110 46 70 42 Q 30 46 30 38 Z" fill="#9c9c9c" stroke="#6a6a6a" stroke-width="0.8" />
       <path d="M 50 78 Q 58 74 66 78" fill="none" stroke="#5a5a5a" stroke-width="1.8" stroke-linecap="round" />
       <path d="M 74 78 Q 82 74 90 78" fill="none" stroke="#5a5a5a" stroke-width="1.8" stroke-linecap="round" />
-      {/* Augen */}
       <ellipse cx="58" cy="86" rx="2.5" ry="3.2" fill="#1a1a1a" />
       <ellipse cx="82" cy="86" rx="2.5" ry="3.2" fill="#1a1a1a" />
-      {/* Nase */}
       <path d="M 70 96 Q 67 110 70 116 Q 73 118 76 116" fill="none" stroke="#7a5a3a" stroke-width="1.2" stroke-linecap="round" />
-      {/* Bushy Mustache */}
-      <path
-        d="M 48 124 Q 58 116 70 122 Q 82 116 92 124 Q 96 134 80 134 Q 70 130 60 134 Q 44 134 48 124 Z"
-        fill="#9c9c9c"
-        stroke="#6a6a6a"
-        stroke-width="0.8"
-        stroke-linejoin="round"
-      />
-      {/* Mund */}
+      <path d="M 48 124 Q 58 116 70 122 Q 82 116 92 124 Q 96 134 80 134 Q 70 130 60 134 Q 44 134 48 124 Z" fill="#9c9c9c" stroke="#6a6a6a" stroke-width="0.8" stroke-linejoin="round" />
       <path d="M 60 138 Q 70 142 80 138" fill="none" stroke="#7a4040" stroke-width="1.2" stroke-linecap="round" />
-      {/* Goatee */}
-      <path
-        d="M 56 144 Q 70 156 84 144 Q 78 158 70 162 Q 62 158 56 144 Z"
-        fill="#9c9c9c"
-        stroke="#6a6a6a"
-        stroke-width="0.8"
-        stroke-linejoin="round"
-      />
+      <path d="M 56 144 Q 70 156 84 144 Q 78 158 70 162 Q 62 158 56 144 Z" fill="#9c9c9c" stroke="#6a6a6a" stroke-width="0.8" stroke-linejoin="round" />
     </g>
   );
 }
@@ -111,31 +325,9 @@ function PasteurPortrait() {
 function ArrowAndLabel() {
   return (
     <g>
-      {/* Pfeil von rechts unten hoch zum Kopf */}
-      <path
-        d="M 200 310 Q 220 285 175 245 Q 145 215 130 192"
-        fill="none"
-        stroke="#c43a3a"
-        stroke-width="2.4"
-        stroke-linecap="round"
-      />
-      {/* Pfeilspitze */}
-      <polygon
-        points="130,192 138,202 124,205"
-        fill="#c43a3a"
-        stroke="#a02a2a"
-        stroke-width="0.8"
-        stroke-linejoin="round"
-      />
-      {/* Label */}
-      <text
-        x="208"
-        y="332"
-        font-size="18"
-        font-weight="800"
-        fill="#c43a3a"
-        font-family="ui-sans-serif, system-ui, sans-serif"
-      >
+      <path d="M 200 310 Q 220 285 175 245 Q 145 215 130 192" fill="none" stroke="#c43a3a" stroke-width="2.4" stroke-linecap="round" />
+      <polygon points="130,192 138,202 124,205" fill="#c43a3a" stroke="#a02a2a" stroke-width="0.8" stroke-linejoin="round" />
+      <text x="208" y="332" font-size="18" font-weight="800" fill="#c43a3a" font-family="ui-sans-serif, system-ui, sans-serif">
         Pasteur
       </text>
     </g>
@@ -145,43 +337,18 @@ function ArrowAndLabel() {
 function ThoughtBubble() {
   return (
     <g>
-      {/* Bubble-Punkte als Verbindung Kopf -> Wolke */}
       <circle cx="240" cy="140" r="4.5" fill="#fff" stroke="#5a6a76" stroke-width="1.2" />
       <circle cx="262" cy="118" r="6.5" fill="#fff" stroke="#5a6a76" stroke-width="1.2" />
       <circle cx="290" cy="98" r="8" fill="#fff" stroke="#5a6a76" stroke-width="1.3" />
-      {/* Hauptwolke (mehrere ueberlappende Boegen) */}
       <path
-        d="M 330 60
-           C 318 38, 358 30, 372 50
-           C 388 32, 432 38, 440 60
-           C 478 50, 510 70, 502 96
-           C 528 100, 528 132, 502 138
-           C 510 162, 478 178, 446 168
-           C 432 184, 388 184, 372 168
-           C 350 184, 322 168, 322 144
-           C 296 142, 296 102, 320 100
-           C 308 80, 318 64, 330 60 Z"
-        fill="#fff"
-        stroke="#5a6a76"
-        stroke-width="1.6"
-        stroke-linejoin="round"
+        d="M 330 60 C 318 38, 358 30, 372 50 C 388 32, 432 38, 440 60 C 478 50, 510 70, 502 96 C 528 100, 528 132, 502 138 C 510 162, 478 178, 446 168 C 432 184, 388 184, 372 168 C 350 184, 322 168, 322 144 C 296 142, 296 102, 320 100 C 308 80, 318 64, 330 60 Z"
+        fill="#fff" stroke="#5a6a76" stroke-width="1.6" stroke-linejoin="round"
       />
-      {/* Text */}
-      <text x="412" y="82" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a1a" font-family="ui-sans-serif, system-ui, sans-serif">
-        Spontanzeugung ist Muell.
-      </text>
-      <text x="412" y="102" text-anchor="middle" font-size="13" fill="#2a2a2a" font-family="ui-sans-serif, system-ui, sans-serif">
-        Aber wie beweise ich es?
-      </text>
-      <text x="412" y="128" text-anchor="middle" font-size="11" fill="#5a5a5a" font-style="italic" font-family="ui-sans-serif, system-ui, sans-serif">
-        Wo Vergammelung anfaengt geht
-      </text>
-      <text x="412" y="142" text-anchor="middle" font-size="11" fill="#5a5a5a" font-style="italic" font-family="ui-sans-serif, system-ui, sans-serif">
-        die Vergammelung auch weiter…
-      </text>
-      <text x="412" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1a1a" font-family="ui-sans-serif, system-ui, sans-serif">
-        Hmmmmm
-      </text>
+      <text x="412" y="82" text-anchor="middle" font-size="14" font-weight="700" fill="#1a1a1a" font-family="ui-sans-serif, system-ui, sans-serif">Spontanzeugung ist Muell.</text>
+      <text x="412" y="102" text-anchor="middle" font-size="13" fill="#2a2a2a" font-family="ui-sans-serif, system-ui, sans-serif">Aber wie beweise ich es?</text>
+      <text x="412" y="128" text-anchor="middle" font-size="11" fill="#5a5a5a" font-style="italic" font-family="ui-sans-serif, system-ui, sans-serif">Wo Vergammelung anfaengt geht</text>
+      <text x="412" y="142" text-anchor="middle" font-size="11" fill="#5a5a5a" font-style="italic" font-family="ui-sans-serif, system-ui, sans-serif">die Vergammelung auch weiter…</text>
+      <text x="412" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#1a1a1a" font-family="ui-sans-serif, system-ui, sans-serif">Hmmmmm</text>
     </g>
   );
 }
@@ -229,6 +396,78 @@ function Styles() {
       .pst-intro-btn:focus-visible {
         outline: 2px solid var(--site-accent, #6a8caf);
         outline-offset: 2px;
+      }
+    `}</style>
+  );
+}
+
+function LabStyles() {
+  return (
+    <style>{`
+      .lab-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+      }
+      .lab-progress {
+        background: var(--site-card-bg);
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.9rem;
+        padding: 0.7rem 1rem;
+        box-shadow: var(--site-card-inset-soft), var(--site-card-shadow);
+      }
+      .lab-progress-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 0.35rem;
+      }
+      .lab-progress-label {
+        font-weight: 600;
+      }
+      .lab-progress-value {
+        font-variant-numeric: tabular-nums;
+        color: var(--site-muted);
+      }
+      .lab-progress-bar {
+        height: 0.55rem;
+        border-radius: 0.35rem;
+        background: rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+        margin-bottom: 0.6rem;
+      }
+      .lab-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #6a8caf 0%, #3d8a59 100%);
+        transition: width 0.35s ease;
+      }
+      .lab-progress-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+      .lab-progress-chip {
+        font-size: 0.8rem;
+        padding: 0.18rem 0.5rem;
+        border-radius: 0.4rem;
+        border: 1px solid var(--site-card-border);
+        background: var(--site-card-bg);
+        color: var(--site-soft-muted);
+      }
+      .lab-progress-chip--done {
+        background: rgba(61, 138, 89, 0.15);
+        color: #2f7449;
+        border-color: rgba(61, 138, 89, 0.4);
+        font-weight: 600;
+      }
+      .lab-hint {
+        margin: 0;
+        color: var(--site-muted);
+        font-size: 0.9rem;
+        line-height: 1.5;
       }
     `}</style>
   );
