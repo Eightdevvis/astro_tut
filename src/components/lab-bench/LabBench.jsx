@@ -704,14 +704,24 @@ function MoodSmiley({ mood, x, y }) {
   // mood: -3..+3, 0 = neutral
   const m = Math.max(-3, Math.min(3, mood || 0));
   const happy = m / 3; // -1..+1
-  // Mund-Endpunkte gleich, Kontroll-Y variabel
   const mouthYBase = 36;
-  // Mund-Endpunkte gleich, Kontroll-Y variabel.
-  // happy=+1 (frohlocken) -> Kontrollpunkt UNTER den Endpunkten (groesseres y
-  // in SVG = visuell tiefer) -> Mund kruemmt sich runter -> LAECHELN.
-  // happy=-1 (mies) -> Kontrollpunkt OBER -> Mund kruemmt sich rauf -> Frown.
-  // (Vorher war Vorzeichen invertiert, gluecklicher Mood zeigte Frown.)
+  // happy=+1 -> Kontrollpunkt UNTER den Endpunkten (groesseres y in SVG
+  // = visuell tiefer) -> Mund kruemmt sich runter = SMILE.
+  // happy=-1 -> Kontrollpunkt OBER  -> Mund nach oben gekruemmt = FROWN.
   const mouthCtrlY = mouthYBase + happy * 8;
+  const pathD = `M 16 ${mouthYBase} Q 26 ${mouthCtrlY} 36 ${mouthYBase}`;
+  // Render-Log fuer Bug-Hunt: was der Browser tatsaechlich gezeichnet bekommt.
+  if (typeof window !== 'undefined') {
+    dbg('mood-smiley-render', {
+      mood,
+      happy,
+      mouthYBase,
+      mouthCtrlY,
+      pathD,
+      controlIsBelow: mouthCtrlY > mouthYBase,
+      expects: happy > 0 ? 'smile' : happy < 0 ? 'frown' : 'flat',
+    });
+  }
   // Augenform: happy = halbmond, sad = kleine Punkte
   const colorBg = happy >= 0.3 ? '#cfeed6' : happy <= -0.3 ? '#f3d5d5' : '#e7ecf0';
   const colorRing = happy >= 0.3 ? '#3a8754' : happy <= -0.3 ? '#a23a3a' : '#5a6a76';
@@ -723,7 +733,7 @@ function MoodSmiley({ mood, x, y }) {
       <circle cx="34" cy="22" r="2.6" fill="#2a2a2a" />
       {/* Mund */}
       <path
-        d={`M 16 ${mouthYBase} Q 26 ${mouthCtrlY} 36 ${mouthYBase}`}
+        d={pathD}
         fill="none"
         stroke="#2a2a2a"
         stroke-width="2.4"

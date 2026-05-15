@@ -90,11 +90,11 @@ function Lab() {
   // ungefaehr auf y=615 (Schubladen-Boden).
   const inventory = useMemo(
     () => [
-      // Regal: Flaschen
-      { type: 'bottle_sterile',    x: 600, y: 130 },
-      { type: 'bottle_unsterile',  x: 700, y: 130 },
-      { type: 'bottle_sterile',    x: 800, y: 210 },
-      { type: 'bottle_unsterile',  x: 870, y: 210 },
+      // Regal: Flaschen. Nur unsteril — Pasteur startet immer mit
+      // unsteriler Bruehe; ein Glas mit schon-steriler Fluessigkeit waere
+      // Cheat (man bekaeme das Endergebnis ohne Sterilisation zu lernen).
+      { type: 'bottle_unsterile',  x: 620, y: 130 },
+      { type: 'bottle_unsterile',  x: 800, y: 210 },
 
       // Schublade — fuer Pasteurs Experiment relevant ist nur der Erlenmeyer.
       // Den Schwanenhalskolben sollst du selbst herstellen (durch Heizen +
@@ -140,7 +140,6 @@ function Lab() {
       } else {
         if (!s.liquid) {
           list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
-          list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
         }
         if (!s.bunsenBelow) list.push({ id: 'bunsen_below', label: 'Bunsen drunterstellen' });
         if (!s.bunsenAtNeck && s.neck !== 'swan')
@@ -184,10 +183,7 @@ function Lab() {
         helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
         award('liquid_in_flask');
         return;
-      case 'fill_sterile':
-        helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
-        award('liquid_in_flask');
-        return;
+      // fill_sterile entfernt — Pasteur startet immer mit unsteriler Bruehe.
       case 'bunsen_below':
         helpers.update({ bunsenBelow: true });
         award('bunsen_below');
@@ -276,9 +272,13 @@ function Lab() {
       helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
       award('liquid_in_flask');
     } else if (sourceType === 'bottle_sterile') {
-      dbg('pour-fill', { kind: 'sterile', target: target.type });
+      // Kein Award fuer sterile Bruehe — wuerde das Experiment trivialisieren.
+      // Bottle sollte in Pasteurs Inventar gar nicht mehr existieren; falls
+      // doch (z. B. ueber andere Codepfade), Liquid setzen aber Meilenstein
+      // ausdruecklich nicht vergeben.
+      dbg('pour-fill-skipped-sterile', { target: target.type });
       helpers.update({ liquid: 'sterile', liquidColor: '#f0e6c8', sterilized: true });
-      award('liquid_in_flask');
+      bump();
     } else {
       bump();
     }
