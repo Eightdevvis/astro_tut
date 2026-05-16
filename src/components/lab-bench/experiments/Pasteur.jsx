@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import LabBench from '../LabBench.jsx';
-import { ITEM_META } from '../items.jsx';
+import { ITEM_META, LIQUID_COLOR_UNSTERILE, LIQUID_COLOR_STERILE } from '../items.jsx';
 import MikrobioDebugPanel from '../../MikrobioDebugPanel.jsx';
 import { dbg } from '../../../lib/mikrobio-debug.js';
 
@@ -209,7 +209,7 @@ function Lab() {
   function handleAction(actionId, item, helpers) {
     switch (actionId) {
       case 'fill_unsterile':
-        helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
+        helpers.update({ liquid: 'unsterile', liquidColor: LIQUID_COLOR_UNSTERILE });
         award('liquid_in_flask');
         return;
       case 'fill_sterile':
@@ -218,7 +218,7 @@ function Lab() {
         // Drag.
         helpers.update({
           liquid: 'sterile',
-          liquidColor: '#f0e6c8',
+          liquidColor: LIQUID_COLOR_STERILE,
           sterilized: true,
           cheated: true,
         });
@@ -233,34 +233,30 @@ function Lab() {
       // pull_neck als Menue-Aktion ebenfalls entfernt — siehe onPlacedChange.
       case 'tip': {
         // Kippen: Meilenstein einmalig, `tilted` togglebar. Kipprichtung
-        // ist -38 deg (in LabBench), Flasche lehnt nach hinten — sieht
-        // nicht aus als wuerde gleich Liquid rausschwappen.
+        // ist -38 deg (in LabBench), Flasche lehnt nach hinten.
         //
         // Kontaminations-Logik (Pasteurs Idee):
-        //   - Unsteriles Liquid ohne Sterilisation -> immer kontaminiert
         //   - Sterilisiert + gerader Hals + Hals-Schmutz -> Schmutz faellt
-        //     beim Kippen ins Liquid -> kontaminiert (verzoegert nach dem
-        //     Kipp-Visual, damit man sieht: Liquid trifft Dreck, Farbe
-        //     wechselt sichtbar zurueck zu unsteril-braun)
+        //     beim Kippen ins Liquid -> Farbe wechselt sichtbar zurueck
+        //     auf unsteril-braun.
         //   - Sterilisiert + Schwanenhals -> Schmutz steckt in Biegung,
-        //     erreicht das Liquid auch beim Kippen nicht -> sauber
+        //     erreicht das Liquid auch beim Kippen nicht -> bleibt steril.
+        //   - Unsteril + nicht sterilisiert: Liquid ist eh schon braun.
+        //     Kippen zeigt nur die Kipp-Animation; Farbe bleibt.
+        // Die Kontaminations-Punkte zeichnet der Renderer streng anhand
+        // der Liquid-Farbe — Braun => Punkte, Sterile => keine. Damit ist
+        // "Farbe + Punkte" EIN gekoppelter Zustand, kein separater Flag.
         const s = item.state || {};
-        const alreadyContaminated = !!s.contaminated;
-        const unsterileTipped = s.liquid === 'unsterile' && !s.sterilized;
+        const isBrownAlready = s.liquidColor === LIQUID_COLOR_UNSTERILE;
         const dustFallsIn = !!s.neckContaminated && s.neck !== 'swan';
-        const willContaminate = unsterileTipped || dustFallsIn;
+        // Nur dann ein sichtbarer Farb-Wechsel: Dreck aus dem Hals faellt
+        // in vorher steriles Liquid.
+        const willTurnBrown = dustFallsIn && !isBrownAlready;
         helpers.update({ tipped: true, tilted: true });
         award('tipped');
-
-        if (willContaminate && !alreadyContaminated) {
-          // Nach Kipp-Animation (~450ms) ein Tick warten, dann Liquid
-          // visuell kontaminieren: Farbe wieder auf unsteril-braun, plus
-          // Kontaminations-Punkte ueber dem Liquid.
+        if (willTurnBrown) {
           setTimeout(() => {
-            helpers.update({
-              contaminated: true,
-              liquidColor: '#c8a55a', // unsteriles Braun aus den Bottles
-            });
+            helpers.update({ liquidColor: LIQUID_COLOR_UNSTERILE });
           }, 700);
         }
         return;
@@ -361,7 +357,7 @@ function Lab() {
           helpers.update(flask.id, {
             sterilizing: false,
             sterilized: true,
-            liquidColor: '#f0e6c8',
+            liquidColor: LIQUID_COLOR_STERILE,
             neckContaminated: true,
           });
           award('sterilized');
@@ -450,7 +446,7 @@ function Lab() {
     }
     if (sourceType === 'bottle_unsterile') {
       dbg('pour-fill', { kind: 'unsterile', target: target.type });
-      helpers.update({ liquid: 'unsterile', liquidColor: '#c8a55a' });
+      helpers.update({ liquid: 'unsterile', liquidColor: LIQUID_COLOR_UNSTERILE });
       award('liquid_in_flask');
     } else if (sourceType === 'bottle_sterile') {
       // Sterile Bruehe ist ein verfuehrerischer Shortcut — wer mit sterilem
@@ -462,7 +458,7 @@ function Lab() {
       dbg('pour-fill-sterile-shortcut', { target: target.type });
       helpers.update({
         liquid: 'sterile',
-        liquidColor: '#f0e6c8',
+        liquidColor: LIQUID_COLOR_STERILE,
         sterilized: true,
         cheated: true, // markiert: Setup ist trivial, Tip-Test sagt eh nix aus
       });

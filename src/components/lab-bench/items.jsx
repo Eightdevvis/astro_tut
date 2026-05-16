@@ -125,9 +125,20 @@ export function renderItem(type, state = {}) {
   }
 }
 
+// Farb-Konstanten fuer Fluessigkeit. Wer die braune Farbe traegt ist
+// kontaminiert (Bottle-unsteril ODER frisch verdorben). Wer die helle
+// Farbe traegt ist sterile. Kontaminations-Punkte haengen streng an der
+// braunen Farbe — beides ein Zustand, niemals nur einer.
+export const LIQUID_COLOR_UNSTERILE = '#c8a55a';
+export const LIQUID_COLOR_STERILE   = '#f0e6c8';
+
+function isUnsterileLiquid(color) {
+  return color === LIQUID_COLOR_UNSTERILE;
+}
+
 // Liquid + Kontaminations-Overlay: zeichnet schmutzige Punkte ueber die
-// Fluessigkeit, wenn `state.contaminated` gesetzt ist. Wird von den Flask-
-// Renderern aufgerufen, nachdem die Fluessigkeit gezeichnet wurde.
+// Fluessigkeit, wenn die Liquid-Farbe das unsterile Braun ist. Wird von
+// den Flask-Renderern aufgerufen, nachdem die Fluessigkeit gezeichnet wurde.
 function ContaminationDots({ cx, cy, rx, ry, count = 14 }) {
   // Pseudo-zufaellig aber deterministisch — gleiche Punkte fuer gleiche IDs.
   const dots = [];
@@ -213,7 +224,8 @@ function Stand() {
 
 function RoundFlask({ state }) {
   const fill = state?.liquidColor;
-  const contaminated = state?.contaminated;
+  // Dots strikt an Farbe koppeln: nur wenn die Fluessigkeit braun ist.
+  const contaminated = isUnsterileLiquid(fill);
   return (
     <g>
       {/* Hals */}
@@ -239,7 +251,8 @@ function RoundFlask({ state }) {
 
 function ErlenmeyerFlask({ state }) {
   const fill = state?.liquidColor;
-  const contaminated = state?.contaminated;
+  // Dots strikt an Farbe koppeln: nur wenn die Fluessigkeit braun ist.
+  const contaminated = isUnsterileLiquid(fill);
   const neck = state?.neck || 'straight';
   const sterilizing = state?.sterilizing;
   const neckDirty = state?.neckContaminated;
@@ -327,6 +340,7 @@ function ErlenmeyerFlask({ state }) {
 function PasteurFlask({ state }) {
   const neck = state?.neck || 'straight';
   const fill = state?.liquidColor;
+  const contaminated = isUnsterileLiquid(fill);
   return (
     <g>
       {/* Bauchige Rundung */}
@@ -364,7 +378,7 @@ function PasteurFlask({ state }) {
             fill={fill}
             opacity="0.85"
           />
-          {state?.contaminated && <ContaminationDots cx={35} cy={114} rx={22} ry={8} count={16} />}
+          {contaminated && <ContaminationDots cx={35} cy={114} rx={22} ry={8} count={16} />}
         </>
       )}
       {/* Glanz */}
