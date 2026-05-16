@@ -176,6 +176,17 @@ export default function LabBench({
   }
 
   function finalizeDrop(d) {
+    // Vereinheitlichungs-Prinzip: jedes Item — egal ob frisch geklont
+    // (`d.cloneFromInventory`) oder bereits platziert und bewegt
+    // (`d.originId`) — durchlaeuft *dieselbe* Drop-Pipeline:
+    //   1. Trash-Zone -> onItemTrashed (beide Pfade)
+    //   2. Source-Item (Flaschen) + Vessel-Ziel -> onSourceDropped + ggf.
+    //      Origin-Konsum (beide Pfade)
+    //   3. Snap an Slots -> onItemSnapped (beide Pfade)
+    //   4. Platzierung/Bewegung -> onItemPlaced / onItemMoved
+    // So bietet jedes Item dieselben zulaessigen Aktionen je nach Kontext,
+    // unabhaengig davon ob es frisch aus dem Inventar gespawnt wurde oder
+    // schon irgendwo rumstand.
     const dt = Date.now() - d.startTime;
     const dist = Math.hypot(d.cur.x - d.start.x, d.cur.y - d.start.y);
     const isClick = dist < CLICK_THRESH_PX && dt < CLICK_THRESH_MS;
@@ -201,13 +212,20 @@ export default function LabBench({
       return;
     }
 
-    // Trash?
+    // Trash? Symmetrisch fuer Move (Item raus aus placed) und Clone (Item
+    // war nie gelandet, aber User-Aktion zaehlt). Beide feuern
+    // onItemTrashed, damit das Wrapper-Game gleich reagieren kann (z. B.
+    // Idle-Bump). So bleibt das Verhalten unabhaengig davon, ob das Item
+    // frisch aus der Quelle kam oder schon rumstand.
     if (pointInRect(d.cur.x, d.cur.y, ZONES.trash)) {
-      dbg('drop-trash', { originId: d.originId || null });
+      dbg('drop-trash', { originId: d.originId || null, cloneFromInventory: !!d.cloneFromInventory });
       if (d.originId) {
         const trashed = placed.find((p) => p.id === d.originId);
         setPlaced((prev) => prev.filter((p) => p.id !== d.originId));
         if (trashed) onItemTrashed?.(trashed);
+      } else if (d.cloneFromInventory) {
+        // Clone wurde nie platziert — synthetisches Item fuer den Callback.
+        onItemTrashed?.({ id: null, type: d.itemType, fromInventory: true });
       }
       return;
     }
