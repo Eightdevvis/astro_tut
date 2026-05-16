@@ -18,9 +18,11 @@ import {
   consumeTokenIfOnetime,
   findValidTokenForPost,
 } from '../../../../lib/blog-tokens.js';
-import { extractClientMeta, safeLogRequest } from '../../../../lib/request-log.js';
+import { extractClientMeta, hashIp, safeLogRequest } from '../../../../lib/request-log.js';
 import { isAuthorBlockAllAi } from '../../../../lib/user-privacy-defaults.js';
 import { getSessionUserFromCookies } from '../../../../lib/session.js';
+import { checkPasswordAttemptLimit, checkRateLimit } from '../../../../lib/rate-limit.js';
+import { sanitizePostHtml } from '../../../../lib/sanitize-html.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -35,6 +37,26 @@ export async function GET({ params, url, request, cookies, clientAddress }) {
 
   await ensureDbSchema();
   const db = getDb();
+
+  // K3: Rate-Limit auch auf dem JS-only-Render-Pfad. Sonst koennte ein
+  // Angreifer hier beliebig viele Passwoerter durchprobieren, weil das
+  // Gate auf der .astro-Seite ihn nicht erreicht.
+  const clientMetaEarly = extractClientMeta(request, clientAddress);
+  const rl = await checkRateLimit({ ipHash: hashIp(clientMetaEarly.ip) });
+  if (!rl.allowed) {
+    void safeLogRequest({
+      path: `/api/posts/${rawId}/content`,
+      postId: null, username: null,
+      ua: clientMetaEarly.ua, ip: clientMetaEarly.ip,
+      country: clientMetaEarly.country, referer: clientMetaEarly.referer,
+      status: 429, blockedReason: 'rate_limit',
+    });
+    return new Response(JSON.stringify({ error: 'rate_limited' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },
+    });
+  }
+
   const r = await db.execute({
     sql: isSlugLookup
       ? `SELECT id, username, content_html, visibility, privacy_flags,
@@ -50,7 +72,7 @@ export async function GET({ params, url, request, cookies, clientAddress }) {
   const row = r.rows?.[0];
   if (!row) return json({ error: 'not_found' }, 404);
 
-  const client = extractClientMeta(request, clientAddress);
+  const client = clientMetaEarly;
 
   // Expire
   if (row.expires_at) {
@@ -85,12 +107,27 @@ export async function GET({ params, url, request, cookies, clientAddress }) {
       const sess = await getSessionUserFromCookies(cookies);
       const pwParam = url.searchParams.get('pw') || '';
       let ok = false;
-      if (sess && sess.username === String(row.username)) ok = true;
-      else if (row.password_hash && pwParam) {
-        try { ok = await bcrypt.compare(pwParam, String(row.password_hash)); } catch {}
+      if (sess && sess.username === String(row.username)) {
+        ok = true;
+      } else if (row.password_hash && pwParam) {
+        // H2: PW-Counter pro (IP-Hash × Post).
+        const pwLimit = await checkPasswordAttemptLimit({
+          ipHash: hashIp(client.ip),
+          postId: Number(row.id),
+        });
+        if (pwLimit.allowed) {
+          try { ok = await bcrypt.compare(pwParam, String(row.password_hash)); } catch {}
+        }
       }
       if (!ok) {
-        void safeLogRequest({ path: `/api/posts/${rawId}/content`, postId: null, username: null, ua: client.ua, ip: client.ip, country: client.country, referer: client.referer, status: 404, blockedReason: 'password_required' });
+        // Fehl-Versuch mit postId loggen — Counter sieht den Eintrag.
+        void safeLogRequest({
+          path: `/api/posts/${rawId}/content`,
+          postId: Number(row.id),
+          username: String(row.username),
+          ua: client.ua, ip: client.ip, country: client.country, referer: client.referer,
+          status: 404, blockedReason: 'password_required',
+        });
         return json({ error: 'not_found' }, 404);
       }
     }
@@ -110,8 +147,9 @@ export async function GET({ params, url, request, cookies, clientAddress }) {
     }
   }
 
-  // Render
-  let html = String(row.content_html || '');
+  // K1 Defense-in-depth: sanitisieren auch hier, falls altes
+  // vor-Sanitize-HTML in der DB liegt.
+  let html = sanitizePostHtml(String(row.content_html || ''));
   if (effective.noReferrer) {
     html = rewriteOutboundLinks(html);
   }

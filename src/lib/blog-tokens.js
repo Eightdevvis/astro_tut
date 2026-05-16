@@ -60,9 +60,14 @@ export function isTokenLive(row, nowIso = new Date().toISOString()) {
  * post-spezifische als auch user-globale Token (post_id IS NULL) des
  * Post-Eigentuemers.
  *
- * Liefert die Token-Reihe (oder null), aber **markiert sie nicht** als
- * verbraucht — das macht `consumeTokenIfOnetime` nach erfolgreichem
- * Render. So zaehlen wir nicht doppelt bei fehlgeschlagenen Render.
+ * M1: bei `kind='onetime'` wird der Verbrauch **atomar** zusammen mit
+ * dem Lookup gemacht (UPDATE … RETURNING). Damit kann der Token nicht
+ * von zwei parallelen Requests doppelt eingeloest werden — das alte
+ * SELECT-render-UPDATE-Pattern hatte ein TOCTOU-Fenster.
+ *
+ * Liefert die Token-Reihe (oder null). Bei One-Time-Tokens ist nach
+ * dem Aufruf `used_count` bereits inkrementiert; der Caller muss nichts
+ * mehr "konsumieren".
  */
 export async function findValidTokenForPost(db, { post, providedToken }) {
   if (!providedToken || !isValidTokenFormat(providedToken)) return null;
@@ -80,22 +85,26 @@ export async function findValidTokenForPost(db, { post, providedToken }) {
   const row = r.rows?.[0] || null;
   if (!row) return null;
   if (!isTokenLive(row)) return null;
-  return row;
-}
+  if (row.kind !== 'onetime') return row;
 
-/**
- * Inkrementiert `used_count` bei kind='onetime'. shared-Tokens bleiben
- * unveraendert. Mit guard, dass der Token weiterhin live ist (verhindert
- * Race condition).
- */
-export async function consumeTokenIfOnetime(db, tokenRow) {
-  if (!tokenRow || tokenRow.kind !== 'onetime') return;
-  await db.execute({
+  // M1: atomar inkrementieren. Wenn 0 Zeilen betroffen → Race verloren
+  // (anderer Request war schneller) → Token ist verbraucht → null.
+  const upd = await db.execute({
     sql: `UPDATE blog_post_tokens
              SET used_count = used_count + 1
            WHERE id = ?
              AND revoked_at IS NULL
              AND (max_uses IS NULL OR used_count < max_uses)`,
-    args: [Number(tokenRow.id)],
+    args: [Number(row.id)],
   });
+  if (Number(upd.rowsAffected ?? 0) === 0) return null;
+  return row;
+}
+
+/**
+ * No-Op-Kompat-Funktion fuer alte Aufrufer. Der atomare Consume passiert
+ * jetzt direkt in `findValidTokenForPost` (siehe M1).
+ */
+export async function consumeTokenIfOnetime(_db, _tokenRow) {
+  return;
 }

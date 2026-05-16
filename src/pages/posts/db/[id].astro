@@ -18,8 +18,9 @@ import {
 import { extractClientMeta, safeLogRequest } from '../../../lib/request-log.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
 import { isAuthorBlockAllAi } from '../../../lib/user-privacy-defaults.js';
-import { checkRateLimit } from '../../../lib/rate-limit.js';
+import { checkPasswordAttemptLimit, checkRateLimit } from '../../../lib/rate-limit.js';
 import { hashIp } from '../../../lib/request-log.js';
+import { sanitizePostHtml } from '../../../lib/sanitize-html.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
 const asInteger = Number(rawId);
@@ -80,6 +81,12 @@ if (isIntegerLookup || isSlugLookup) {
   }
 }
 
+// requestPath + client meta frueh anlegen, damit Failed-Password-Logs
+// (H2) den richtigen postId + Pfad haben — die laufen vor dem Block,
+// in dem wir das spaeter sonst erst definieren wuerden.
+const requestPath = `/posts/db/${rawId}`;
+const client = extractClientMeta(Astro.request, Astro.clientAddress);
+
 // B17 Expire: gueltigkeitsdatum gepruefen, bevor andere Gates greifen.
 // Antwort 410 Gone, damit Clients (auch Bots) merken: das war's, nicht
 // einfach 404 (das waere "nicht da"); UI-Hint kann auf 410 reagieren.
@@ -131,18 +138,40 @@ if (post && !expiredResponse && !tokenUnlocked) {
     if (sessionUser && sessionUser.username === post.username) {
       passwordUnlocked = true;
     } else if (post.password_hash && pwParam) {
-      try {
-        if (await bcrypt.compare(pwParam, post.password_hash)) {
+      // H2: per-(IP-Hash × Post)-Counter; nach 5 Fehlversuchen in 10 min
+      // wird der Versuch ohne bcrypt-Compare verworfen — schliesst online-
+      // Brute-Force gegen den Klartext.
+      const pwLimit = await checkPasswordAttemptLimit({
+        ipHash: hashIp(client.ip),
+        postId: post.id,
+      });
+      if (pwLimit.allowed) {
+        let bcryptOk = false;
+        try { bcryptOk = await bcrypt.compare(pwParam, post.password_hash); } catch {}
+        if (bcryptOk) {
           passwordUnlocked = true;
+        } else {
+          // Fehl-Versuch loggen, damit der Counter steigt.
+          void safeLogRequest({
+            path: requestPath,
+            postId: post.id,
+            username: post.username,
+            ua: client.ua,
+            ip: client.ip,
+            country: client.country,
+            referer: client.referer,
+            status: 404,
+            blockedReason: 'password_required',
+          });
         }
-      } catch {}
+      }
     }
     if (!passwordUnlocked) post = null;
   }
 }
 
-const requestPath = `/posts/db/${rawId}`;
-const client = extractClientMeta(Astro.request, Astro.clientAddress);
+// (requestPath + client wurden bereits oben angelegt, damit der
+// H2-Failed-Password-Log frueh genug feuern kann.)
 
 // B20 Rate-Limit ganz vorne — bevor wir teure Operationen (UA-Gate-Lookup,
 // Token-Check) machen. Verbraucht eine DB-COUNT-Query gegen request_log,
@@ -305,9 +334,13 @@ let siteHost = '';
 try {
   if (Astro.site) siteHost = new URL(Astro.site).host;
 } catch {}
+// K1 Defense-in-depth: auch beim Rendern nochmal sanitisieren, fuer den
+// Fall, dass alte (vor-Sanitizer) Posts in der DB liegen oder direkte
+// DB-Manipulation passiert ist.
+const cleanHtml = sanitizePostHtml(post.content_html);
 const renderedHtml = effective.noReferrer
-  ? rewriteOutboundLinks(post.content_html, { siteHost })
-  : post.content_html;
+  ? rewriteOutboundLinks(cleanHtml, { siteHost })
+  : cleanHtml;
 
 // B19/B18/B21 — fuer den Render brauchen wir drei Klassen + ggf. den
 // JS-only-Pfad. Watermark-Text wird einmal serverseitig vorbereitet,

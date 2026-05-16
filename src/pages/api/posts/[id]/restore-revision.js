@@ -3,6 +3,7 @@ import { hasPermission } from '../../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../../lib/jwt-secret.js';
 import { fireBackupWebhook } from '../../../../lib/backup-webhook.js';
+import { sanitizePostHtml } from '../../../../lib/sanitize-html.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -78,12 +79,16 @@ export async function POST({ params, request, cookies }) {
       ],
     });
 
+    // K1: Revisionen koennen aus der Zeit vor dem Sanitizer stammen.
+    // Beim Restore nochmal durchwaschen, damit kein altes XSS-Markup
+    // wieder live geht.
+    const cleanHtml = sanitizePostHtml(String(revRow.content_html || ''));
     await db.execute({
       sql: `UPDATE blog_posts
               SET content_html = ?, content_text = ?, accent_color = ?, doodle_data_url = ?, privacy_flags = ?
             WHERE id = ? AND username = ? AND deleted_at IS NULL`,
       args: [
-        String(revRow.content_html || ''),
+        cleanHtml,
         String(revRow.content_text || ''),
         String(revRow.accent_color || '#8dc5ff'),
         String(revRow.doodle_data_url || ''),

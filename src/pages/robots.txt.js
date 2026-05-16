@@ -42,9 +42,17 @@ export async function GET() {
         ORDER BY id ASC`
     );
     for (const row of r.rows || []) {
+      // N1 Privacy-Leak vermeiden: Slugs von unlisted/private/password
+      // gehoeren NICHT in eine oeffentlich abrufbare robots.txt — sonst
+      // koennte jeder, der robots.txt liest, die "geheime" URL lesen.
+      // Nur Posts mit visibility=public + noindex (oder full_hidden User)
+      // duerfen hier auftauchen — die sind eh als oeffentlich gedacht,
+      // wollen aber nicht in den Suchindex.
+      const visibility = String(row.visibility || 'public');
       const isHidden = hidden.has(String(row.username || ''));
+      if (visibility !== 'public' && !isHidden) continue;
       const eff = computeEffectivePrivacy({
-        visibility: row.visibility,
+        visibility,
         privacyFlags: row.privacy_flags,
       });
       if (!isHidden && !eff.noindex) continue;

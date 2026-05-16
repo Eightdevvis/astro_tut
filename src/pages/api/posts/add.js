@@ -6,6 +6,7 @@ import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
 import { getUserPrivacyDefaults } from '../../../lib/user-privacy-defaults.js';
 import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
+import { sanitizePostHtml } from '../../../lib/sanitize-html.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -66,7 +67,12 @@ export async function POST({ request, cookies }) {
     return new Response(JSON.stringify({ error: 'Ungültiger JSON-Body' }), { status: 400 });
   }
 
-  const contentHtml = String(body?.contentHtml || '').trim();
+  // K1 Stored-XSS-Schutz: alles HTML vom Editor durch DOMPurify mit
+  // strikter Allow-List jagen, bevor wir es persistieren. document.exec-
+  // Command liefert ungefiltertes Markup; ohne Sanitize landeten
+  // <script>, <img onerror=…> und javascript:-Links 1:1 in der DB.
+  const rawHtml = String(body?.contentHtml || '').trim();
+  const contentHtml = sanitizePostHtml(rawHtml);
   const contentText = String(body?.contentText || '').trim();
   const accentColor = normalizeColor(body?.accentColor);
   const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
@@ -91,7 +97,10 @@ export async function POST({ request, cookies }) {
   if (contentText.length > 10000 || contentHtml.length > 40000) {
     return new Response(JSON.stringify({ error: 'Post ist zu lang' }), { status: 400 });
   }
-  if (doodleDataUrl && !doodleDataUrl.startsWith('data:image/')) {
+  // M3: Editor exportiert ueber Canvas immer PNG. SVG-mit-Skript ist ein
+  // gueltiges data:image/-Prefix; deshalb hier explizit nur PNG/JPEG
+  // zulassen.
+  if (doodleDataUrl && !/^data:image\/(png|jpe?g);base64,/i.test(doodleDataUrl)) {
     return new Response(JSON.stringify({ error: 'Ungültige Kritzel-Daten' }), { status: 400 });
   }
   if (doodleDataUrl.length > 2_000_000) {

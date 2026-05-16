@@ -12,6 +12,29 @@ import PageFavicon from '../components/PageFavicon.astro';
 import '../styles/global.css';
 
 const { pageTitle, faviconIcon } = Astro.props;
+
+// N2 — globale Default-CSP als zweite Verteidigungslinie gegen XSS.
+// Wir nutzen viele inline-<script>-Tags (Editor, Sidebar, Datenschutz),
+// deshalb hier 'unsafe-inline' fuer script-src. Wenn diese je auf nonces
+// migriert werden, kann 'unsafe-inline' raus. `object-src 'none'` blockt
+// <object>/<embed>-XSS-Tricks; `base-uri 'self'` verhindert <base>-
+// Hijacks; `frame-ancestors 'self'` ist der globale Default — per-Post
+// no_embed setzt das auf 'none' (siehe blog-privacy privacyHeaders).
+const DEFAULT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'self'",
+  "form-action 'self'",
+].join('; ');
+if (Astro?.response && !Astro.response.headers.has('Content-Security-Policy')) {
+  Astro.response.headers.set('Content-Security-Policy', DEFAULT_CSP);
+}
 ---
 
 <html lang="de" class="site-subpage">

@@ -30,6 +30,26 @@ if (token) {
 const isLoggedIn = Boolean(username);
 const canPost = allowed; // = eingeloggt UND blogpost_poster
 
+// N2 — gleiche CSP wie BaseLayout. blogpost.astro hat keinen BaseLayout,
+// muss den Header selber setzen.
+if (Astro?.response && !Astro.response.headers.has('Content-Security-Policy')) {
+  Astro.response.headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'self'",
+      "form-action 'self'",
+    ].join('; ')
+  );
+}
+
 // Hub-Tiles: Ausschnitte aus existierenden Posts. Die Hub-Seite ist fuer
 // jeden zugaenglich (auch ausgeloggt) — das Auth-Gate wird erst beim Klick
 // auf das `+`-Tile gezogen.

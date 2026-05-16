@@ -169,6 +169,53 @@ Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidd
 - **`POST /api/user/delete-account`** — DSGVO Art. 17. Hard-Delete aller User-bezogenen Zeilen aus 17 Tabellen (`username`-Spalte) + `blog_post_tokens` (`owner_user`-Spalte) + `users`. Pflicht-Body `{confirm: "Ich-meine-es"}`. Setzt Session-Cookie auf `Max-Age=0`.
 - node --test: 439/0 (+1 Lint-Test).
 
+## Security-Audit-Fixes (Audit + alle Fixes, fertig)
+
+Nach Self-Penetration-Test gegen die ganze Privacy-Pipeline:
+
+- **K1 Stored-XSS (kritisch):** `src/lib/sanitize-html.js` (DOMPurify) mit
+  enger Allow-List; angewandt in `add.js`, `[id].js` (PATCH),
+  `restore-revision.js`. Zusaetzlich Defense-in-depth-Sanitize beim
+  Rendern in `posts/db/[id].astro` und `api/posts/[id]/content.js`.
+- **K2 XFF-Rate-Limit-Bypass:** `extractClientMeta` priorisiert jetzt
+  `x-real-ip`, fallback auf LETZTEN XFF-Eintrag (= der von Vercel
+  gestempelte), nicht den ersten (= vom Client gespoofed).
+- **K3 content-API ohne Rate-Limit:** `api/posts/[id]/content.js`
+  bekommt `checkRateLimit` ganz vorne plus 429-Antwort + Log.
+- **H1 Account-Delete Re-Auth:** Body muss zusaetzlich `password` mit
+  dem aktuellen Klartext-Passwort enthalten; bcrypt-Vergleich. UI in
+  `settings/datenschutz.astro` hat jetzt ein Passwort-Feld + Klartext-
+  Confirm-Prompt.
+- **H2 PW-Brute-Force-Backoff:** `rate-limit.js` exportiert
+  `checkPasswordAttemptLimit({ipHash, postId, max=5, windowSeconds=600})`
+  — nach 5 Fehlversuchen in 10 min pro IP×Post wird der naechste Versuch
+  ohne bcrypt-Compare verworfen. Failed-PW-Versuche werden mit
+  `blocked_reason='password_required'` UND `post_id` geloggt, damit der
+  Counter sie sieht.
+- **H3 Webhook-SSRF:** `backup-webhook.js` blockt http://, dazu eine
+  Allow-List-Pruefung gegen `localhost`, RFC1918, 169.254/16, ::1, ULA,
+  link-local — und bekannte Metadata-Hosts (AWS/GCP/DO).
+- **M1 Onetime-Token-Race:** `findValidTokenForPost` macht den
+  used_count++ jetzt **atomar im SELECT-Aufruf** via UPDATE … rowsAffected.
+  Wenn das Update 0 Rows trifft → Race verloren → null. `consumeTokenIf-
+  Onetime` ist No-Op-kompatibel.
+- **M3 Doodle-SVG:** add.js + draft.js akzeptieren nur noch
+  `data:image/(png|jpeg|jpg);base64,…` — kein image/svg+xml mehr.
+- **N1 robots.txt-Slug-Leak:** unlisted/private/password Posts werden
+  NICHT mehr als `Disallow:`-Zeile in robots.txt aufgelistet. Nur
+  visibility=public + noindex (oder full_hidden User) tauchen dort auf
+  — die sind eh oeffentlich gedacht.
+- **N2 Globale CSP:** `BaseLayout.astro` und `blogpost.astro` setzen
+  `Content-Security-Policy` mit `script-src 'self' 'unsafe-inline'`,
+  `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'self'`.
+  Zweite Verteidigungslinie, falls Sanitizer durchrutscht.
+- **N3 Verbose-Hint:** `delete-account` gibt den Confirm-String nicht
+  mehr in der 400-Antwort preis.
+
+Audit-Verifikation: alle vorher gefundenen Angriffe in der Red-Team-
+Phase 2 (siehe Audit-Log am Ende des Plan-Docs) re-geprueft und gruen.
+node --test tests/*.test.js: 439/0.
+
 **Damit ist der gesamte Plan umgesetzt.** Offene Bagatellen:
 - `scripts/init_db.cjs` / `scripts/init_turso.js` hingen schon vor diesem Update zurueck — Runtime-`ensureDbSchema` ist die echte Quelle; Skripte werden im naechsten Aufraeum-Schritt nachgezogen.
 - Edit-Recovery fuer bestehende Posts ueber den Modal (Phase 2-Folgeschritt) noch nicht automatisch.

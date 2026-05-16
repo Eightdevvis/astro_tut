@@ -11,6 +11,7 @@
  * naechsten Reload als ungueltig erkannt.
  */
 
+import bcrypt from 'bcryptjs';
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
@@ -64,16 +65,30 @@ export async function POST({ request, cookies }) {
   let body = {};
   try { body = await request.json(); } catch {}
   if (String(body?.confirm || '') !== 'Ich-meine-es') {
-    return json({
-      error: 'Bestaetigung erforderlich',
-      hint: 'Body muss { "confirm": "Ich-meine-es" } enthalten.',
-    }, 400);
+    return json({ error: 'Bestaetigung erforderlich' }, 400);
   }
 
+  // H1: Re-Auth verlangen, damit ein gestohlener Session-Cookie oder
+  // ein Stored-XSS allein nicht ausreichen, um den Account zu loeschen.
+  // Body MUSS zusaetzlich `password` mit dem aktuellen Klartext-Passwort
+  // enthalten, gegen das wir bcrypt-vergleichen.
+  const pwGuess = String(body?.password || '');
+  if (!pwGuess) {
+    return json({ error: 'Passwort erforderlich' }, 401);
+  }
   try {
     await ensureDbSchema();
     const db = getDb();
     const u = auth.username;
+    const r = await db.execute({
+      sql: `SELECT password FROM users WHERE username = ? LIMIT 1`,
+      args: [u],
+    });
+    const pwHash = String(r.rows?.[0]?.password || '');
+    const ok = pwHash ? await bcrypt.compare(pwGuess, pwHash) : false;
+    if (!ok) {
+      return json({ error: 'Passwort falsch' }, 401);
+    }
     const counts = {};
 
     for (const t of TABLES_BY_USERNAME) {

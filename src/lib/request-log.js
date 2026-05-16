@@ -46,14 +46,22 @@ export function hashIp(ip) {
  * Extrahiert IP/Country/UA/Referer aus dem Astro-Request-/Header-Objekt.
  * Funktioniert lokal (X-Forwarded-* leer) und auf Vercel (Edge-Header
  * gesetzt).
+ *
+ * K2: Reihenfolge ist **wichtig** fuers Rate-Limit. Ein Client kann
+ * `X-Forwarded-For` frei setzen — und Vercel haengt seine echte IP
+ * **hinten** an, statt sie zu ersetzen. Wer XFF[0] nimmt, sieht also
+ * weiter den Spoof-Wert. `x-real-ip` setzt Vercel selbst und ueber-
+ * schreibt eingehende Werte, ist also manipulationsfest. Fallback fuer
+ * Cases ohne `x-real-ip`: der LETZTE XFF-Eintrag (= der Vercel-stamped
+ * Wert), nicht der erste.
  */
 export function extractClientMeta(request, clientAddress) {
   const headers = request?.headers;
   const get = (name) => (headers?.get ? headers.get(name) : '') || '';
-  // Vercel Edge-Header: x-forwarded-for kann eine Liste sein → erstes Element.
-  const xff = get('x-forwarded-for').split(',').map((s) => s.trim()).filter(Boolean)[0] || '';
+  const xffList = get('x-forwarded-for').split(',').map((s) => s.trim()).filter(Boolean);
+  const xffLast = xffList.length > 0 ? xffList[xffList.length - 1] : '';
   const realIp = get('x-real-ip');
-  const ip = xff || realIp || clientAddress || '';
+  const ip = realIp || xffLast || clientAddress || '';
   return {
     ua: get('user-agent'),
     country: get('x-vercel-ip-country') || null,

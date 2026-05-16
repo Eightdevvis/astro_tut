@@ -40,3 +40,33 @@ export async function checkRateLimit({ ipHash, max = DEFAULT_MAX_PER_MINUTE, win
     return { allowed: true, count: 0, limit: max };
   }
 }
+
+/**
+ * H2 — Separater Counter fuer fehlgeschlagene Passwort-Versuche.
+ * Aggressiver als das Normal-Rate-Limit: 5 Fehlversuche pro IP-Hash &
+ * Post in 10 min → blockt. Verhindert Online-Brute-Force gegen das
+ * Klartext-Passwort von passwortgeschuetzten Posts, ohne bei harmlosen
+ * Lesern zuzubeissen.
+ *
+ * Quelle ist `request_log` mit `blocked_reason='password_required'`
+ * (= falsches PW im Detail- oder content-Pfad).
+ */
+export async function checkPasswordAttemptLimit({ ipHash, postId, max = 5, windowSeconds = 600 }) {
+  if (!ipHash || !postId) return { allowed: true, count: 0, limit: max };
+  try {
+    await ensureDbSchema();
+    const r = await getDb().execute({
+      sql: `SELECT COUNT(*) AS c FROM request_log
+             WHERE ip_hash = ?
+               AND post_id = ?
+               AND blocked_reason = 'password_required'
+               AND datetime(ts) > datetime('now', ?)`,
+      args: [ipHash, postId, `-${Math.max(1, Number(windowSeconds))} seconds`],
+    });
+    const count = Number(r.rows?.[0]?.c ?? 0);
+    return { allowed: count < max, count, limit: max };
+  } catch (err) {
+    console.warn('[rate-limit] password check failed', err?.message || err);
+    return { allowed: true, count: 0, limit: max };
+  }
+}

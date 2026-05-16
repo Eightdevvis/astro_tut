@@ -85,7 +85,8 @@ export async function PUT({ request, cookies }) {
   const contentText = String(body?.contentText || '').slice(0, 20000);
   const accentColor = normalizeColor(body?.accentColor);
   const doodleDataUrl = String(body?.doodleDataUrl || '');
-  if (doodleDataUrl && !doodleDataUrl.startsWith('data:image/')) {
+  // M3: nur PNG/JPEG zulassen, kein image/svg+xml.
+  if (doodleDataUrl && !/^data:image\/(png|jpe?g);base64,/i.test(doodleDataUrl)) {
     return json({ error: 'Ungültige Kritzel-Daten' }, 400);
   }
   if (doodleDataUrl.length > 2_000_000) {

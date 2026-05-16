@@ -280,8 +280,12 @@ const PERM_LABEL = {
         Drafts, Tokens, RPG-Stand, Inventar, Praeferenzen, Tester-Reports,
         deinen User-Account).
       </p>
-      <button id="dpDeleteBtn" class="dp-button dp-button--danger" type="button">Account loeschen</button>
-      <span id="dpDeleteMsg" class="dp-msg"></span>
+      <form id="dpDeleteForm" class="dp-form">
+        <label for="dpDeletePw">Aktuelles Passwort zur Bestaetigung</label>
+        <input id="dpDeletePw" type="password" autocomplete="current-password" required />
+        <button id="dpDeleteBtn" class="dp-button dp-button--danger" type="submit">Account loeschen</button>
+        <span id="dpDeleteMsg" class="dp-msg"></span>
+      </form>
     </section>
   </article>
 </BaseLayout>
@@ -462,10 +466,17 @@ const PERM_LABEL = {
       });
     }
 
-    // Delete-Account
-    const del = document.getElementById('dpDeleteBtn');
+    // Delete-Account: Passwort + Klartext-Bestaetigung beide pflicht.
+    const delForm = document.getElementById('dpDeleteForm');
+    const delPw = document.getElementById('dpDeletePw');
     const delMsg = document.getElementById('dpDeleteMsg');
-    del?.addEventListener('click', async () => {
+    delForm?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const pw = (delPw?.value || '').trim();
+      if (!pw) {
+        delMsg.textContent = 'Passwort erforderlich.';
+        return;
+      }
       const txt = window.prompt(
         'Account UNWIEDERBRINGLICH loeschen?\n\nBestaetige mit dem Wort:\n  Ich-meine-es'
       );
@@ -479,7 +490,7 @@ const PERM_LABEL = {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm: 'Ich-meine-es' }),
+          body: JSON.stringify({ confirm: 'Ich-meine-es', password: pw }),
         });
         const j = await r.json();
         if (j.success) {

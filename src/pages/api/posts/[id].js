@@ -5,6 +5,7 @@ import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { normalizeVisibility } from '../../../lib/blog-privacy.js';
 import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
+import { sanitizePostHtml } from '../../../lib/sanitize-html.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -69,7 +70,9 @@ export async function PATCH({ params, request, cookies }) {
     return json({ error: 'Ungültiger JSON-Body' }, 400);
   }
 
-  const contentHtml = String(body?.contentHtml || '').trim();
+  // K1: Sanitize beim Update genauso wie beim Insert.
+  const rawHtml = String(body?.contentHtml || '').trim();
+  const contentHtml = sanitizePostHtml(rawHtml);
   const contentText = String(body?.contentText || '').trim();
   if (!contentText) return json({ error: 'Inhalt darf nicht leer sein' }, 400);
   if (contentText.length > 10000 || contentHtml.length > 40000) {
