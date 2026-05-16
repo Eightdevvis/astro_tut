@@ -158,9 +158,22 @@ Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidd
 - **Settings-UI (Revisions-Browser, Webhook-Eingabefeld)** ist bewusst auf Phase 13 verschoben — der Datenschutz-Tab wird der Ort, wo Webhook konfiguriert und Revisions/Trash verwaltet werden.
 - Verifiziert per curl: 65 schnelle Requests von gleichem UA → erste 60 = 200, restliche 5 = 429; `request_log` zeigt 60 + 10 sauber gruppiert.
 
-## Offene Phasen (siehe Plan-Datei)
+## Phase 13 — Datenschutz-Details-Tab + Lint-Test + Account-Delete (fertig)
 
-13. Datenschutz-Details-Tab.
+- **`src/lib/data-inventory.js`** — Single-Source-of-Truth fuer jede DB-Tabelle: `{table, category, purpose, retention, accessRoles, fields}`. Plus `EXTERNAL_SERVICES` (Vercel, Turso, KI-Anbieter, GitHub) und `BROWSER_STORAGE` (Cookie/localStorage-Keys).
+- **`tests/data-inventory.test.js`** — Lint-Test (Node-Test): extrahiert `CREATE TABLE IF NOT EXISTS <name>` aus `src/lib/db.js` und prueft beidseitig, dass jede DDL-Tabelle im Inventar steht UND keine Inventar-Tabelle veraltet ist. Damit ist Memory-Pflicht CI-gestuetzt — neue Tabelle ohne Datenschutz-Eintrag faellt rot.
+- **`src/pages/settings/datenschutz.astro`** — neue Seite (Login-Pflicht, `noindex`-Meta):
+  - Tab **Uebersicht**: freundliche Kurzfassung pro Datenkategorie.
+  - Tab **Details**: Tabellenliste gruppiert nach `category`; pro Tabelle Purpose/Retention/Zugriff/Felder. Plus Externe-Dienste-Tabelle, Browser-Storage-Liste, Sicherheitsverfahren, vollstaendige Bot-Fingerprint-Liste mit `LAST_REVIEWED`, Privacy-Toggles-Erklaerungen, Backup-Schichten-Erklaerungen.
+  - Tab **Rechte**: Export-Button (`/api/user/export`), Webhook-URL-Eingabefeld (speichert via PUT `/api/user/privacy-defaults`), Account-Loeschen-Button mit Klartext-Bestaetigungs-Prompt.
+- **`POST /api/user/delete-account`** — DSGVO Art. 17. Hard-Delete aller User-bezogenen Zeilen aus 17 Tabellen (`username`-Spalte) + `blog_post_tokens` (`owner_user`-Spalte) + `users`. Pflicht-Body `{confirm: "Ich-meine-es"}`. Setzt Session-Cookie auf `Max-Age=0`.
+- node --test: 439/0 (+1 Lint-Test).
+
+**Damit ist der gesamte Plan umgesetzt.** Offene Bagatellen:
+- `scripts/init_db.cjs` / `scripts/init_turso.js` hingen schon vor diesem Update zurueck — Runtime-`ensureDbSchema` ist die echte Quelle; Skripte werden im naechsten Aufraeum-Schritt nachgezogen.
+- Edit-Recovery fuer bestehende Posts ueber den Modal (Phase 2-Folgeschritt) noch nicht automatisch.
+- ZIP/Markdown-Export (Phase 8) bewusst JSON-only — Erweiterung moeglich.
+- Reverse-DNS-Verschaerfer fuer UA-Gate (Phase 11 optional) nicht umgesetzt.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
