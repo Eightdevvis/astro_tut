@@ -173,9 +173,11 @@ function Lab() {
       if (!onStand) {
         list.push({ id: 'note_off_stand', label: '↪ Erst auf das Stativ stellen' });
       } else {
+        // Fluessigkeit kommt ueber Drag der Flasche aus dem Regal auf den
+        // Kolben. Menue-Eintrag dafuer raus — bleibt nur als Hinweis-Zeile
+        // wenn der Kolben leer ist.
         if (!s.liquid) {
-          list.push({ id: 'fill_unsterile', label: 'Unsterile Fluessigkeit einfuellen' });
-          list.push({ id: 'fill_sterile',   label: 'Sterile Fluessigkeit einfuellen' });
+          list.push({ id: 'note_pour_liquid', label: '↪ Flasche aus dem Regal auf den Kolben ziehen (zum Befuellen)' });
         }
         // Bunsen + Zange via Drag-Snap. Sterilisation + Glas-Ziehen laufen
         // automatisch sobald die Bedingungen stimmen (siehe onPlacedChange).
@@ -213,25 +215,9 @@ function Lab() {
 
   function handleAction(actionId, item, helpers) {
     switch (actionId) {
-      case 'fill_unsterile':
-        helpers.update({ liquid: 'unsterile', liquidColor: LIQUID_COLOR_UNSTERILE });
-        award('liquid_in_flask');
-        return;
-      case 'fill_sterile':
-        // Dieselbe Logik wie der sterile-pour-Drop: kein Meilenstein, Hint,
-        // Mood-Drop. Sterile via Menue ist genauso ein Shortcut wie via
-        // Drag.
-        helpers.update({
-          liquid: 'sterile',
-          liquidColor: LIQUID_COLOR_STERILE,
-          sterilized: true,
-          cheated: true,
-        });
-        showHint(
-          'Mit steriler Bruehe lernst du nichts ueber Sterilisation — Pasteur startet immer mit *unsteriler* Bruehe.',
-        );
-        bump();
-        return;
+      // fill_unsterile / fill_sterile gibt's nicht mehr — Liquid kommt
+      // ueber Drag der Flasche aus dem Regal (handleSourceDropped). Die
+      // Sterile-Shortcut-Logik lebt dort weiter.
       // Sterilisation + Glas-Ziehen passieren jetzt automatisch in
       // onPlacedChange, sobald die Snap-Konditionen + Bunsen-an stimmen.
       // Hier kein Menue-Pfad mehr.
