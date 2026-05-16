@@ -8,16 +8,20 @@ import TesterBugBar from '../components/TesterBugBar.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import SiteInventory from '../components/SiteInventory.jsx';
 import SitePlacedItemsLayer from '../components/SitePlacedItemsLayer.jsx';
+import PageFavicon from '../components/PageFavicon.astro';
 import '../styles/global.css';
 
-const { pageTitle } = Astro.props;
+const { pageTitle, faviconIcon } = Astro.props;
 ---
 
 <html lang="de" class="site-subpage">
   <head>
     <meta charset="utf-8" />
     <ThemeInit />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {faviconIcon
+      ? <PageFavicon icon={faviconIcon} />
+      : <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    }
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="generator" content={Astro.generator} />
     <meta name="theme-color" content="#f4f1ea" />

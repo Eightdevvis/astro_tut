@@ -1,0 +1,17 @@
+# Page-Favicons
+
+## Komponente
+
+- `src/components/PageFavicon.astro` — setzt `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,...">`.
+- SVGs als String in `ICONS`-Record; Farben fest (`#111`), `@media(prefers-color-scheme:dark)` flippt auf weiss.
+- Einsatz: `<PageFavicon icon="rpg" />` (im `<head>`). Wenn `icon` unbekannt, faellt auf `/favicon.svg` zurueck.
+
+## Verfuegbare Icons
+
+- `quotes`, `rpg`, `blogpost`, `minigames`, `user`, `home`.
+- `home` = Haus-SVG aus der Nav2-Topbar (`.nav2-icon--home`); benutzt fuer Startseite + Einstellungs-Seiten.
+
+## Einbindung
+
+- Seiten mit eigenem `<head>` (z. B. `src/pages/index.astro`, `me.astro`, `rpg/*.astro`, `quotes/*.astro`, `blogpost.astro`, `minigames/*.astro`): direkt `<PageFavicon icon="..." />` im `<head>`.
+- Seiten ueber `BaseLayout`: prop `faviconIcon` setzen — `BaseLayout` rendert `<PageFavicon icon={faviconIcon} />` statt des Default-`/favicon.svg`. Verwendet von `src/pages/settings.astro` und `src/pages/super/settings.astro` (beide `faviconIcon="home"`).
