@@ -14,14 +14,31 @@
  * teilen (in der Praxis gibt's nur eine Instance pro Page).
  */
 
+import { dbg } from './graffiti-debug.js';
+
 let chain = Promise.resolve();
+let depth = 0;
+let nextTaskId = 0;
+
+export function getUploadQueueDepth() {
+  return depth;
+}
 
 /**
  * Reiht eine async Upload-Operation ein. Returns Promise das auflöst sobald
  * fn() durch ist. Fehler in fn() unterbrechen die Kette NICHT.
  */
 export function enqueueTileUpload(fn) {
-  const next = chain.then(() => Promise.resolve().then(fn));
+  const taskId = ++nextTaskId;
+  depth += 1;
+  dbg('upload-queue-enqueue', { taskId, depthAfter: depth });
+  const next = chain.then(() => {
+    dbg('upload-queue-start', { taskId, depthAtStart: depth });
+    return Promise.resolve().then(fn);
+  }).finally(() => {
+    depth -= 1;
+    dbg('upload-queue-done', { taskId, depthAfter: depth });
+  });
   chain = next.catch(() => {});
   return next;
 }

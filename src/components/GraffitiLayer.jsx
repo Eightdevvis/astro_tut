@@ -9,6 +9,7 @@ import {
   loadTileImageFromBase64,
 } from '../lib/graffiti-client.js';
 import { enqueueTileUpload } from '../lib/graffiti-upload-queue.js';
+import { dbg, bumpCounter, isEnabled as isDebugEnabled, subscribeHud, getCounters } from '../lib/graffiti-debug.js';
 
 /** Schwamm-Radius in CSS-Pixeln. Muss konsistent mit Server-/Tile-Render-Logik sein. */
 const ERASE_RADIUS = 26;
@@ -74,6 +75,66 @@ function isFunctionalAtPoint(clientX, clientY) {
   );
 }
 
+/**
+ * Kleines fixed-position HUD oben links. Nur gerendert wenn `__fgraffitiDebug.enable()`
+ * gerufen wurde (oder `localStorage.fgraffiti.debug === '1'`). Zeigt Counter +
+ * letzte Events live an, damit Flicker-Reproduktion auf dem Tablet ohne
+ * Web-Inspector beobachtbar ist.
+ */
+function GraffitiDebugHud() {
+  const [tick, setTick] = useState(0);
+  const lastEventsRef = useRef([]);
+  useEffect(() => {
+    const unsub = subscribeHud((entry) => {
+      if (!entry) {
+        lastEventsRef.current = [];
+      } else {
+        lastEventsRef.current.push(entry);
+        if (lastEventsRef.current.length > 6) lastEventsRef.current.shift();
+      }
+      setTick((n) => (n + 1) & 0xffff);
+    });
+    return () => { unsub(); };
+  }, []);
+  if (!isDebugEnabled()) return null;
+  const c = getCounters();
+  return (
+    <div className="fgraffiti-debug-hud" data-tick={tick}>
+      <div className="fgraffiti-debug-row">
+        <strong>fgraffiti debug</strong>
+        <button type="button" onClick={() => { window.__fgraffitiDebug?.download(); }}>save</button>
+        <button type="button" onClick={() => { window.__fgraffitiDebug?.clear(); setTick(0); }}>clr</button>
+        <button type="button" onClick={() => { window.__fgraffitiDebug?.disable(); setTick((n) => n + 1); }}>off</button>
+      </div>
+      <div className="fgraffiti-debug-counters">
+        paint:{c.paints} rebuild:{c.baseRebuilds} setTiles:{c.setTiles} strokes:{c.strokes}{' '}
+        ul:{c.uploadsEnqueued}/{c.uploadsStarted}/{c.uploadsCompleted}{c.uploadsFailed ? `!${c.uploadsFailed}` : ''}{' '}
+        pd:{c.pointerDowns} pc:{c.pointerCancels}
+      </div>
+      <ol className="fgraffiti-debug-events">
+        {lastEventsRef.current.slice().reverse().map((e) => (
+          <li key={e.seq}>#{e.seq} {e.tag}{formatHudData(e.data)}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+function formatHudData(data) {
+  if (!data) return '';
+  const parts = [];
+  if (data.strokeId !== undefined) parts.push(`s${data.strokeId}`);
+  if (data.mode) parts.push(data.mode);
+  if (data.pointsLen !== undefined) parts.push(`p${data.pointsLen}`);
+  if (data.tilesSize !== undefined) parts.push(`t${data.tilesSize}`);
+  if (data.ok !== undefined) parts.push(`ok=${data.ok}`);
+  if (data.failed) parts.push(`fail=${data.failed}`);
+  if (data.depthAfter !== undefined) parts.push(`q${data.depthAfter}`);
+  if (data.baseDirty !== undefined) parts.push(`bd=${data.baseDirty ? 1 : 0}`);
+  if (data.drActive !== undefined) parts.push(`dr=${data.drActive ? 1 : 0}`);
+  return parts.length ? ' ' + parts.join(' ') : '';
+}
+
 export default function GraffitiLayer() {
   const [enabled, setEnabled] = useState(false);
   // Draw-Werkzeuge aus /api/site-items/active. Bis das Fetch durchläuft
@@ -100,7 +161,11 @@ export default function GraffitiLayer() {
   // (destination-out). Pro Frame werden nur die Punkte ab diesem Index neu commited,
   // damit nicht jeder Frame die ganze Schwamm-Spur neu malt.
   const eraseCommittedUpToRef = useRef(0);
-  const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false });
+  const drawRef = useRef({ active: false, x: 0, y: 0, points: [], functionalHit: false, strokeId: 0 });
+  // Monoton steigender Counter fuer Debug-Korrelation pro Stroke (pointer-down→up→upload).
+  const strokeSeqRef = useRef(0);
+  // Sample-Counter um pointermove-Spam im Ring-Buffer auf jeden 16. Punkt zu reduzieren.
+  const moveSampleRef = useRef(0);
   /** Letzter Tap-Up-Zeitpunkt für Doppel-Tap-Drop auf Mobile. */
   const lastTapAtRef = useRef(0);
   // Abort-Controller fuer den initialen Tile-Fetch (wird beim Unmount gecancelt).
@@ -336,6 +401,19 @@ export default function GraffitiLayer() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    bumpCounter('paints');
+    if (isDebugEnabled()) {
+      const dr0 = drawRef.current;
+      dbg('paint-start', {
+        baseDirty: baseDirtyRef.current,
+        drActive: dr0.active,
+        strokeId: dr0.strokeId,
+        mode: modeRef.current,
+        pointsLen: dr0.points.length,
+        tilesSize: tilesRef.current.size,
+        eraseCommittedUpTo: eraseCommittedUpToRef.current,
+      });
+    }
 
     const ratio = window.devicePixelRatio || 1;
     const docEl = document.documentElement;
@@ -372,6 +450,17 @@ export default function GraffitiLayer() {
     // auf, was bei noch-laufenden Uploads zu stale Tiles fuehrt (Flicker beim
     // Sponge-Drop). Erst ab dem ersten pointermove (length > 1) gilt's als Drag.
     if (baseDirtyRef.current) {
+      bumpCounter('baseRebuilds');
+      dbg('base-rebuild', {
+        tilesSize: tilesRef.current.size,
+        tileVersions: isDebugEnabled()
+          ? Array.from(tilesRef.current.values()).map((t) => ({ x: t.x, y: t.y, v: t.version }))
+          : undefined,
+        drActive: dr.active,
+        strokeId: dr.strokeId,
+        mode: m,
+        replayingEraseInProgress: dr.active && m === 'erase' && dr.points.length > 1,
+      });
       bctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       bctx.clearRect(0, 0, docWidth, docHeight);
       drawTilesOntoContext(bctx, tilesRef.current);
@@ -439,6 +528,18 @@ export default function GraffitiLayer() {
   }
 
   useEffect(() => {
+    // KRITISCH fuer das Flicker-Investigation: jeder tiles-State-Change wird
+    // hier zum baseDirty=true und damit zu einem Base-Rebuild aus tilesRef.
+    // Wenn waehrenddessen ein Tag/Spray-Stroke in bctx schon committed wurde,
+    // aber sein Upload-Task noch nicht extractTilePngBase64 aufgerufen hat,
+    // wird der Stroke vom Rebuild ueberschrieben → genau das gesuchte
+    // "Strich erscheint kurz und verschwindet". Diese Logs zeigen das Race.
+    dbg('tiles-effect', {
+      tilesSize: tiles.size,
+      drActive: drawRef.current.active,
+      strokeId: drawRef.current.strokeId,
+      mode: modeRef.current,
+    });
     baseDirtyRef.current = true;
     schedulePaint();
   }, [tiles]);
@@ -474,9 +575,11 @@ export default function GraffitiLayer() {
           // gehen an dieses Canvas, auch wenn der Finger/Stift es geometrisch verlaesst.
           // Behebt: "Strich verschwindet sobald man uebers Canvas-Ende rauszieht".
           // Try/catch weil aeltere Safari/Webkit-Versionen unter speziellen Bedingungen werfen.
+          let captured = true;
           try {
             e.currentTarget.setPointerCapture(e.pointerId);
           } catch {
+            captured = false;
             // Pointer-Capture nicht verfuegbar — Stroke funktioniert trotzdem,
             // aber bricht ab wenn der Pointer das Canvas verlaesst.
           }
@@ -484,6 +587,8 @@ export default function GraffitiLayer() {
           // egal welcher Mode aktiv ist — neuer Stroke = frischer Counter.
           eraseCommittedUpToRef.current = 0;
           const pos = pointerToCanvas(e);
+          strokeSeqRef.current += 1;
+          moveSampleRef.current = 0;
           drawRef.current = {
             active: true,
             x: pos.x,
@@ -492,7 +597,18 @@ export default function GraffitiLayer() {
             // Einmalig beim Down: liegt der Stroke-Start auf einem geschuetzten Element?
             // Server blockt dann Erase. Bewusst nicht im Move neu pruefen — siehe pointermove.
             functionalHit: isFunctionalAtPoint(e.clientX, e.clientY),
+            strokeId: strokeSeqRef.current,
           };
+          bumpCounter('pointerDowns');
+          dbg('pointer-down', {
+            strokeId: strokeSeqRef.current,
+            pointerType: e.pointerType,
+            pointerId: e.pointerId,
+            captured,
+            mode: modeRef.current,
+            x: Math.round(pos.x),
+            y: Math.round(pos.y),
+          });
           schedulePaint();
         }}
         onPointerMove={(e) => {
@@ -506,6 +622,16 @@ export default function GraffitiLayer() {
           if (drawRef.current.points.length < 420) {
             drawRef.current.points.push({ x: Math.round(pos.x), y: Math.round(pos.y) });
           }
+          // Move-Sample: nur jeder 16. Punkt landet im Ring-Buffer, sonst kein
+          // Erkenntnisgewinn aber Buffer ist nach 2 Sekunden Full.
+          moveSampleRef.current += 1;
+          if ((moveSampleRef.current & 15) === 0) {
+            dbg('pointer-move-sample', {
+              strokeId: drawRef.current.strokeId,
+              pointsLen: drawRef.current.points.length,
+              pointerType: e.pointerType,
+            });
+          }
           schedulePaint();
         }}
         onPointerUp={async (e) => {
@@ -513,8 +639,16 @@ export default function GraffitiLayer() {
           // Snapshot der Stroke-Punkte — drawRef.points wird ggf. spaeter resettet.
           const points = drawRef.current.points.slice();
           const strokeMode = modeRef.current;
+          const strokeId = drawRef.current.strokeId;
           const base = baseCanvasRef.current;
           const bctx = base?.getContext('2d');
+          dbg('pointer-up', {
+            strokeId,
+            mode: strokeMode,
+            pointsLen: points.length,
+            pointerType: e.pointerType,
+            isDrag: strokeBboxIsDrag(points),
+          });
 
           // Drag-vs-Klick-Erkennung: ein kurzer Klick ohne Bewegung ist KEIN
           // Stroke, sondern eine Drop-Geste (Item aus der Hand legen).
@@ -563,7 +697,9 @@ export default function GraffitiLayer() {
           if (bctx) {
             if (strokeMode === 'tag') commitTagStroke(bctx, points, currentColor('#111'));
             else if (strokeMode === 'spray') commitSprayStroke(bctx, points, 0, currentColor('#101010'));
+            dbg('commit-base', { strokeId, mode: strokeMode, pointsLen: points.length });
           }
+          bumpCounter('strokes');
           drawRef.current.active = false;
           schedulePaint();
 
@@ -580,7 +716,16 @@ export default function GraffitiLayer() {
           // 3) Upload-Batch durch die SERIELLE Queue. Ein zweiter Stroke wartet
           //    auf die Acks dieses hier — die `version` im tilesRef ist dann
           //    aktuell, kein 409-Race.
+          bumpCounter('uploadsEnqueued');
+          dbg('upload-enqueue', {
+            strokeId,
+            mode: strokeMode,
+            tiles: affected.map(({ x: tx, y: ty }) => `${tx}:${ty}`),
+            bounds,
+          });
           void enqueueTileUpload(async () => {
+            bumpCounter('uploadsStarted');
+            dbg('upload-start', { strokeId, tiles: affected.length });
             // Pro betroffenem Tile: Region aus Base extrahieren + uploaden.
             // Bei 409 (Conflict): einmal retryen mit der vom Server zurück-
             // gemeldeten currentVersion. Die Base hat die User-Erase noch
@@ -592,8 +737,18 @@ export default function GraffitiLayer() {
                   const key = `${tx}:${ty}`;
                   const known = tilesRef.current.get(key);
                   const baseVersion = known?.version || 0;
+                  dbg('upload-tile-extract', {
+                    strokeId, tx, ty, baseVersion, pngLen: pngBase64?.length || 0,
+                  });
                   let upload = await uploadTile({
                     pagePath, tileX: tx, tileY: ty, baseVersion, pngBase64, strokeBounds: bounds,
+                  });
+                  dbg('upload-tile-result', {
+                    strokeId, tx, ty,
+                    ok: upload.ok,
+                    conflict: upload.conflict,
+                    currentVersion: upload.currentVersion,
+                    newVersion: upload.version,
                   });
                   if (!upload.ok && upload.conflict && typeof upload.currentVersion === 'number') {
                     // Server hat schon eine neuere Version (z.B. Mehrbenutzer).
@@ -604,9 +759,13 @@ export default function GraffitiLayer() {
                       baseVersion: upload.currentVersion,
                       pngBase64, strokeBounds: bounds,
                     });
+                    dbg('upload-tile-retry', {
+                      strokeId, tx, ty, ok: upload.ok, newVersion: upload.version,
+                    });
                   }
                   return { tx, ty, pngBase64, upload };
                 } catch (err) {
+                  dbg('upload-tile-error', { strokeId, tx, ty, err: String(err) });
                   return { tx, ty, error: err };
                 }
               })
@@ -619,6 +778,8 @@ export default function GraffitiLayer() {
             //    konsistent ziehen.
             const successful = results.filter((r) => !r.error && r.upload?.ok);
             if (successful.length === 0) {
+              bumpCounter('uploadsFailed');
+              dbg('upload-complete', { strokeId, ok: 0, failed: results.length });
               console.warn('[graffiti] alle Tile-Uploads fehlgeschlagen', results);
               return;
             }
@@ -633,22 +794,41 @@ export default function GraffitiLayer() {
                     version: r.upload.version,
                     image: img,
                   });
-                } catch {
+                } catch (err) {
+                  dbg('upload-decode-error', { strokeId, tx: r.tx, ty: r.ty, err: String(err) });
                   // PNG-Decode failed — Server hat trotzdem die Daten, beim
                   // nächsten Page-Load wird's korrekt geladen.
                 }
               })
             );
+            bumpCounter('uploadsCompleted');
+            dbg('upload-complete', {
+              strokeId,
+              ok: successful.length,
+              failed: results.length - successful.length,
+              drActive: drawRef.current.active,
+              activeStrokeId: drawRef.current.strokeId,
+              // CRUCIAL: wenn drActive=true und activeStrokeId != strokeId,
+              // dann gibt es einen laufenden naechsten Stroke. setTiles wird
+              // gleich baseDirty triggern, was diesen laufenden Stroke (falls
+              // tag/spray, NICHT erase) aus dem Base loescht. → Flicker.
+            });
             // tilesRef SYNCHRON aktualisieren, damit der nächste Queue-Task
             // in seinem Microtask die frische Map sieht. Der useEffect mit
             // [tiles]-Dep läuft erst nach React's Commit-Phase — bis dahin
             // sähen Folge-Tasks alte Daten und würden Stroke N's neue Tile
             // beim Bauen ihres nextMap aus tilesRef wegwerfen.
             tilesRef.current = nextMap;
+            bumpCounter('setTiles');
+            dbg('set-tiles', {
+              strokeId,
+              size: nextMap.size,
+              updatedTiles: successful.map((r) => `${r.tx}:${r.ty}@v${r.upload.version}`),
+            });
             setTiles(nextMap);
           });
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(e) => {
           // Echter Abbruch: System hat das Pointer-Tracking unterbrochen
           // (z.B. iOS-Notification, eingehender Anruf, Browser-Gesture-Override).
           // Hier ist der aktuelle Strich verloren — Cleanup nicht-committeter Vorschau.
@@ -657,6 +837,13 @@ export default function GraffitiLayer() {
           // wenn Finger ueber den Canvas-Rand geht") war auf Tablets nervig.
           if (!drawRef.current.active) return;
           const wasErase = modeRef.current === 'erase';
+          bumpCounter('pointerCancels');
+          dbg('pointer-cancel', {
+            strokeId: drawRef.current.strokeId,
+            mode: modeRef.current,
+            pointerType: e?.pointerType,
+            pointsLen: drawRef.current.points.length,
+          });
           drawRef.current.active = false;
           if (wasErase) {
             // Lokal angewandte destination-out-Pixel im Base verwerfen — Stroke
@@ -671,6 +858,7 @@ export default function GraffitiLayer() {
           schedulePaint();
         }}
       />
+      <GraffitiDebugHud />
       <style>{`
         .fgraffiti-canvas {
           position: absolute;
@@ -689,6 +877,56 @@ export default function GraffitiLayer() {
         }
         .fgraffiti-canvas.is-active.is-erase {
           cursor: cell;
+        }
+        .fgraffiti-debug-hud {
+          position: fixed;
+          top: 8px;
+          left: 8px;
+          z-index: 99999;
+          max-width: 380px;
+          padding: 6px 8px;
+          background: rgba(20, 20, 28, 0.86);
+          color: #e8e8ee;
+          font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          border-radius: 6px;
+          pointer-events: auto;
+          user-select: text;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+        }
+        .fgraffiti-debug-hud .fgraffiti-debug-row {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+        .fgraffiti-debug-hud strong {
+          margin-right: auto;
+          color: #ff6fb5;
+        }
+        .fgraffiti-debug-hud button {
+          background: #353548;
+          color: #e8e8ee;
+          border: 1px solid #555;
+          border-radius: 3px;
+          padding: 1px 6px;
+          font: inherit;
+          cursor: pointer;
+        }
+        .fgraffiti-debug-hud .fgraffiti-debug-counters {
+          margin-bottom: 4px;
+          white-space: pre-wrap;
+        }
+        .fgraffiti-debug-hud ol {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+        }
+        .fgraffiti-debug-hud li {
+          padding: 1px 0;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
       `}</style>
     </>
