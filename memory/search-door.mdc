@@ -21,7 +21,7 @@ Aus `/api/search`-Antwort wird **ein** Treffer ausgewaehlt und hinter der Tuer a
 
 `GET /api/search?q=<query>` — `src/pages/api/search.js`:
 - Kein Login noetig.
-- `posts`: bis 5 oeffentliche Posts (LIKE auf `content_text`, `WHERE deleted_at IS NULL AND visibility = 'public'`), Snippet rund um den Treffer (Fallback: random), Wortgrenzen-respektierend.
+- `posts`: bis 5 oeffentliche Posts (LIKE auf `content_text`, `WHERE deleted_at IS NULL AND visibility = 'public'`). **Snippet ist eine rein zufaellige Textstelle** (`pickRandomSnippet`) ohne Titel, ohne Datum, ohne `…`-Markierungen — das Anzeigeziel ist ein "zufaellig geoeffnetes Fenster" auf den Post, kein Listing-Snippet. Hartes Cropping macht das CSS in der Tuer.
 - `users`: bis 5 (LIKE auf `username` ODER `display_name`).
 - Full-hidden User (`user_privacy_defaults.full_hidden=1`) werden in **beiden** Listen geblockt (auch deren Posts).
 - LIKE-Escape (`\%`, `\_`, `\\`) gegen Injection ueber `%`/`_`-Wildcards.

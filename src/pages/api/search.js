@@ -28,20 +28,23 @@ function escapeLike(s) {
   return String(s).replace(/[\\%_]/g, (ch) => '\\' + ch);
 }
 
+// Zufaelliger roher Textausschnitt — KEINE "…"-Markierungen, KEIN
+// Titel-/Datum-Voranstellen. Soll wirken wie ein zufaellig aufgemachtes
+// Fenster auf den Post: am Anfang faengt evtl. mitten im Wort an
+// (Word-Boundary-Skip ist optional am Start), am Ende hart abgeschnitten —
+// das visuelle Crop macht das CSS-overflow:hidden.
 function pickRandomSnippet(plain, length = SNIPPET_LEN) {
   const text = String(plain || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
   if (text.length <= length) return text;
   const maxStart = text.length - length;
   const rawStart = Math.floor(Math.random() * (maxStart + 1));
+  // Zum naechsten Wortanfang springen, damit das erste Wort lesbar ist.
   const spaceAfter = text.indexOf(' ', rawStart);
-  const start = rawStart === 0 ? 0 : (spaceAfter > -1 && spaceAfter < rawStart + 40 ? spaceAfter + 1 : rawStart);
-  const slice = text.slice(start, start + length);
-  const lastSpace = slice.lastIndexOf(' ');
-  const trimmed = lastSpace > length * 0.6 ? slice.slice(0, lastSpace) : slice;
-  const prefix = start > 0 ? '… ' : '';
-  const suffix = start + length < text.length ? ' …' : '';
-  return `${prefix}${trimmed.trim()}${suffix}`;
+  const start = rawStart === 0
+    ? 0
+    : (spaceAfter > -1 && spaceAfter - rawStart < 30 ? spaceAfter + 1 : rawStart);
+  return text.slice(start, start + length);
 }
 
 // Versuche, einen Snippet zu schneiden, der das Suchwort enthaelt — sonst
@@ -115,9 +118,7 @@ export async function GET({ url }) {
           id,
           slug,
           url: id > 0 ? `/posts/db/${slug || id}` : '',
-          title: titleFromText(text, id),
-          snippet: snippetAroundMatch(text, q),
-          date: String(row.created_at ?? '').replace('T', ' ').slice(0, 10),
+          snippet: pickRandomSnippet(text),
         };
       })
       .filter((p) => p.id > 0);

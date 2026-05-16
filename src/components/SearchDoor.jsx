@@ -97,8 +97,7 @@ export default function SearchDoor() {
         {/* Hinter der Tuer: Ergebnis (Post / User) oder Empty-Hinweis */}
         <div class="door-behind">
           {state === 'open' && result?.kind === 'post' && (
-            <a href={result.data.url} class="behind-post" aria-label={`Post öffnen: ${result.data.title}`}>
-              <span class="behind-post-date">{result.data.date}</span>
+            <a href={result.data.url} class="behind-post" aria-label="Post öffnen">
               <span class="behind-post-snippet">{result.data.snippet}</span>
             </a>
           )}
@@ -207,28 +206,24 @@ export default function SearchDoor() {
           font-size: 0.95rem;
           opacity: 0.7;
         }
+        /* Post-Peek: wirkt wie ein zufaellig geoeffnetes Fenster auf den
+           Post. Kein Datum, keine Ueberschrift, keine Innen-Padding —
+           Text laeuft bis an die Tuerkante und wird dort hart abgeschnitten. */
         .behind-post {
           width: 100%; height: 100%;
-          display: flex; flex-direction: column; gap: 0.4rem;
-          padding: 0.6rem;
+          display: block;
+          padding: 0.5rem 0.6rem;
           box-sizing: border-box;
           background: var(--site-card-bg);
           color: var(--site-card-text);
-          border: 1px solid var(--site-card-border);
-          box-shadow: var(--site-card-inset-strong);
           text-decoration: none;
-          font-size: 0.78rem;
+          font-size: 0.82rem;
           line-height: 1.4;
           overflow: hidden;
+          word-break: break-word;
         }
-        .behind-post:hover { background: var(--site-card-bg); filter: invert(0.04); }
-        .behind-post-date {
-          font-family: ui-monospace, 'Courier New', Courier, monospace;
-          font-size: 0.68rem;
-          letter-spacing: 0.05em;
-          opacity: 0.6;
-        }
-        .behind-post-snippet { font-style: italic; opacity: 0.92; overflow: hidden; flex: 1; }
+        .behind-post:hover { filter: invert(0.04); }
+        .behind-post-snippet { display: block; overflow: hidden; }
 
         .behind-user {
           width: 100%;
