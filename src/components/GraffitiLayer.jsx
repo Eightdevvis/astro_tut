@@ -877,12 +877,24 @@ export default function GraffitiLayer() {
           position: absolute;
           top: 0;
           left: 0;
-          z-index: 398;
+          /* Im Leerlauf bewusst NIEDRIG: Nav, Header, Modale, Dialoge, Hub-
+             Strips, VocabCardStack-Drawer etc. (alles mit z-index >= 100)
+             sollen ueber dem Graffiti liegen, sonst kritzelt eine alte
+             Graffito-Linie quer ueber ein gerade geoeffnetes Modal. Die Canvas
+             ist hier ohnehin pointer-events:none, deckt also nichts ab — sie
+             rendert nur die schon vorhandenen Striche der Seite, und die
+             gehoeren konzeptuell zum Seiten-Inhalt, nicht zum Vordergrund. */
+          z-index: 90;
           pointer-events: none;
         }
         .fgraffiti-canvas.is-active {
           pointer-events: auto;
           cursor: crosshair;
+          /* Aktiv: bewusst HOCH, ueber Modale. Wenn der User in der Hand ein
+             Draw-Tool hat und auf einem geoeffneten Modal kritzeln will, soll
+             er das koennen. 9000 liegt unter dem Tester-Warnbanner (9999), das
+             absichtlich immer ganz oben bleibt. */
+          z-index: 9000;
           /* Ohne touch-action:none klaut der Browser den ersten Touch-Drag fuer
              Scroll/Pinch — Stroke bricht mit pointercancel ab, bevor er anfaengt.
              Nur im aktiven Modus, damit Scrollen ueber der Canvas normal bleibt. */

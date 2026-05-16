@@ -13,6 +13,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { enqueueInventoryOp } from '../lib/site-inventory-queue.js';
+import { dbg as graffitiDbg } from '../lib/graffiti-debug.js';
 
 const SLOT_KEYS = ['slot0', 'slot1', 'slot2', 'slot3', 'slot4', 'slot5'];
 const LONG_PRESS_MS = 280;
@@ -155,10 +156,12 @@ export default function SiteInventory() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (handItem && handItem.behavior === 'draw') {
+      graffitiDbg('inv-tool-use-dispatch', { itemId: handItem.id, behavior: handItem.behavior });
       window.dispatchEvent(
         new CustomEvent('site-tool-use', { detail: { item: handItem } })
       );
     } else {
+      graffitiDbg('inv-tool-deactivate-dispatch', { handItemId: handItem?.id || null });
       window.dispatchEvent(new CustomEvent('site-tool-deactivate'));
     }
   }, [handItem?.id, handItem?.behavior]);
@@ -170,7 +173,11 @@ export default function SiteInventory() {
     function onDropRequest(e) {
       const { x, y } = e?.detail || {};
       if (typeof x !== 'number' || typeof y !== 'number') return;
-      if (!handItem) return;
+      if (!handItem) {
+        graffitiDbg('inv-drop-request-ignored-no-hand', { x, y });
+        return;
+      }
+      graffitiDbg('inv-drop-request', { x, y, itemId: handItem.id });
       void dropAtPoint(x, y);
     }
     window.addEventListener('site-inventory-request-drop', onDropRequest);
@@ -185,12 +192,24 @@ export default function SiteInventory() {
    * durch ist → 409) ausgeschlossen sind.
    */
   async function postAction(body) {
+    // Hard-Timeout via AbortController. Hintergrund: postAction laeuft durch
+    // die globale enqueueInventoryOp-Kette, dropAtPoint setzt vorher
+    // dropInFlightRef.current=true und resettet es nur im finally seines
+    // Queue-Tasks. Wenn ein Inventory-fetch auf einem fragilen Mobil-Netz
+    // haengt, blockiert die Kette → der Drop-finally laeuft nie → der
+    // Doppel-Drop-Schutz friert permanent ein, und der User kann das Spray-
+    // Werkzeug nicht mehr ablegen, ohne die Seite neu zu laden. 8s ist
+    // grosszuegig fuer eine Inventar-Mutation und kuerzer als die Browser-
+    // Default-Fetch-Timeouts.
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 8000);
     try {
       const res = await fetch('/api/site-inventory/me', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify(body),
+        signal: ctrl.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -204,6 +223,8 @@ export default function SiteInventory() {
     } catch (err) {
       console.warn('[site-inventory] action error', body, err);
       return null;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -239,10 +260,17 @@ export default function SiteInventory() {
     // Synchroner Doppel-Drop-Schutz: wenn die optimistische Phase schon
     // läuft (Hand grad geleert + temp-Add dispatched), ignoriere weitere
     // Aufrufe bis sie verarbeitet sind. Schützt vor zwei rapid pointer-ups.
-    if (dropInFlightRef.current) return;
+    if (dropInFlightRef.current) {
+      graffitiDbg('inv-drop-blocked-inflight', { pageX, pageY, handItemId: handItem?.id || null });
+      return;
+    }
     const dropped = handItem;
-    if (!dropped) return;
+    if (!dropped) {
+      graffitiDbg('inv-drop-blocked-no-hand', { pageX, pageY });
+      return;
+    }
     dropInFlightRef.current = true;
+    graffitiDbg('inv-drop-start', { pageX, pageY, itemId: dropped.id, behavior: dropped.behavior });
     const pagePath = typeof location !== 'undefined' ? location.pathname : '/';
     // Temp-ID: negativ damit klar von echten Server-IDs (positiv) unterscheidbar.
     const tempId = -Date.now() - Math.floor(Math.random() * 1000);
@@ -268,9 +296,11 @@ export default function SiteInventory() {
     // serialisiert, niemals parallel. Damit kann kein Drop server-seitig
     // einen noch nicht durchgelaufenen Pickup sehen ("hand=null → 409").
     void enqueueInventoryOp(async () => {
+      graffitiDbg('inv-drop-task-start', { itemId: dropped.id });
       try {
         const data = await postAction({ action: 'drop', pagePath, x: pageX, y: pageY });
         if (data?.placedItemId) {
+          graffitiDbg('inv-drop-ok', { tempId, realId: data.placedItemId });
           // Temp-ID gegen Server-ID austauschen, damit das frisch gedropte
           // Item wieder aufhebbar ist (sonst 404 wegen Temp-ID).
           window.dispatchEvent(
@@ -279,6 +309,7 @@ export default function SiteInventory() {
             })
           );
         } else {
+          graffitiDbg('inv-drop-rollback', { tempId, itemId: dropped.id });
           // Server-Fehler → Rollback: Item zurück in Hand, optimistic-placed weg.
           setInventory((prev) => (prev ? { ...prev, hand: dropped } : prev));
           window.dispatchEvent(
@@ -287,6 +318,7 @@ export default function SiteInventory() {
         }
       } finally {
         dropInFlightRef.current = false;
+        graffitiDbg('inv-drop-task-done', { itemId: dropped.id });
       }
     });
   }

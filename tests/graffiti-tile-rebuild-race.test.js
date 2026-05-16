@@ -73,6 +73,39 @@ test('useEffect([tiles]) markiert das Base NICHT als dirty (Race-Fix)', () => {
   );
 });
 
+test('z-index ist im Leerlauf unter 100 und im aktiven Modus deutlich ueber Modalen', () => {
+  // Spec: Modale (Header z-index 1000, VocabCardStack-Modal 600, etc.) sollen
+  // bei _inaktivem_ Graffiti ueber dem Canvas liegen, damit ein altes Graffito
+  // nicht quer durch ein geoeffnetes Modal kritzelt. Bei _aktivem_ Tool soll
+  // man dagegen ueberall malen koennen, auch ueber Modalen — sonst koennte
+  // der User nicht in ein gerade offenes Modal kritzeln. Doppel-Schicht via
+  // .fgraffiti-canvas vs. .fgraffiti-canvas.is-active.
+  const src = readSource();
+  // Erster z-index-Eintrag im Basis-Block — muss < 100 sein.
+  const baseBlock = src.match(/\.fgraffiti-canvas\s*\{[^}]*\}/);
+  assert.ok(baseBlock, 'Basis-Canvas-CSS-Block muss existieren');
+  const baseZ = baseBlock[0].match(/z-index:\s*(\d+)/);
+  assert.ok(baseZ, 'Basis-Block braucht z-index');
+  const baseVal = parseInt(baseZ[1], 10);
+  assert.ok(
+    baseVal < 100,
+    `Idle-Graffiti z-index muss < 100 sein (war ${baseVal}), sonst rendern sich `
+    + 'alte Striche ueber Nav/Header/Modals.'
+  );
+
+  const activeBlock = src.match(/\.fgraffiti-canvas\.is-active\s*\{[^}]*\}/);
+  assert.ok(activeBlock, 'Aktiv-Canvas-CSS-Block muss existieren');
+  const activeZ = activeBlock[0].match(/z-index:\s*(\d+)/);
+  assert.ok(activeZ, 'Aktiv-Block braucht z-index');
+  const activeVal = parseInt(activeZ[1], 10);
+  assert.ok(
+    activeVal >= 1500,
+    `Aktiv-Graffiti z-index muss deutlich ueber typischen Modalen (>= 1500) `
+    + `liegen (war ${activeVal}), sonst kann der User waehrend "Tool in der Hand" `
+    + 'nicht auf einem geoeffneten Modal malen.'
+  );
+});
+
 test('Initial-Tile-Fetch loest baseDirty + schedulePaint nach setTiles aus', () => {
   const src = readSource();
   // Der Initial-Fetch-Handler benutzt fetchTilesForPage und macht danach
