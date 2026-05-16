@@ -24,6 +24,8 @@ const gitBadgeLabel = gitInfo?.branch || gitInfo?.shortSha || null;
 const gitBadgeTitle = gitInfo
   ? `Branch: ${gitInfo.branch ?? '?'}\nCommit: ${gitInfo.shortSha ?? '?'}`
   : '';
+const gitHistory = gitInfo?.history ?? [];
+const gitRepoUrl = gitInfo?.repoUrl ?? null;
 ---
 
 <nav class:list={['nav2', isHome && 'nav2--home']} aria-label="Hauptnavigation">
@@ -152,30 +154,66 @@ const gitBadgeTitle = gitInfo
     <div class="nav2-right">
       {
         isSuperuser && gitBadgeLabel && (
-          <span class="nav2-git-badge" title={gitBadgeTitle} aria-label={`Git: ${gitBadgeLabel}`}>
-            <svg
-              class="nav2-git-badge-ic"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="6" cy="6" r="2.2" />
-              <circle cx="6" cy="18" r="2.2" />
-              <circle cx="18" cy="12" r="2.2" />
-              <path d="M6 8v8" />
-              <path d="M8 18h4a4 4 0 0 0 4-4v-2" />
-            </svg>
-            <span class="nav2-git-badge-label">{gitBadgeLabel}</span>
-            {gitInfo?.shortSha && gitInfo.branch && (
-              <span class="nav2-git-badge-sha">@{gitInfo.shortSha}</span>
-            )}
-          </span>
+          <details class="nav2-git-wrap">
+            <summary class="nav2-git-badge" title={gitBadgeTitle} aria-label={`Git: ${gitBadgeLabel}`}>
+              <svg
+                class="nav2-git-badge-ic"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="6" cy="6" r="2.2" />
+                <circle cx="6" cy="18" r="2.2" />
+                <circle cx="18" cy="12" r="2.2" />
+                <path d="M6 8v8" />
+                <path d="M8 18h4a4 4 0 0 0 4-4v-2" />
+              </svg>
+              <span class="nav2-git-badge-label">{gitBadgeLabel}</span>
+              {gitInfo?.shortSha && gitInfo.branch && (
+                <span class="nav2-git-badge-sha">@{gitInfo.shortSha}</span>
+              )}
+            </summary>
+            <div class="nav2-git-panel" role="group" aria-label="Letzte Commits">
+              <div class="nav2-git-panel-head">
+                <span class="nav2-git-panel-branch">{gitInfo?.branch ?? '—'}</span>
+                {gitInfo?.shortSha && (
+                  <span class="nav2-git-panel-sha">{gitInfo.shortSha}</span>
+                )}
+              </div>
+              {gitHistory.length === 0 ? (
+                <div class="nav2-git-empty">Keine History verfuegbar.</div>
+              ) : (
+                <ul class="nav2-git-list">
+                  {gitHistory.map((c) => {
+                    const href = gitRepoUrl && c.sha ? `${gitRepoUrl}/commit/${c.sha}` : null;
+                    return (
+                      <li class="nav2-git-commit">
+                        {href ? (
+                          <a href={href} target="_blank" rel="noopener noreferrer" class="nav2-git-commit-link">
+                            <span class="nav2-git-commit-sha">{c.shortSha}</span>
+                            <span class="nav2-git-commit-subj" title={c.subject}>{c.subject}</span>
+                            <span class="nav2-git-commit-date">{c.relDate}</span>
+                          </a>
+                        ) : (
+                          <span class="nav2-git-commit-link">
+                            <span class="nav2-git-commit-sha">{c.shortSha}</span>
+                            <span class="nav2-git-commit-subj" title={c.subject}>{c.subject}</span>
+                            <span class="nav2-git-commit-date">{c.relDate}</span>
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </details>
         )
       }
       {
@@ -391,11 +429,15 @@ const gitBadgeTitle = gitInfo
     margin-right: 0.15rem;
   }
 
+  .nav2-git-wrap {
+    position: relative;
+    margin-right: 0.4rem;
+  }
+
   .nav2-git-badge {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    margin-right: 0.4rem;
     padding: 0.2rem 0.55rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.72rem;
@@ -408,8 +450,22 @@ const gitBadgeTitle = gitInfo
     max-width: 22ch;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: help;
-    user-select: text;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+
+  .nav2-git-badge::-webkit-details-marker {
+    display: none;
+  }
+
+  .nav2-git-badge::marker {
+    content: '';
+  }
+
+  .nav2-git-badge:hover,
+  .nav2-git-wrap[open] .nav2-git-badge {
+    background: var(--nav2-drawer-hover, rgba(127, 127, 127, 0.3));
   }
 
   .nav2-git-badge-ic {
@@ -426,12 +482,103 @@ const gitBadgeTitle = gitInfo
     opacity: 0.65;
   }
 
+  .nav2-git-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 22rem;
+    max-width: min(32rem, 90vw);
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+    background: var(--nav2-drawer-bg, var(--site-control-bg, #1a1a1a));
+    color: var(--site-body-text, #eee);
+    border: 1px solid var(--nav2-drawer-border, rgba(127, 127, 127, 0.35));
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    z-index: 6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+  }
+
+  .nav2-git-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.35rem 0.75rem 0.45rem;
+    border-bottom: 1px solid var(--nav2-drawer-border, rgba(127, 127, 127, 0.2));
+    font-size: 0.72rem;
+    opacity: 0.7;
+  }
+
+  .nav2-git-panel-branch {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nav2-git-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .nav2-git-commit {
+    border-bottom: 1px solid var(--nav2-drawer-border, rgba(127, 127, 127, 0.1));
+  }
+
+  .nav2-git-commit:last-child {
+    border-bottom: none;
+  }
+
+  .nav2-git-commit-link {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.4rem 0.75rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a.nav2-git-commit-link:hover {
+    background: var(--nav2-drawer-hover, rgba(127, 127, 127, 0.18));
+  }
+
+  .nav2-git-commit-sha {
+    color: var(--site-link, #8ab4f8);
+    font-size: 0.72rem;
+    opacity: 0.85;
+  }
+
+  .nav2-git-commit-subj {
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav2-git-commit-date {
+    font-size: 0.68rem;
+    opacity: 0.55;
+    white-space: nowrap;
+  }
+
+  .nav2-git-empty {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
+  }
+
   @media screen and (max-width: 480px) {
     .nav2-git-badge {
       max-width: 10ch;
     }
     .nav2-git-badge-sha {
       display: none;
+    }
+    .nav2-git-panel {
+      min-width: 16rem;
     }
   }
 

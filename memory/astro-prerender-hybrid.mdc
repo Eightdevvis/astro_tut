@@ -16,9 +16,10 @@ Kurz: Verhalten und bekannte Einschränkungen bei statisch vorgerenderten Routen
 ## Superuser-Git-Badge in `Nav2`
 
 - **Wo:** rechts in der Nav2-Strip (vor Theme/Login), nur sichtbar wenn `hasPermission(username, 'super_access')`.
-- **Quelle:** `src/lib/git-info.js` — `getGitInfo()` liefert `{ branch, sha, shortSha }`; Reihenfolge: `VERCEL_GIT_COMMIT_REF`/`_SHA` → `GIT_BRANCH`/`GIT_COMMIT` Env → `git rev-parse` (lokaler Fallback). Wert wird beim Modul-Laden **einmalig** gecached.
-- **Darstellung:** Pill mit Branch-Name + `@kurzsha`; Tooltip zeigt Branch + Commit; CSS-Klasse `.nav2-git-badge` in `Nav2.astro`. Auf schmalen Screens (≤480px) wird der SHA-Suffix ausgeblendet und der Branch ellipsisiert.
-- **Zweck:** Superuser sieht in Produktion sofort, welcher Push gerade live ist (Vercel-Deploy = `master`, aber Preview-Deploys haben eigenen Branch).
+- **Quelle:** `src/lib/git-info.js` — `getGitInfo()` liefert `{ branch, sha, shortSha, repoUrl, history[] }`. `history` jeweils `{ sha, shortSha, subject, relDate }`, **absteigend** (neueste zuerst, max. 25).
+- **Build-Snapshot:** Vercel-Runtime hat **kein** `.git` und kein `git`-CLI. Deshalb sammelt `astro.config.mjs` beim Config-Load (Build-/Dev-Start) einen Snapshot per `git log` und injiziert ihn via Vite-`define` als `__GIT_SNAPSHOT__`. `git-info.js` liest den Snapshot, fallback ist Env-Var bzw. lokal `git`-CLI.
+- **Darstellung:** `<details>`-Pill (`.nav2-git-badge`). Klick klappt Panel auf (`.nav2-git-panel`) mit Liste der Commits — Kurz-SHA, Subject, relative Zeit. Wenn `repoUrl` bekannt (aus `VERCEL_GIT_REPO_OWNER/_SLUG` oder `git config remote.origin.url`), sind die Eintraege Links zu `…/commit/<sha>` (target `_blank`). Auf schmalen Screens (≤480px) wird der SHA-Suffix der Pill ausgeblendet und Panel auf 16rem verschmaelert.
+- **Zweck:** Superuser sieht in Produktion sofort, welcher Push gerade live ist und welche Commits davor kamen (Vercel-Deploy = `master`, Preview-Deploys haben eigenen Branch).
 
 ## Build / Deploy
 

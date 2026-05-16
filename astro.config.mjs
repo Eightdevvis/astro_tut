@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import preact from "@astrojs/preact";
 import vercel from "@astrojs/vercel";
 
@@ -11,6 +12,55 @@ const site =
   (process.env.VERCEL && process.env.VERCEL_URL
     ? `https://${process.env.VERCEL_URL}`
     : 'http://localhost:4321');
+
+// Git-Snapshot beim Build einsammeln und ins Bundle inlinen. Vercel haengt
+// .git nicht in die Runtime-Function — also muessen wir es hier persistieren,
+// damit der Superuser-Branch-Badge in Nav2 die letzten Commits anzeigen kann.
+function collectGitSnapshot() {
+  function safe(cmd) {
+    try {
+      return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim();
+    } catch {
+      return '';
+    }
+  }
+  const branch =
+    process.env.VERCEL_GIT_COMMIT_REF ||
+    process.env.GIT_BRANCH ||
+    safe('git rev-parse --abbrev-ref HEAD') ||
+    '';
+  const sha =
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GIT_COMMIT ||
+    safe('git rev-parse HEAD') ||
+    '';
+  const owner = process.env.VERCEL_GIT_REPO_OWNER || '';
+  const slug = process.env.VERCEL_GIT_REPO_SLUG || '';
+  let repoUrl = '';
+  if (owner && slug) {
+    repoUrl = `https://github.com/${owner}/${slug}`;
+  } else {
+    const origin = safe('git config --get remote.origin.url');
+    const m = origin.match(/github\.com[:/]+([^/]+)\/([^/.]+)(?:\.git)?/i);
+    if (m) repoUrl = `https://github.com/${m[1]}/${m[2]}`;
+  }
+  const raw = safe("git log -n 25 --pretty=format:%H%x1f%s%x1f%ar%x1e");
+  const history = raw
+    ? raw
+        .split('\x1e')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [h, s, r] = line.split('\x1f');
+          return { sha: h || '', subject: s || '', relDate: r || '' };
+        })
+    : [];
+  return { branch, sha, repoUrl, history };
+}
+
+const __GIT_SNAPSHOT__ = collectGitSnapshot();
 
 // https://astro.build/config
 export default defineConfig({
@@ -39,6 +89,7 @@ export default defineConfig({
       'process.env.SEPARATE_INDIGO_RENDER': 'false',
       'process.env.VERSION': '""',
       global: 'globalThis',
+      __GIT_SNAPSHOT__: JSON.stringify(__GIT_SNAPSHOT__),
     },
     optimizeDeps: {
       esbuildOptions: {
