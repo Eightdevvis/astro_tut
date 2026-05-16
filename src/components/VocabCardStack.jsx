@@ -23,6 +23,47 @@ function fetchCards() {
     .then((d) => (Array.isArray(d.cards) ? d.cards : []));
 }
 
+/**
+ * AutoFitText — schrumpft die Schriftgroesse, bis der Inhalt in den durch
+ * CSS vorgegebenen Box (max-height + Breite) passt. Iterativ in 1px-Schritten
+ * vom max bis zum min Wert. Greift nur, wenn das Element overflowt — sonst
+ * bleibt es bei max.
+ */
+function AutoFitText({ text, maxPx, minPx = 9, class: className }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    let cancelled = false;
+    function fit() {
+      if (cancelled || !el.isConnected) return;
+      let size = maxPx;
+      el.style.fontSize = `${size}px`;
+      // Sicherheits-Cap: max 60 Schritte (sollte nie nahekommen).
+      for (let i = 0; i < 60; i++) {
+        const overflows = el.scrollHeight > el.clientHeight + 0.5
+          || el.scrollWidth > el.clientWidth + 0.5;
+        if (!overflows || size <= minPx) break;
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+      }
+    }
+
+    // Doppelter rAF: einmal nachdem der initiale Layout durch ist, danach
+    // koennen sich Fonts/Bilder noch laden und die Box-Hoehe veraendern.
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => fit()) : null;
+    if (ro) ro.observe(el);
+
+    return () => { cancelled = true; if (ro) ro.disconnect(); };
+  }, [text, maxPx, minPx]);
+
+  return <div ref={ref} class={className} style={{ fontSize: `${maxPx}px` }}>{text}</div>;
+}
+
 export default function VocabCardStack({ isOwner = false }) {
   const [cards, setCards] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -99,12 +140,27 @@ export default function VocabCardStack({ isOwner = false }) {
                 zIndex: 100 + i, // aeltere niedriger, neueste hoechste
               }}
             >
-              <div class="vocab-card-word">{c.word}</div>
+              <AutoFitText
+                class="vocab-card-word"
+                text={c.word}
+                maxPx={34}
+                minPx={12}
+              />
               {c.pronunciation && (
-                <div class="vocab-card-pron">/{c.pronunciation}/</div>
+                <AutoFitText
+                  class="vocab-card-pron"
+                  text={`/${c.pronunciation}/`}
+                  maxPx={15}
+                  minPx={9}
+                />
               )}
               {c.definition && (
-                <div class="vocab-card-def">{c.definition}</div>
+                <AutoFitText
+                  class="vocab-card-def"
+                  text={c.definition}
+                  maxPx={15}
+                  minPx={9}
+                />
               )}
               {isNewest && isOwner && (
                 <button
@@ -168,29 +224,44 @@ export default function VocabCardStack({ isOwner = false }) {
           color: var(--card-fg, #f4f1ea);
           border-color: var(--card-border, #f4f1ea);
         }
+        /* Alle drei Felder: feste Box-Groesse + overflow:hidden, damit
+           AutoFitText scrollHeight > clientHeight zuverlaessig erkennen kann.
+           Die Schriftgroessen werden von JS gesetzt (max -> Schritt-fuer-Schritt
+           runter, bis es passt). */
         .vocab-card-word {
           font-family: 'Protest Demo', var(--font-hero, 'Protest Demo'), serif;
-          font-size: 2.1rem;
           line-height: 1.05;
           margin-top: 0.15rem;
           word-break: break-word;
-          max-width: 100%;
+          width: 100%;
+          max-height: 64px;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
         }
         .vocab-card-pron {
           font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
-          font-size: 0.9rem;
           opacity: 0.7;
           letter-spacing: 0.02em;
+          line-height: 1.2;
+          width: 100%;
+          max-height: 24px;
+          overflow: hidden;
+          text-align: center;
+          word-break: break-word;
         }
         .vocab-card-def {
-          font-size: 0.92rem;
           line-height: 1.35;
           opacity: 0.88;
           margin-top: 0.15rem;
+          flex: 1 1 auto;
+          min-height: 0;
+          width: 100%;
           overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 4;
-          -webkit-box-orient: vertical;
+          word-break: break-word;
+          text-align: center;
         }
         .vocab-card-empty {
           align-items: center;
