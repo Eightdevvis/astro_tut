@@ -1,0 +1,46 @@
+# /me Zitate-Lianen-Stack
+
+Zweiter User-spezifischer Overlay-Stack auf `/me`, **oben links**, als Pendant zum Vokabelkarten-Stack rechts unten. Zitate haengen wie Lianen / Nudeln vom oberen Rand herunter; der Text laeuft vertikal (`writing-mode: vertical-rl`) — Kopf zur Seite neigen zum Lesen.
+
+## Verhalten
+
+- Fixed-Container `top: calc(var(--nav-strip-h) + 8px); left: 0.4rem; z-index: 90` (unter Nav z=100).
+- Jede Liane: schmaler Streifen (`LIANA_WIDTH=36px`), haengt mit `top: 0`, gerundete Ecken, leichte Rotation (`-3..+3°` deterministisch aus id-Hash).
+- Sortierung: aufsteigend nach `created_at`; neueste hat hoechstes z-index, sitzt vorn.
+- Spalten-Verteilung: jede Liane bekommt eine deterministische Spalte aus `COLS=8` ueber `colForIndex(i, id)` (Permutation aus Index + id-Hash). Mehrere Lianen koennen in derselben Spalte landen.
+
+## Layout-Garantie "keine Liane voll vergraben"
+
+`computeLayout()` (in `QuoteLianaStack.jsx`):
+- Pro Spalte alle zugehoerigen Lianen von **neuester zu aeltester** durchgehen.
+- Length jeder Liane = `max(text-based, prevLen + EXTRA_TAIL)` — die naechst-aeltere muss um mindestens `EXTRA_TAIL=36px` laenger sein als die juengere in derselben Spalte. So lugt der Tail unten immer raus und ist klickbar.
+- Anschliessend hard-cap auf 85vh.
+
+Ergebnis: in jeder Spalte hat jede Liane einen unverdeckten Bottom-Streifen >= 36px, an dem man sie klicken kann.
+
+## Hover-Expand
+
+- Hover auf den Stack: alle Lianen wandern auf unique X-Spalten (`COLLAPSED_BASE_X + i * EXPANDED_STEP`, `EXPANDED_STEP=46px`) ohne Rotation und ohne Ueberlappung. 320ms Transition. Mouse-Leave: Kollaps in den natuerlichen Liana-Wirrwarr.
+
+## Klick / Modal
+
+- Klick auf eine Liane oeffnet `QuoteModal`: full Zitat horizontal lesbar + Author. Owner bekommt Loeschen-Knopf.
+- `+`-Knopf oben mittig auf der **neuesten** Liane (mit `is-newest`) oeffnet `QuoteEditor` (Text + Author). Knopf nur wenn `canPost`.
+
+## API / Permission
+
+- Wiederverwendung der existierenden Endpoints:
+  - `GET /api/quotes/mine` — listet eigene Zitate (DESC by created_at). Komponente sortiert client-seitig auf ASC um.
+  - `POST /api/quotes/add` — neues Zitat.
+  - `POST /api/quotes/delete` — eigenes Zitat loeschen.
+- Alle drei verlangen `quote_poster`-Permission. `me.astro` prueft `hasPermission(username, 'quote_poster')` und rendert die Komponente **nur** wenn true (`canPost` Prop). Ohne die Permission ist die Liana-Stack schlicht nicht da.
+
+## Dateien
+
+- Component: `src/components/QuoteLianaStack.jsx` (Stack + Modal + Editor).
+- Einbindung: `src/pages/me.astro` — `{canPostQuotes && <QuoteLianaStack client:load canPost={true} />}`.
+- Keine neuen DB-Tabellen — nutzt die bestehende `quotes`-Tabelle.
+
+## Layout-Konstanten
+
+- `COLS=8`, `COLLAPSED_BASE_X=6`, `COLLAPSED_STEP=22`, `EXPANDED_STEP=46`, `LIANA_WIDTH=36`, `MIN_LEN=110`, `MAX_LEN_VH_PCT=65`, `EXTRA_TAIL=36`, `PX_PER_CHAR=8`. Tweaks an einer Stelle in der Datei oben.

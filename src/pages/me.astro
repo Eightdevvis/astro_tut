@@ -8,8 +8,10 @@ import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import SiteInventory from '../components/SiteInventory.jsx';
 import SitePlacedItemsLayer from '../components/SitePlacedItemsLayer.jsx';
 import VocabCardStack from '../components/VocabCardStack.jsx';
+import QuoteLianaStack from '../components/QuoteLianaStack.jsx';
 import PageFavicon from '../components/PageFavicon.astro';
 import { getSessionUserFromCookies } from '../lib/session.js';
+import { hasPermission } from '../lib/permissions.js';
 import '../styles/global.css';
 
 const sessionUser = await getSessionUserFromCookies(Astro.cookies);
@@ -19,6 +21,7 @@ if (!sessionUser) {
 const username = sessionUser.username;
 const displayName = sessionUser.displayName || username;
 const showLoginId = displayName !== username;
+const canPostQuotes = await hasPermission(username, 'quote_poster');
 ---
 
 <html lang="de" class="home">
@@ -50,6 +53,7 @@ const showLoginId = displayName !== username;
     <SitePlacedItemsLayer client:load />
     <SiteInventory client:load />
     <VocabCardStack client:load isOwner={true} />
+    {canPostQuotes && <QuoteLianaStack client:load canPost={true} />}
     <TesterBugBar client:load />
     <ThemeClient />
   </body>

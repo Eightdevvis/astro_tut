@@ -68,6 +68,14 @@ export const DATA_INVENTORY = [
     permissionsAnyOf: ['quote_poster'],
   },
   {
+    table: 'user_vocab_cards',
+    category: 'content',
+    purpose: 'Persoenliche Vokabelkarten (Wort/Lautschrift/Definition), Anzeige auf /me.',
+    retention: 'unbegrenzt; vom Owner jederzeit loeschbar',
+    accessRoles: ['owner'],
+    fields: ['id', 'username', 'word', 'pronunciation', 'definition', 'created_at', 'updated_at'],
+  },
+  {
     table: 'blog_posts',
     category: 'content',
     purpose: 'Deine Blog-Posts inkl. Privacy-Einstellungen und Tokens.',
