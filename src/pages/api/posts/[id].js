@@ -1,8 +1,16 @@
+import bcrypt from 'bcryptjs';
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { normalizeVisibility } from '../../../lib/blog-privacy.js';
+
+function parseExpiresAt(v) {
+  if (v == null || v === '') return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 
 function normalizePrivacyFlagsForPatch(v) {
   if (v == null) return null;
@@ -71,8 +79,22 @@ export async function PATCH({ params, request, cookies }) {
   // Body, bleibt der bisherige Wert in der DB stehen.
   const hasVisibility = body?.visibility !== undefined;
   const hasFlags = body?.privacyFlags !== undefined;
+  const hasExpires = body?.expiresAt !== undefined;
+  const hasPassword = body?.password !== undefined;
   const visibility = hasVisibility ? normalizeVisibility(body.visibility) : null;
   const privacyFlags = hasFlags ? normalizePrivacyFlagsForPatch(body.privacyFlags) : null;
+  const expiresAt = hasExpires ? parseExpiresAt(body.expiresAt) : null;
+  let passwordHash = null;
+  let passwordHashClear = false;
+  if (hasPassword) {
+    const pw = String(body.password || '');
+    if (pw === '') {
+      // Leeres Passwort = Passwort entfernen.
+      passwordHashClear = true;
+    } else if (pw.length <= 256) {
+      passwordHash = await bcrypt.hash(pw, 10);
+    }
+  }
 
   try {
     await ensureDbSchema();
@@ -117,6 +139,16 @@ export async function PATCH({ params, request, cookies }) {
     if (privacyFlags !== null) {
       setParts.push('privacy_flags = ?');
       setArgs.push(privacyFlags);
+    }
+    if (hasExpires) {
+      setParts.push('expires_at = ?');
+      setArgs.push(expiresAt);
+    }
+    if (passwordHashClear) {
+      setParts.push('password_hash = NULL');
+    } else if (passwordHash !== null) {
+      setParts.push('password_hash = ?');
+      setArgs.push(passwordHash);
     }
     setArgs.push(id, auth.username);
     const result = await db.execute({

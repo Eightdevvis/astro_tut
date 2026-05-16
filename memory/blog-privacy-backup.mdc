@@ -82,9 +82,25 @@ Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
 
 Verifiziert per curl gegen Dev-Server: GPTBot/ClaudeBot/archive.org_bot → 403, Googlebot → 200, Browser → 200; request_log enthielt jeweils korrekte Zeile mit `blocked_reason='ua_gate:<botName>'`; robots.txt listet alle 24 KI-Bots; sitemap.xml zeigt nur public+indexierbare Posts.
 
+## Phase 9 — Tokens + Passwort + Expire + One-Time (fertig)
+
+- **`src/lib/blog-tokens.js`**: `makeToken()` (24 Hex aus `crypto.randomUUID`, ~96 Bit), `hashToken()` (sha256), `isValidTokenFormat()`, `normalizeTokenKind()` (`shared|onetime`), `isTokenLive(row)` (revoke + expires + uses), `findValidTokenForPost(db, {post, providedToken})` (sucht post-spezifisch ODER user-global), `consumeTokenIfOnetime(db, row)` (race-sicheres Inkrement).
+- **Endpoints**:
+  - `GET/POST /api/posts/[id]/tokens` — Liste anzeigen / neuen Token anlegen (Klartext einmalig im Response).
+  - `DELETE /api/posts/[id]/tokens/[tokenId]` — soft-revoke.
+  - `GET/POST/DELETE /api/user/tokens` — user-globaler Hauptschluessel (post_id NULL); DELETE per `?id=<n>`.
+- **`POST /api/posts/add` + `PATCH /api/posts/[id]`**: nehmen `password` (bcrypt-Hash mit 10 Runden) und `expiresAt` (ISO) mit. PATCH bei `password=''` → Passwort entfernen.
+- **Detail-Route `posts/db/[id].astro`**:
+  - **Token-Gate** vorrangig: `?key=<token>` → `findValidTokenForPost`; bei Treffer wird visibility/private/password ueberbruckt.
+  - **Expire-Gate** noch vor allem: `expires_at` ≤ jetzt → **410 Gone** mit `blocked_reason='expired'`.
+  - **Password-Gate** (visibility=`password`): `?pw=<klartext>` per bcrypt geprueft; eingeloggter Autor entriegelt automatisch.
+  - **One-Time-Consume**: erst NACH erfolgreichem Render wird `used_count++` (sonst wuerden fehlgeschlagene Renders Tokens verbrennen).
+- **Sicherheit**: DB speichert nur sha256-Hash des Tokens und bcrypt-Hash des Passworts; Klartext erscheint nur einmalig im Create-Response.
+- Verifiziert per `/tmp/phase9-smoke.mjs` (Pure-Function-Pfad) und curl gegen Dev-Server: ohne Auth/Token/PW → 404, falsches PW → 404, korrektes PW → 200, gueltiger shared-Token → 200 mehrfach, ungueltiger Token → 404, One-Time → erstes 200, zweites 404, expired → 410. node --test: 438/0.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
+7. Profil-Ebene + Memory-Update für `/me.astro`.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).

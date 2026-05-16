@@ -1,4 +1,5 @@
 ---
+import bcrypt from 'bcryptjs';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { ensureDbSchema, getDb } from '../../../lib/db.js';
 import {
@@ -10,6 +11,10 @@ import {
   rewriteOutboundLinks,
 } from '../../../lib/blog-privacy.js';
 import { classifyUserAgent } from '../../../lib/bot-fingerprints.js';
+import {
+  consumeTokenIfOnetime,
+  findValidTokenForPost,
+} from '../../../lib/blog-tokens.js';
 import { extractClientMeta, safeLogRequest } from '../../../lib/request-log.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
 
@@ -27,6 +32,8 @@ type PostRow = {
   visibility: string;
   privacy_flags: string;
   public_slug: string | null;
+  password_hash: string | null;
+  expires_at: string | null;
 };
 
 let post: PostRow | null = null;
@@ -37,12 +44,14 @@ if (isIntegerLookup || isSlugLookup) {
     const result = await getDb().execute({
       sql: isSlugLookup
         ? `SELECT id, username, content_html, content_text, created_at,
-                  visibility, privacy_flags, public_slug
+                  visibility, privacy_flags, public_slug,
+                  password_hash, expires_at
              FROM blog_posts
             WHERE public_slug = ? AND deleted_at IS NULL
             LIMIT 1`
         : `SELECT id, username, content_html, content_text, created_at,
-                  visibility, privacy_flags, public_slug
+                  visibility, privacy_flags, public_slug,
+                  password_hash, expires_at
              FROM blog_posts
             WHERE id = ? AND deleted_at IS NULL
             LIMIT 1`,
@@ -59,10 +68,42 @@ if (isIntegerLookup || isSlugLookup) {
         visibility: normalizeVisibility(row.visibility),
         privacy_flags: String(row.privacy_flags || '{}'),
         public_slug: row.public_slug ? String(row.public_slug) : null,
+        password_hash: row.password_hash ? String(row.password_hash) : null,
+        expires_at: row.expires_at ? String(row.expires_at) : null,
       };
     }
   } catch (err) {
     console.error('posts/db/[id]', err);
+  }
+}
+
+// B17 Expire: gueltigkeitsdatum gepruefen, bevor andere Gates greifen.
+// Antwort 410 Gone, damit Clients (auch Bots) merken: das war's, nicht
+// einfach 404 (das waere "nicht da"); UI-Hint kann auf 410 reagieren.
+let expiredResponse: Response | null = null;
+if (post && post.expires_at) {
+  const now = new Date().toISOString();
+  if (post.expires_at <= now) {
+    expiredResponse = new Response('Post abgelaufen', { status: 410 });
+  }
+}
+
+// Token-Check (B15/B16): Query-Param ?key=<token>. Wenn ein lebender
+// Token zum Post passt, dann setzen wir tokenUnlocked = true und ueberspringen
+// das Visibility-Gate. So oeffnet ein Token jeden seiner Posts unabhaengig
+// von der visibility-Stufe (privat/password/unlisted).
+let tokenUnlocked = false;
+let tokenRowForConsume: any = null;
+const tokenParam = Astro.url.searchParams.get('key') || '';
+if (post && !expiredResponse && tokenParam) {
+  try {
+    tokenRowForConsume = await findValidTokenForPost(getDb(), {
+      post: { id: post.id, username: post.username },
+      providedToken: tokenParam,
+    });
+    if (tokenRowForConsume) tokenUnlocked = true;
+  } catch (err) {
+    console.error('posts/db/[id] token check', err);
   }
 }
 
@@ -71,22 +112,49 @@ if (isIntegerLookup || isSlugLookup) {
 //   nicht in der Direkt-URL).
 // - private → nur fuer den Autor; alle anderen sehen 404 (Existenz wird
 //   bewusst nicht verraten).
-// - password → wird in Phase 9 mit Token-Check ergaenzt; bis dahin
-//   verhalten wir uns wie 404, um nicht versehentlich geheime Inhalte zu
-//   leaken.
-if (post) {
+// - password → braucht ?pw=<klartext> (bcrypt-Check) ODER ?key=<token>
+//   ODER eingeloggter Autor. Sonst 404 (nicht 401 — wir verraten die
+//   Existenz nicht, falls jemand einfach mal /posts/db/<slug> probiert).
+let passwordUnlocked = false;
+if (post && !expiredResponse && !tokenUnlocked) {
   if (post.visibility === 'private') {
     const sessionUser = await getSessionUserFromCookies(Astro.cookies);
     if (!sessionUser || sessionUser.username !== post.username) {
       post = null;
     }
   } else if (post.visibility === 'password') {
-    post = null;
+    const pwParam = Astro.url.searchParams.get('pw') || '';
+    const sessionUser = await getSessionUserFromCookies(Astro.cookies);
+    if (sessionUser && sessionUser.username === post.username) {
+      passwordUnlocked = true;
+    } else if (post.password_hash && pwParam) {
+      try {
+        if (await bcrypt.compare(pwParam, post.password_hash)) {
+          passwordUnlocked = true;
+        }
+      } catch {}
+    }
+    if (!passwordUnlocked) post = null;
   }
 }
 
 const requestPath = `/posts/db/${rawId}`;
 const client = extractClientMeta(Astro.request, Astro.clientAddress);
+
+if (expiredResponse) {
+  void safeLogRequest({
+    path: requestPath,
+    postId: null,
+    username: null,
+    ua: client.ua,
+    ip: client.ip,
+    country: client.country,
+    referer: client.referer,
+    status: 410,
+    blockedReason: 'expired',
+  });
+  return expiredResponse;
+}
 
 if (!post) {
   // Existenz wird bewusst nicht verraten — kein gesonderter Reason fuer
@@ -182,6 +250,16 @@ void safeLogRequest({
   referer: client.referer,
   status: 200,
 });
+
+// B16: erst NACH erfolgreichem Render zaehlen wir den One-Time-Token als
+// verbraucht — sonst wuerden fehlgeschlagene Renders Tokens "verbrennen".
+if (tokenRowForConsume && tokenRowForConsume.kind === 'onetime') {
+  try {
+    await consumeTokenIfOnetime(getDb(), tokenRowForConsume);
+  } catch (err) {
+    console.error('posts/db/[id] consume token', err);
+  }
+}
 
 // B10 (Teil 2): wenn no_referrer aktiv ist, bekommen alle externen
 // `<a href>` Links zusaetzlich rel="nofollow noreferrer noopener". Das

@@ -1,8 +1,23 @@
+import bcrypt from 'bcryptjs';
 import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
+
+function parseExpiresAt(v) {
+  if (v == null || v === '') return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+async function hashPasswordIfGiven(pw) {
+  const s = String(pw || '');
+  if (!s) return null;
+  if (s.length < 1 || s.length > 256) return null;
+  return await bcrypt.hash(s, 10);
+}
 
 function normalizeColor(v) {
   const value = String(v || '').trim();
@@ -55,6 +70,8 @@ export async function POST({ request, cookies }) {
   const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
   const visibility = normalizeVisibility(body?.visibility);
   const privacyFlags = normalizePrivacyFlags(body?.privacyFlags);
+  const expiresAt = parseExpiresAt(body?.expiresAt);
+  const passwordHash = visibility === 'password' ? await hashPasswordIfGiven(body?.password) : null;
 
   if (!contentText) {
     return new Response(JSON.stringify({ error: 'Inhalt darf nicht leer sein' }), { status: 400 });
@@ -83,9 +100,10 @@ export async function POST({ request, cookies }) {
         result = await db.execute({
           sql: `INSERT INTO blog_posts
                   (username, content_html, content_text, accent_color,
-                   doodle_data_url, visibility, privacy_flags, public_slug)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          args: [username, contentHtml, contentText, accentColor, doodleDataUrl, visibility, privacyFlags, slug],
+                   doodle_data_url, visibility, privacy_flags, public_slug,
+                   password_hash, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [username, contentHtml, contentText, accentColor, doodleDataUrl, visibility, privacyFlags, slug, passwordHash, expiresAt],
         });
         break;
       } catch (err) {
