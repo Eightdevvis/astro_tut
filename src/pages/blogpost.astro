@@ -31,28 +31,29 @@ const canPost = allowed; // = eingeloggt UND blogpost_poster
 // Hub-Tiles: Ausschnitte aus existierenden Posts. Die Hub-Seite ist fuer
 // jeden zugaenglich (auch ausgeloggt) — das Auth-Gate wird erst beim Klick
 // auf das `+`-Tile gezogen.
-type HubTile = { id: number; snippet: string; date: string };
+type HubTile = { id: number; slug: string | null; snippet: string; date: string };
 const HUB_TILE_COUNT = 24; // 5x5-Grid mit dem zentralen `+`-Tile in der Mitte
 let hubTiles: HubTile[] = [];
 try {
   await ensureDbSchema();
   const r = await getDb().execute({
-    sql: `SELECT id, content_text, created_at
+    sql: `SELECT id, public_slug, content_text, created_at
             FROM blog_posts
-           WHERE deleted_at IS NULL
+           WHERE deleted_at IS NULL AND visibility = 'public'
            ORDER BY datetime(created_at) DESC, id DESC
            LIMIT ?`,
     args: [HUB_TILE_COUNT],
   });
   hubTiles = (r.rows || []).map((row) => {
     const id = Number(row.id ?? 0);
+    const slug = row.public_slug ? String(row.public_slug) : null;
     const text = String(row.content_text || '').replace(/\s+/g, ' ').trim();
     const span = Math.min(380, text.length);
     const maxStart = Math.max(0, text.length - span);
     const start = maxStart > 0 ? Math.floor(Math.random() * (maxStart + 1)) : 0;
     const snippet = text.slice(start, start + span);
     const date = String(row.created_at || '').replace('T', ' ').slice(0, 10);
-    return { id, snippet, date };
+    return { id, slug, snippet, date };
   }).filter((t) => t.id > 0);
 } catch {
   hubTiles = [];
@@ -559,7 +560,7 @@ try {
         {hubTiles.map((tile, i) => (
           <a
             class="hub-tile hub-tile--post"
-            href={`/posts/db/${tile.id}`}
+            href={`/posts/db/${tile.slug || tile.id}`}
             style={`--tile-i: ${i};`}
             aria-label={`Post vom ${tile.date}`}
           >

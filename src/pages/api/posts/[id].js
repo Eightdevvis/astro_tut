@@ -2,6 +2,22 @@ import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
+import { normalizeVisibility } from '../../../lib/blog-privacy.js';
+
+function normalizePrivacyFlagsForPatch(v) {
+  if (v == null) return null;
+  try {
+    const obj = typeof v === 'string' ? JSON.parse(v) : v;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '{}';
+    const clean = {};
+    for (const [k, val] of Object.entries(obj)) {
+      if (typeof val === 'boolean') clean[k] = val;
+    }
+    return JSON.stringify(clean);
+  } catch {
+    return '{}';
+  }
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -51,6 +67,13 @@ export async function PATCH({ params, request, cookies }) {
     return json({ error: 'Post ist zu lang' }, 400);
   }
 
+  // B1/Privacy: Visibility und Flags optional mitschicken; wenn nicht im
+  // Body, bleibt der bisherige Wert in der DB stehen.
+  const hasVisibility = body?.visibility !== undefined;
+  const hasFlags = body?.privacyFlags !== undefined;
+  const visibility = hasVisibility ? normalizeVisibility(body.visibility) : null;
+  const privacyFlags = hasFlags ? normalizePrivacyFlagsForPatch(body.privacyFlags) : null;
+
   try {
     await ensureDbSchema();
     const db = getDb();
@@ -85,11 +108,22 @@ export async function PATCH({ params, request, cookies }) {
       ],
     });
 
+    const setParts = ['content_html = ?', 'content_text = ?'];
+    const setArgs = [contentHtml, contentText];
+    if (visibility !== null) {
+      setParts.push('visibility = ?');
+      setArgs.push(visibility);
+    }
+    if (privacyFlags !== null) {
+      setParts.push('privacy_flags = ?');
+      setArgs.push(privacyFlags);
+    }
+    setArgs.push(id, auth.username);
     const result = await db.execute({
       sql: `UPDATE blog_posts
-            SET content_html = ?, content_text = ?
+            SET ${setParts.join(', ')}
             WHERE id = ? AND username = ? AND deleted_at IS NULL`,
-      args: [contentHtml, contentText, id, auth.username],
+      args: setArgs,
     });
     const changes = Number(result.rowsAffected ?? 0);
     if (changes === 0) return json({ error: 'Post nicht gefunden' }, 404);

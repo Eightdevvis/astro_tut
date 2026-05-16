@@ -2,11 +2,29 @@ import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
+import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
 
 function normalizeColor(v) {
   const value = String(v || '').trim();
   if (!/^#[0-9a-fA-F]{6}$/.test(value)) return '#8dc5ff';
   return value.toLowerCase();
+}
+
+function normalizePrivacyFlags(v) {
+  if (v == null || v === '') return '{}';
+  try {
+    const obj = typeof v === 'string' ? JSON.parse(v) : v;
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return '{}';
+    // Nur boolesche Werte zulassen — wir sind hier offen fuer neue Toggles,
+    // aber ein Toggle ist immer an/aus.
+    const clean = {};
+    for (const [k, val] of Object.entries(obj)) {
+      if (typeof val === 'boolean') clean[k] = val;
+    }
+    return JSON.stringify(clean);
+  } catch {
+    return '{}';
+  }
 }
 
 export async function POST({ request, cookies }) {
@@ -35,6 +53,8 @@ export async function POST({ request, cookies }) {
   const contentText = String(body?.contentText || '').trim();
   const accentColor = normalizeColor(body?.accentColor);
   const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
+  const visibility = normalizeVisibility(body?.visibility);
+  const privacyFlags = normalizePrivacyFlags(body?.privacyFlags);
 
   if (!contentText) {
     return new Response(JSON.stringify({ error: 'Inhalt darf nicht leer sein' }), { status: 400 });
@@ -52,11 +72,31 @@ export async function POST({ request, cookies }) {
   try {
     await ensureDbSchema();
     const db = getDb();
-    const result = await db.execute({
-      sql: `INSERT INTO blog_posts (username, content_html, content_text, accent_color, doodle_data_url)
-            VALUES (?, ?, ?, ?, ?)`,
-      args: [username, contentHtml, contentText, accentColor, doodleDataUrl],
-    });
+    // B13: bei jedem neuen Post wird sofort ein unraidbarer Slug vergeben,
+    // damit `unlisted`-Posts auch nachtraeglich nicht durch Hochzaehlen der
+    // Integer-ID gefunden werden koennen. Bei extrem unwahrscheinlicher
+    // Kollision auf der UNIQUE-Spalte zweiter Versuch.
+    let slug = makePublicSlug();
+    let result;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        result = await db.execute({
+          sql: `INSERT INTO blog_posts
+                  (username, content_html, content_text, accent_color,
+                   doodle_data_url, visibility, privacy_flags, public_slug)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [username, contentHtml, contentText, accentColor, doodleDataUrl, visibility, privacyFlags, slug],
+        });
+        break;
+      } catch (err) {
+        const msg = err?.message ?? String(err);
+        if (/unique/i.test(msg) && /slug/i.test(msg) && attempt < 2) {
+          slug = makePublicSlug();
+          continue;
+        }
+        throw err;
+      }
+    }
     const id = result.lastInsertRowid == null ? null : String(result.lastInsertRowid);
     // A2-Cleanup: der "neuer Post"-Draft-Slot (post_id = 0) ist nach
     // erfolgreichem Erst-Post obsolet.
@@ -68,7 +108,7 @@ export async function POST({ request, cookies }) {
     } catch (cleanupErr) {
       console.warn('posts/add: draft cleanup', cleanupErr);
     }
-    return new Response(JSON.stringify({ success: true, id }), { status: 201 });
+    return new Response(JSON.stringify({ success: true, id, slug, visibility }), { status: 201 });
   } catch (err) {
     console.error('posts/add', err);
     return new Response(JSON.stringify({ error: 'Speichern fehlgeschlagen' }), { status: 500 });

@@ -1,27 +1,42 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { ensureDbSchema, getDb } from '../../../lib/db.js';
+import { isValidPublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
+import { getSessionUserFromCookies } from '../../../lib/session.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
-const id = Number(rawId);
+const asInteger = Number(rawId);
+const isIntegerLookup = Number.isInteger(asInteger) && asInteger > 0;
+const isSlugLookup = isValidPublicSlug(rawId);
 
-let post: null | {
+type PostRow = {
   id: number;
   username: string;
   content_html: string;
   content_text: string;
   created_at: string;
-} = null;
+  visibility: string;
+  public_slug: string | null;
+};
 
-if (Number.isInteger(id) && id > 0) {
+let post: PostRow | null = null;
+
+if (isIntegerLookup || isSlugLookup) {
   try {
     await ensureDbSchema();
     const result = await getDb().execute({
-      sql: `SELECT id, username, content_html, content_text, created_at
-            FROM blog_posts
-           WHERE id = ? AND deleted_at IS NULL
-           LIMIT 1`,
-      args: [id],
+      sql: isSlugLookup
+        ? `SELECT id, username, content_html, content_text, created_at,
+                  visibility, public_slug
+             FROM blog_posts
+            WHERE public_slug = ? AND deleted_at IS NULL
+            LIMIT 1`
+        : `SELECT id, username, content_html, content_text, created_at,
+                  visibility, public_slug
+             FROM blog_posts
+            WHERE id = ? AND deleted_at IS NULL
+            LIMIT 1`,
+      args: isSlugLookup ? [rawId] : [asInteger],
     });
     const row = result.rows?.[0];
     if (row) {
@@ -31,6 +46,8 @@ if (Number.isInteger(id) && id > 0) {
         content_html: String(row.content_html || ''),
         content_text: String(row.content_text || ''),
         created_at: String(row.created_at || ''),
+        visibility: normalizeVisibility(row.visibility),
+        public_slug: row.public_slug ? String(row.public_slug) : null,
       };
     }
   } catch (err) {
@@ -38,8 +55,35 @@ if (Number.isInteger(id) && id > 0) {
   }
 }
 
+// B1 Visibility-Gate:
+// - public / unlisted → fuer alle sichtbar (Unterschied liegt im Listing,
+//   nicht in der Direkt-URL).
+// - private → nur fuer den Autor; alle anderen sehen 404 (Existenz wird
+//   bewusst nicht verraten).
+// - password → wird in Phase 9 mit Token-Check ergaenzt; bis dahin
+//   verhalten wir uns wie 404, um nicht versehentlich geheime Inhalte zu
+//   leaken.
+if (post) {
+  if (post.visibility === 'private') {
+    const sessionUser = await getSessionUserFromCookies(Astro.cookies);
+    if (!sessionUser || sessionUser.username !== post.username) {
+      post = null;
+    }
+  } else if (post.visibility === 'password') {
+    post = null;
+  }
+}
+
 if (!post) {
-  return Astro.redirect('/blog', 302);
+  return new Response('Post nicht gefunden', { status: 404 });
+}
+
+// Integer→Slug-Redirect bei oeffentlichen Posts: konsolidiert die kanonische
+// URL und macht die Hub-/Listings-Links konsistent. Unlisted/private bleiben
+// auf der zuletzt benutzten URL stehen, sonst koennten Referer-Logs die
+// Integer-ID verraten.
+if (isIntegerLookup && post.public_slug && post.visibility === 'public') {
+  return Astro.redirect(`/posts/db/${post.public_slug}`, 301);
 }
 
 const firstLine = post.content_text

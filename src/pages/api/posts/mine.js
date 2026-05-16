@@ -22,7 +22,8 @@ export async function GET({ cookies }) {
     await ensureDbSchema();
     const db = getDb();
     const result = await db.execute({
-      sql: `SELECT id, content_html, content_text, accent_color, doodle_data_url, created_at
+      sql: `SELECT id, content_html, content_text, accent_color, doodle_data_url, created_at,
+                   visibility, privacy_flags, public_slug
             FROM blog_posts
            WHERE username = ? AND deleted_at IS NULL
            ORDER BY datetime(created_at) DESC, id DESC
@@ -36,6 +37,9 @@ export async function GET({ cookies }) {
       accent_color: String(row.accent_color || '#8dc5ff'),
       doodle_data_url: String(row.doodle_data_url || ''),
       created_at: String(row.created_at || ''),
+      visibility: String(row.visibility || 'public'),
+      privacy_flags: String(row.privacy_flags || '{}'),
+      public_slug: row.public_slug ? String(row.public_slug) : null,
     }));
     return new Response(JSON.stringify({ posts }), {
       status: 200,

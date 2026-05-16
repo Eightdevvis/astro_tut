@@ -7,6 +7,7 @@ const pageTitle = 'My Astro Learning Blog';
 
 type DbBlogRow = {
   id: number;
+  slug: string | null;
   username: string;
   content_text: string;
   created_at: string;
@@ -16,14 +17,15 @@ let posts: DbBlogRow[] = [];
 try {
   await ensureDbSchema();
   const result = await getDb().execute({
-    sql: `SELECT id, username, content_text, created_at
+    sql: `SELECT id, public_slug, username, content_text, created_at
           FROM blog_posts
-         WHERE deleted_at IS NULL
+         WHERE deleted_at IS NULL AND visibility = 'public'
          ORDER BY datetime(created_at) DESC, id DESC`,
     args: [],
   });
   posts = (result.rows || []).map((row) => ({
     id: Number(row.id ?? 0),
+    slug: row.public_slug ? String(row.public_slug) : null,
     username: String(row.username ?? ''),
     content_text: String(row.content_text ?? ''),
     created_at: String(row.created_at ?? ''),
@@ -45,7 +47,7 @@ function titleFromText(text: string, id: number): string {
   <p>This is where I will post about my journey learning Astro.</p>
   <ul>
     {posts.map((post) => (
-      <BlogPost url={`/posts/db/${post.id}`} title={titleFromText(post.content_text, post.id)} />
+      <BlogPost url={`/posts/db/${post.slug || post.id}`} title={titleFromText(post.content_text, post.id)} />
     ))}
   </ul>
 </BaseLayout>

@@ -23,6 +23,7 @@ const POSTS_ON_HOME = 6;
 
 type DbPost = {
   id: number;
+  slug: string | null;
   created_at: string;
   content_text: string;
 };
@@ -31,15 +32,16 @@ let recentDbPosts: DbPost[] = [];
 try {
   await ensureDbSchema();
   const result = await getDb().execute({
-    sql: `SELECT id, created_at, content_text
+    sql: `SELECT id, public_slug, created_at, content_text
        FROM blog_posts
-      WHERE deleted_at IS NULL
+      WHERE deleted_at IS NULL AND visibility = 'public'
       ORDER BY datetime(created_at) DESC, id DESC
       LIMIT ?`,
     args: [POSTS_ON_HOME],
   });
   recentDbPosts = (result.rows || []).map((row) => ({
     id: Number(row.id ?? 0),
+    slug: row.public_slug ? String(row.public_slug) : null,
     created_at: String(row.created_at ?? ''),
     content_text: String(row.content_text ?? ''),
   }));
@@ -75,7 +77,7 @@ const homePosts = recentDbPosts
   .map((row): HomePost => {
     const plain = String(row.content_text || '').trim();
     const title = plain.split('\n').find((line) => line.trim().length > 0)?.trim().slice(0, 90) || 'Neuer Blogpost';
-    const url = row.id > 0 ? `/posts/db/${row.id}` : '';
+    const url = row.id > 0 ? `/posts/db/${row.slug || row.id}` : '';
     const time = dbTime(row.created_at);
     return { title, url, plain, time };
   })

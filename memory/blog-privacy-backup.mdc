@@ -36,9 +36,26 @@ Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
 - **A4 Soft-Delete + Papierkorb**: `DELETE /api/posts/[id]` setzt nur `deleted_at = datetime('now')`. Neue Endpoints: `GET /api/posts/trash` (Liste), `POST /api/posts/[id]/restore` (Wiederherstellen). Alle Lese-Queries filtern `WHERE deleted_at IS NULL`: `src/pages/api/posts/mine.js`, `src/pages/blogpost.astro` (Hub-Tiles), `src/pages/posts/db/[id].astro` (Detail), `src/pages/blog.astro` (Liste), `src/pages/index.astro` (Home-Snippet). Hartes Loeschen kommt spaeter via Cron/Admin.
 - **Edit-Recovery fuer bestehende Posts (offen):** Recovery-Banner laeuft nur fuer Slot 0. Wenn ein Server-Draft fuer einen existierenden Post existiert (User hat in den Edit-Modus gewechselt, getippt, nicht gespeichert), bietet der Modal aktuell noch nicht automatisch den Draft an. Folge-Schritt.
 
+## Phase 3 — Visibility + Slug + Hub-Ausschluss (fertig)
+
+- **B13 Slug**: jeder neue Post bekommt in `POST /api/posts/add` einen 12-stelligen Hex-Slug (`makePublicSlug()` in `src/lib/blog-privacy.js`, basiert auf `crypto.randomUUID()`). Bei extrem unwahrscheinlicher UNIQUE-Kollision wird bis zu zwei Mal nachgewuerfelt. Response liefert `slug` + `visibility` mit zurueck.
+- **B1 Visibility**: Spalte `visibility` akzeptiert `public | unlisted | private | password`. `POST /api/posts/add` und `PATCH /api/posts/[id]` nehmen `visibility` + `privacyFlags` aus dem Body (PATCH nur, wenn explizit mitgeschickt — sonst bleibt der Wert stehen). `normalizePrivacyFlags` laesst nur boolesche Werte durch und serialisiert als kompaktes JSON.
+- **Detail-Route `src/pages/posts/db/[id].astro`**:
+  - akzeptiert sowohl Integer-ID als auch 12-Hex-Slug (`isValidPublicSlug`),
+  - `public`/`unlisted` → fuer alle sichtbar,
+  - `private` → nur Autor (Session-Check via `getSessionUserFromCookies`), sonst 404 (Existenz nicht verraten),
+  - `password` → bis Phase 9 generisch 404,
+  - bei Integer-Aufruf eines `public` Posts mit Slug: **301-Redirect** auf die Slug-URL (kanonisches URL konsolidiert SEO + saubere Hub-Links). Unlisted bleiben auf der zuletzt verwendeten URL.
+- **Hub- und Listing-Filter**: zusaetzlich zu `deleted_at IS NULL` jetzt `visibility = 'public'` in:
+  - `src/pages/blogpost.astro` (Hub-Tiles),
+  - `src/pages/blog.astro`,
+  - `src/pages/index.astro` (Home-Snippet).
+  - Tile-/Listing-Links bauen jetzt `/posts/db/${slug || id}`.
+- **`/api/posts/mine`** liefert zusaetzlich `visibility`, `privacy_flags`, `public_slug` mit — Voraussetzung fuer die kommende Privacy-Toolbox-UI in Phase 6.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-3. Visibility + Slug + Hub-Ausschluss.
+4. Meta/Header-Privacy (B2 + B3 + B9 + B10 + B11).
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
