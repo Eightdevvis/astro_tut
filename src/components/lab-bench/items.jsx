@@ -94,6 +94,12 @@ export const ITEM_META = {
     h: 90,
     label: 'Tiegelzange',
   },
+  puddle: {
+    w: 80,
+    h: 20,
+    kind: 'spill',
+    label: 'Verschuettete Bruehe — zieh sie in den Muelleimer',
+  },
 };
 
 export function renderItem(type, state = {}) {
@@ -120,6 +126,8 @@ export function renderItem(type, state = {}) {
       return <Beaker state={state} />;
     case 'tongs':
       return <Tongs />;
+    case 'puddle':
+      return <Puddle />;
     default:
       return null;
   }
@@ -383,6 +391,22 @@ function PasteurFlask({ state }) {
       )}
       {/* Glanz */}
       <path d="M14 100 Q 14 90, 25 86" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.7" />
+    </g>
+  );
+}
+
+function Puddle() {
+  // Brauner Lache mit Spritzern. Lebt forever bis User sie in den Muelleimer
+  // zieht. Item-Typ `puddle` (kind: 'spill') ist nicht-snap-fähig.
+  return (
+    <g>
+      <ellipse cx="40" cy="13" rx="38" ry="6" fill={LIQUID_COLOR_UNSTERILE} stroke="#7a5d20" stroke-width="1.4" />
+      <ellipse cx="40" cy="11" rx="30" ry="4" fill="#d8b272" opacity="0.7" />
+      {/* Spritzer */}
+      <circle cx="7"  cy="16" r="2.5" fill={LIQUID_COLOR_UNSTERILE} />
+      <circle cx="73" cy="14" r="2"   fill={LIQUID_COLOR_UNSTERILE} />
+      <circle cx="18" cy="6"  r="1.5" fill={LIQUID_COLOR_UNSTERILE} />
+      <circle cx="60" cy="4"  r="1.4" fill={LIQUID_COLOR_UNSTERILE} />
     </g>
   );
 }

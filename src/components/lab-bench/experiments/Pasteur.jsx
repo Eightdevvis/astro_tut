@@ -62,6 +62,10 @@ function Lab() {
   // Sterilisation — Pasteur startet mit unsteriler".
   const [hint, setHint] = useState(null);
   const hintTimerRef = useRef(null);
+  // Spilled-State: wenn der Kolben ohne Schwanenhals gekippt wurde, schwappt
+  // die Bruehe raus — Smiley sofort sehr schlecht gelaunt, bis User die
+  // Puddle in den Muelleimer zieht.
+  const [spilled, setSpilled] = useState(false);
   function showHint(text, ms = 5000) {
     setHint(text);
     clearTimeout(hintTimerRef.current);
@@ -69,7 +73,8 @@ function Lab() {
   }
   useEffect(() => () => clearTimeout(hintTimerRef.current), []);
 
-  const mood = computeMood(idleActions);
+  // Mood: spilled ueberschreibt alles (Bruehe ausgekippt = sehr schlecht).
+  const mood = spilled ? -3 : computeMood(idleActions);
   // Mood-Tracking ins Debug-Log: bei jedem Render zeigen wir den aktuellen
   // Idle-Counter, den daraus berechneten Mood-Wert (-3..+3) und den daraus
   // resultierenden Smiley-Mund-Kontrollpunkt. Damit kannst du im Panel sehen,
@@ -232,31 +237,39 @@ function Lab() {
       // Hier kein Menue-Pfad mehr.
       // pull_neck als Menue-Aktion ebenfalls entfernt — siehe onPlacedChange.
       case 'tip': {
-        // Kippen: Meilenstein einmalig, `tilted` togglebar. Kipprichtung
-        // ist -38 deg (in LabBench), Flasche lehnt nach hinten.
-        //
-        // Kontaminations-Logik (Pasteurs Idee):
-        //   - Sterilisiert + gerader Hals + Hals-Schmutz -> Schmutz faellt
-        //     beim Kippen ins Liquid -> Farbe wechselt sichtbar zurueck
-        //     auf unsteril-braun.
-        //   - Sterilisiert + Schwanenhals -> Schmutz steckt in Biegung,
-        //     erreicht das Liquid auch beim Kippen nicht -> bleibt steril.
-        //   - Unsteril + nicht sterilisiert: Liquid ist eh schon braun.
-        //     Kippen zeigt nur die Kipp-Animation; Farbe bleibt.
-        // Die Kontaminations-Punkte zeichnet der Renderer streng anhand
-        // der Liquid-Farbe — Braun => Punkte, Sterile => keine. Damit ist
-        // "Farbe + Punkte" EIN gekoppelter Zustand, kein separater Flag.
+        // Kippen-Regeln (umstrukturiert nach Sasha-Feedback):
+        //   - Gerader Hals + Liquid drin -> Bruehe schwappt raus, Puddle
+        //     erscheint daneben, Kolben leer, spilled=true -> Smiley sehr
+        //     schlecht. Steril/unsteril egal — Hals-Form ist das Problem.
+        //   - Schwanenhals -> Bruehe bleibt drin (Hals haelt sie zurueck);
+        //     bleibt steril wenn vorher sterilisiert, sonst eh schon braun.
+        //   - Empty -> nichts passiert ausser Animation + Meilenstein.
         const s = item.state || {};
-        const isBrownAlready = s.liquidColor === LIQUID_COLOR_UNSTERILE;
-        const dustFallsIn = !!s.neckContaminated && s.neck !== 'swan';
-        // Nur dann ein sichtbarer Farb-Wechsel: Dreck aus dem Hals faellt
-        // in vorher steriles Liquid.
-        const willTurnBrown = dustFallsIn && !isBrownAlready;
         helpers.update({ tipped: true, tilted: true });
         award('tipped');
-        if (willTurnBrown) {
+        if (s.liquid && s.neck !== 'swan') {
+          // SPILL. Puddle direkt unter dem Kolben (auf Tischhoehe),
+          // versetzt nach links damit sie nicht das Stativ ueberdeckt.
           setTimeout(() => {
-            helpers.update({ liquidColor: LIQUID_COLOR_UNSTERILE });
+            helpers.addAt(
+              'puddle',
+              item.x - 8,
+              item.y + ITEM_META[item.type].h + 20,
+              {},
+            );
+            // Flasche leeren + Sterilisations-Status zurueck (man muesste
+            // ja eh neu sterilisieren).
+            helpers.update({
+              liquid: null,
+              liquidColor: null,
+              sterilized: false,
+              neckContaminated: false,
+            });
+            setSpilled(true);
+            showHint(
+              'Ohne Schwanenhals laeuft die Bruehe einfach aus dem geraden Hals raus! Sauber machen: Puddle in den Muelleimer ziehen.',
+              7000,
+            );
           }, 700);
         }
         return;
@@ -422,6 +435,13 @@ function Lab() {
   }
   function handleItemTrashed(item) {
     dbg('pasteur-item-trashed', { type: item.type, id: item.id });
+    if (item.type === 'puddle') {
+      // Puddle weggemacht -> Smiley darf sich erholen (zurueck zum normalen
+      // Idle-basierten Mood). Idle bleibt — Saubermachen ist Pflicht, kein
+      // Gewinn.
+      setSpilled(false);
+      return;
+    }
     bump();
   }
 
