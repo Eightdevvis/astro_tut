@@ -3,6 +3,7 @@ import LabBench from '../LabBench.jsx';
 import { ITEM_META, LIQUID_COLOR_UNSTERILE, LIQUID_COLOR_STERILE } from '../items.jsx';
 import MikrobioDebugPanel from '../../MikrobioDebugPanel.jsx';
 import { dbg } from '../../../lib/mikrobio-debug.js';
+import ArchaeaLipidsConfetti from '../../ArchaeaLipidsConfetti.jsx';
 
 // Pasteur-Experiment-Wrapper:
 //   1. Intro-Szene: Pasteur-Portrait + Gedanken-Blase + Weiter-Knopf.
@@ -66,6 +67,12 @@ function Lab() {
   // die Bruehe raus — Smiley sofort sehr schlecht gelaunt, bis User die
   // Puddle in den Muelleimer zieht.
   const [spilled, setSpilled] = useState(false);
+  // Wenn der Kontroll-Schritt durch ist (Schwanenhals-Kolben gekippt, Liquid
+  // ist wieder unsteril): grosse PASTEURISIERT-Feier mit Konfetti.
+  const [pasteurized, setPasteurized] = useState(null); // null | runId-Number
+  const pasteurizedFiredRef = useRef(false);
+  const pasteurizedTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(pasteurizedTimerRef.current), []);
   function showHint(text, ms = 5000) {
     setHint(text);
     clearTimeout(hintTimerRef.current);
@@ -266,15 +273,23 @@ function Lab() {
         ) {
           // Pasteurs entscheidendes Kontroll-Experiment: Liquid wandert
           // durch die Biegung, beruehrt den Schmutz -> wird unsteril.
+          // Plus grosse PASTEURISIERT-Feier mit Konfetti einmalig pro Session.
           setTimeout(() => {
             helpers.update({
               liquidColor: LIQUID_COLOR_UNSTERILE,
               neckContaminated: false, // Schmutz ist jetzt im Liquid
             });
-            showHint(
-              'Beim Kippen wandert die Bruehe durch die Biegung und schwemmt den festsitzenden Schmutz mit — die zuvor sterile Loesung wird wieder unsteril. Pasteurs entscheidender Kontroll-Schritt.',
-              8000,
-            );
+            if (!pasteurizedFiredRef.current) {
+              pasteurizedFiredRef.current = true;
+              setPasteurized(Date.now());
+              // Overlay nach 5.5 s ausblenden — lang genug zum Lesen +
+              // Konfetti-Cooldown.
+              clearTimeout(pasteurizedTimerRef.current);
+              pasteurizedTimerRef.current = setTimeout(
+                () => setPasteurized(null),
+                5500,
+              );
+            }
           }, 700);
         }
         return;
@@ -522,8 +537,36 @@ function Lab() {
         Hals ziehen mit Zange, kippen). Smiley faellt nach drei Aktionen ohne
         Fortschritt — Reihenfolge ist sonst frei.
       </p>
+      {pasteurized && (
+        <>
+          <PasteurizedOverlay key={pasteurized} />
+          <ArchaeaLipidsConfetti tier="gold" runId={pasteurized} />
+        </>
+      )}
       <LabStyles />
       <MikrobioDebugPanel />
+    </div>
+  );
+}
+
+// Grosse PASTEURISIERT-Feier-Overlay. Buchstaben poppen einzeln nacheinander
+// auf, Black-Spiral-Font, dunkelbeige Farbe. Wird zusammen mit Konfetti
+// gerendert wenn das Pasteur-Kontroll-Experiment erfolgreich war.
+const PASTEURIZED_WORD = 'PASTEURISIERT!';
+function PasteurizedOverlay() {
+  return (
+    <div className="pst-feier" aria-hidden="true">
+      <div className="pst-feier-text">
+        {Array.from(PASTEURIZED_WORD).map((ch, i) => (
+          <span
+            key={i}
+            className="pst-feier-letter"
+            style={{ animationDelay: `${i * 90}ms` }}
+          >
+            {ch === ' ' ? ' ' : ch}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -819,6 +862,39 @@ function LabStyles() {
         opacity: 0.55;
       }
       .lab-hint-banner-dismiss:hover { opacity: 1; }
+
+      /* PASTEURISIERT-Feier */
+      .pst-feier {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 150;
+      }
+      .pst-feier-text {
+        font-family: 'Black Spiral', 'Georgia', serif;
+        color: #8a6a30; /* dunkelbeige */
+        font-size: clamp(2.5rem, 9vw, 6rem);
+        line-height: 1;
+        letter-spacing: 0.03em;
+        text-shadow:
+          0 3px 0 rgba(255, 255, 255, 0.35),
+          0 6px 24px rgba(0, 0, 0, 0.25);
+        white-space: nowrap;
+      }
+      .pst-feier-letter {
+        display: inline-block;
+        opacity: 0;
+        transform: scale(0.2) translateY(40px);
+        animation: pst-feier-pop 0.55s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+      }
+      @keyframes pst-feier-pop {
+        0%   { opacity: 0; transform: scale(0.2) translateY(40px) rotate(-12deg); }
+        60%  { opacity: 1; transform: scale(1.18) translateY(-6px) rotate(2deg); }
+        100% { opacity: 1; transform: scale(1) translateY(0) rotate(0); }
+      }
     `}</style>
   );
 }
