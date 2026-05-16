@@ -8,6 +8,7 @@ import ThemeInit from '../components/ThemeInit.astro';
 import ThemeClient from '../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../components/BewareOfBugsBanner.astro';
 import PageFavicon from '../components/PageFavicon.astro';
+import PrivacyBackupSidebar from '../components/PrivacyBackupSidebar.astro';
 import { ensureDbSchema, getDb } from '../lib/db.js';
 import { getHubExcludedUsernames } from '../lib/user-privacy-defaults.js';
 import '../styles/global.css';
@@ -124,12 +125,20 @@ try {
       }
       .editor-shell {
         position: relative;
-        width: min(860px, 100%);
+        width: min(1100px, 100%);
         margin: 0 auto;
         min-height: 80dvh;
         display: flex;
-        align-items: center;
+        flex-direction: row;
+        align-items: flex-start;
         justify-content: center;
+        gap: 1.2rem;
+      }
+      @media (max-width: 900px) {
+        .editor-shell {
+          flex-direction: column;
+          align-items: stretch;
+        }
       }
       .editor-activation {
         position: absolute;
@@ -580,6 +589,7 @@ try {
       </section>
 
       <section class="editor-shell" aria-label="Blogpost Editor">
+          <PrivacyBackupSidebar />
           <div class="editor-wrap" id="editorWrap">
             <button class="editor-activation" id="editorActivation" type="button" aria-label="Editor oeffnen">+</button>
             <button class="tool bold" data-tool="bold" title="Fett">B</button>
@@ -916,6 +926,11 @@ try {
         if (savePostBtn) savePostBtn.textContent = 'Post aktualisieren';
         postModal?.classList.remove('show');
         postModal?.setAttribute('aria-hidden', 'true');
+        // Sidebar-State auf Werte des Posts laden, damit Toggles wieder
+        // den DB-Stand zeigen.
+        if (window.__blogToolbox && typeof window.__blogToolbox.loadFromPost === 'function') {
+          window.__blogToolbox.loadFromPost(row);
+        }
         editor.focus();
         resizeCanvasToBox();
         setMsg('Bearbeitungsmodus aktiv.', true);
@@ -1116,6 +1131,13 @@ try {
           try {
             const isEditing = Number.isInteger(currentEditingPostId) && currentEditingPostId > 0;
             const endpoint = isEditing ? `/api/posts/${currentEditingPostId}` : '/api/posts/add';
+            // Toolbox-State (Visibility + privacyFlags + optional Passwort + expiresAt)
+            // wird vom Sidebar-Modul geliefert. Wenn die Sidebar (noch) nicht
+            // initialisiert ist, schicken wir nichts mit — Server faellt
+            // auf User-Defaults zurueck.
+            const toolboxPayload = (window.__blogToolbox && typeof window.__blogToolbox.readPayload === 'function')
+              ? window.__blogToolbox.readPayload()
+              : {};
             const res = await fetch(endpoint, {
               method: isEditing ? 'PATCH' : 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1125,6 +1147,7 @@ try {
                 contentText,
                 accentColor: currentColor,
                 doodleDataUrl: doodleCanvas ? doodleCanvas.toDataURL('image/png') : '',
+                ...toolboxPayload,
               }),
             });
             const data = await res.json().catch(() => ({}));

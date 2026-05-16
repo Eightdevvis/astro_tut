@@ -110,9 +110,27 @@ Verifiziert per curl gegen Dev-Server: GPTBot/ClaudeBot/archive.org_bot → 403,
 
 Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidden → /blog/sitemap leer + robots.txt listet alle Posts unter Disallow, block_all_ai → Browser 200 / GPTBot 403.
 
+## Phase 6 — Toolbox-UI (fertig)
+
+- **Daten als Single-Source-of-Truth**:
+  - `src/lib/privacy-toggles.js` — `EFFECT_AXES` (12 Achsen), `VISIBILITIES` (4 Stufen mit Effekt-Vorbelegung), `TOGGLES` (9 togglebare Schalter), `aggregateEffects(visibilityId, flags)`.
+  - `src/lib/backup-layers.js` — `BACKUP_AXES` (8 Achsen), `LAYERS` (6 Schichten mit `alwaysOn` und Effekt-Werten).
+  - Wird sowohl von der UI als auch vom Datenschutz-Tab (Phase 13) gelesen.
+- **`src/components/PrivacyBackupSidebar.astro`**:
+  - Linke Spalte (sticky), zwei Boxen untereinander mit eigenen SVG-Illustrationen (Werkzeugkiste + Tresor).
+  - Akkordeon: nur eine Box ausgeklappt zur Zeit (`is-open`).
+  - Privacy-Box: Visibility-Radio-Group (4 Stufen mit Info-Button), Passwort-Feld (nur sichtbar bei `password`), Expire-Datetime, 9 Toggle-Checkboxen mit Info-Button, "Effektiver Zustand"-Liste live aktualisiert aus `aggregateEffects`.
+  - Backup-Box: Liste der 6 Schichten mit Live-Status + Info-Button, Hinweis auf Detail-Verwaltung in `/settings`.
+  - InfoPopover (eines fuer alle, dynamisch befuellt): zeigt Titel, Kurzbeschreibung und Effekt-Checkliste (gegen die richtige Achsenliste je nach Kontext); positioniert rechts vom geklickten Button mit Edge-Korrektur.
+  - State im window unter `window.__blogToolbox` (`state, readPayload(), loadFromPost(), reset()`). Editor-Save-Script liest `readPayload()` und mergt es in den `/api/posts/add` bzw. PATCH-Body. Modal "Bearbeiten" ruft `loadFromPost(row)` mit den `visibility/privacy_flags`-Werten aus `/api/posts/mine`.
+  - Sidebar zieht beim Mount die User-Defaults aus `GET /api/user/privacy-defaults` und belegt damit visibility + flags vor.
+- **`src/pages/blogpost.astro`** eingebunden: Sidebar als linker Flex-Child im `.editor-shell`-Container; `max-width` der Shell auf 1100 px erhoeht, gap 1.2 rem; unter 900 px stackt die Sidebar oberhalb des Editors.
+- **Hub-Modus blendet die Sidebar automatisch mit aus** ueber das bestehende `.page[data-mode="hub"] .editor-shell { opacity: 0; max-height: 0; }`.
+- Verifiziert per curl: HTML rendert alle 4 Visibility-Radios, 9 Toggle-Checkboxen, 6 Backup-Layer-Eintraege und 19 InfoToggle-Buttons; Editor-Save-Pfad nimmt jetzt `visibility`, `privacyFlags`, optional `password` + `expiresAt` mit.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
+10. Watermark / Anti-Scrape-Soft / JS-only (B18 + B19 + B21).
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
