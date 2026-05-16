@@ -9,6 +9,7 @@
 
 import { ensureDbSchema, getDb } from '../lib/db.js';
 import { computeEffectivePrivacy } from '../lib/blog-privacy.js';
+import { getFullHiddenUsernames } from '../lib/user-privacy-defaults.js';
 
 function siteOrigin() {
   if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/+$/, '');
@@ -35,13 +36,15 @@ export async function GET() {
 
   try {
     await ensureDbSchema();
+    const hidden = await getFullHiddenUsernames();
     const r = await getDb().execute(
-      `SELECT id, public_slug, visibility, privacy_flags, created_at
+      `SELECT id, username, public_slug, visibility, privacy_flags, created_at
          FROM blog_posts
         WHERE deleted_at IS NULL AND visibility = 'public'
         ORDER BY datetime(created_at) DESC`
     );
     for (const row of r.rows || []) {
+      if (hidden.has(String(row.username || ''))) continue;
       const eff = computeEffectivePrivacy({
         visibility: row.visibility,
         privacyFlags: row.privacy_flags,

@@ -1,0 +1,19 @@
+## Profilseite `/me`
+
+- Quelle: `src/pages/me.astro` (Login-Pflicht; `getSessionUserFromCookies` → bei Miss `Astro.redirect('/')`).
+- Zeigt aktuell: `displayName` (oder `username`), bei Drift `@username` als kleinen Sub-Text; daneben Hero-Icon (Mensch-SVG).
+- Plus Site-Layer-Komponenten: `GraffitiLayer`, `SitePlacedItemsLayer`, `SiteInventory`, `TesterBugBar`.
+- Verlinkt aus `src/components/LoginWidget.jsx` (`href="/me"`).
+- Public-Profil-Routen `/u/<username>` existieren **nicht**. Wenn das spaeter kommt, sollten die Privacy-Direktiven (siehe `blog-privacy-backup.mdc`) auch dort greifen.
+
+## Pro-User-Datenschutz-Defaults (`user_privacy_defaults`)
+
+- Tabelle in `src/lib/db.js`; Helper `src/lib/user-privacy-defaults.js`.
+- Endpoint `GET/PUT /api/user/privacy-defaults` (Login + `blogpost_poster`).
+- Wirkung:
+  - `default_visibility` / `default_flags` — pre-fillen `POST /api/posts/add`, falls Client nichts mitschickt (C1).
+  - `hub_excluded` — Posts dieses Users fliegen aus dem `/blogpost`-Hub (C4).
+  - `full_hidden` — zusaetzlich aus `/blog`, `/` (Home), `sitemap.xml` raus; in `robots.txt` als `Disallow:` pro Post (C5).
+  - `block_all_ai` — erzwingt UA-Gate `{ai, archive}` auch fuer public Posts dieses Users in `posts/db/[id].astro` (C7).
+  - `backup_webhook_url` — Phase 11 (Mirror-POST nach jedem Save).
+- UI fuer Toggling: Datenschutz-Tab in `/settings` (Phase 13) — bis dahin nur per API.

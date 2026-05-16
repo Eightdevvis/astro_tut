@@ -17,6 +17,7 @@
 import { ensureDbSchema, getDb } from '../lib/db.js';
 import { botsInCategory } from '../lib/bot-fingerprints.js';
 import { computeEffectivePrivacy } from '../lib/blog-privacy.js';
+import { getFullHiddenUsernames } from '../lib/user-privacy-defaults.js';
 
 export async function GET() {
   const aiBots = botsInCategory('ai');
@@ -33,18 +34,20 @@ export async function GET() {
 
   try {
     await ensureDbSchema();
+    const hidden = await getFullHiddenUsernames();
     const r = await getDb().execute(
-      `SELECT id, public_slug, visibility, privacy_flags
+      `SELECT id, username, public_slug, visibility, privacy_flags
          FROM blog_posts
         WHERE deleted_at IS NULL
         ORDER BY id ASC`
     );
     for (const row of r.rows || []) {
+      const isHidden = hidden.has(String(row.username || ''));
       const eff = computeEffectivePrivacy({
         visibility: row.visibility,
         privacyFlags: row.privacy_flags,
       });
-      if (!eff.noindex) continue;
+      if (!isHidden && !eff.noindex) continue;
       const slug = row.public_slug ? String(row.public_slug) : null;
       const key = slug || String(row.id);
       lines.push(`Disallow: /posts/db/${key}`);

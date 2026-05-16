@@ -4,6 +4,7 @@ import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
+import { getUserPrivacyDefaults } from '../../../lib/user-privacy-defaults.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -68,8 +69,18 @@ export async function POST({ request, cookies }) {
   const contentText = String(body?.contentText || '').trim();
   const accentColor = normalizeColor(body?.accentColor);
   const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
-  const visibility = normalizeVisibility(body?.visibility);
-  const privacyFlags = normalizePrivacyFlags(body?.privacyFlags);
+
+  // C1: wenn der Client keine Visibility/Flags mitschickt, fallen wir auf
+  // die Profil-Defaults dieses Users zurueck. Damit setzt jeder Post
+  // automatisch das, was der User in seinem Datenschutz-Tab vorgewaehlt
+  // hat. Bestehende Defaults (public/leere flags) bleiben unauffaellig.
+  const userDefaults = await getUserPrivacyDefaults(username).catch(() => null);
+  const visibility = body?.visibility !== undefined
+    ? normalizeVisibility(body.visibility)
+    : (userDefaults?.default_visibility || 'public');
+  const privacyFlags = body?.privacyFlags !== undefined
+    ? normalizePrivacyFlags(body.privacyFlags)
+    : (userDefaults?.default_flags || '{}');
   const expiresAt = parseExpiresAt(body?.expiresAt);
   const passwordHash = visibility === 'password' ? await hashPasswordIfGiven(body?.password) : null;
 

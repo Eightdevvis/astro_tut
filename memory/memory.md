@@ -15,6 +15,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | Astro Hybrid — Prerender (`[tag].astro`), Nav2/Cookies, Build `.vercel/output` | [`astro-prerender-hybrid.mdc`](astro-prerender-hybrid.mdc) |
 | Blogpost-Editor (Recht, Nav-Icon, API, Scribble-Editor, User-Grid) | [`blogpost-editor.mdc`](blogpost-editor.mdc) |
 | Blog Backup-Tresor + Privacy-Werkzeugkasten (mehrschichtige Sicherung, Privacy-Toggles, Tokens, Observability, Datenschutz-Details) | [`blog-privacy-backup.mdc`](blog-privacy-backup.mdc) |
+| Profilseite `/me` + Pro-User-Datenschutz-Defaults (Visibility-Defaults, Hub-/Full-Hidden, block_all_ai, Backup-Webhook) | [`profile-page.mdc`](profile-page.mdc) |
 | Datenbank (libsql / SQLite lokal, Turso prod, `db.js`) | [`database.mdc`](database.mdc) |
 | fgraffiti (globales Overlay, Hotkey, Stift/Spray, Settings) | [`fgraffiti.mdc`](fgraffiti.mdc) |
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |

@@ -9,6 +9,7 @@ import ThemeClient from '../components/ThemeClient.astro';
 import BewareOfBugsBanner from '../components/BewareOfBugsBanner.astro';
 import PageFavicon from '../components/PageFavicon.astro';
 import { ensureDbSchema, getDb } from '../lib/db.js';
+import { getHubExcludedUsernames } from '../lib/user-privacy-defaults.js';
 import '../styles/global.css';
 
 const token = Astro.cookies.get('session')?.value;
@@ -36,15 +37,20 @@ const HUB_TILE_COUNT = 24; // 5x5-Grid mit dem zentralen `+`-Tile in der Mitte
 let hubTiles: HubTile[] = [];
 try {
   await ensureDbSchema();
+  // C4/C5: Posts von Usern, die hub_excluded oder full_hidden gesetzt
+  // haben, tauchen im Hub nicht auf. Wir lesen die Usernames einmal und
+  // filtern client-seitig (kleinere Mengen, kein JOIN noetig).
+  const hidden = await getHubExcludedUsernames();
   const r = await getDb().execute({
-    sql: `SELECT id, public_slug, content_text, created_at
+    sql: `SELECT id, username, public_slug, content_text, created_at
             FROM blog_posts
            WHERE deleted_at IS NULL AND visibility = 'public'
            ORDER BY datetime(created_at) DESC, id DESC
            LIMIT ?`,
-    args: [HUB_TILE_COUNT],
+    args: [HUB_TILE_COUNT * 2],
   });
-  hubTiles = (r.rows || []).map((row) => {
+  const filtered = (r.rows || []).filter((row) => !hidden.has(String(row.username || '')));
+  hubTiles = filtered.slice(0, HUB_TILE_COUNT).map((row) => {
     const id = Number(row.id ?? 0);
     const slug = row.public_slug ? String(row.public_slug) : null;
     const text = String(row.content_text || '').replace(/\s+/g, ' ').trim();

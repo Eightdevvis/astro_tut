@@ -17,6 +17,7 @@ import {
 } from '../../../lib/blog-tokens.js';
 import { extractClientMeta, safeLogRequest } from '../../../lib/request-log.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
+import { isAuthorBlockAllAi } from '../../../lib/user-privacy-defaults.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
 const asInteger = Number(rawId);
@@ -211,6 +212,14 @@ const effective = computeEffectivePrivacy({
   visibility: post.visibility,
   privacyFlags: post.privacy_flags,
 });
+
+// C7: wenn der Autor `block_all_ai=1` gesetzt hat, wird der UA-Gate fuer
+// AI+archive auch fuer public Posts zwangsaktiviert. Wir erweitern das
+// bestehende Set in-place.
+if (await isAuthorBlockAllAi(post.username)) {
+  effective.uaGateBlock.add('ai');
+  effective.uaGateBlock.add('archive');
+}
 
 // B4 UA-Gate: hartes Block auf Serverebene, bevor der Inhalt rendert.
 // Greift fuer alle Bots, deren Kategorie in uaGateBlock steht (nicht-public

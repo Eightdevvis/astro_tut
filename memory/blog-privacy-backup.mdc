@@ -98,9 +98,21 @@ Verifiziert per curl gegen Dev-Server: GPTBot/ClaudeBot/archive.org_bot → 403,
 - **Sicherheit**: DB speichert nur sha256-Hash des Tokens und bcrypt-Hash des Passworts; Klartext erscheint nur einmalig im Create-Response.
 - Verifiziert per `/tmp/phase9-smoke.mjs` (Pure-Function-Pfad) und curl gegen Dev-Server: ohne Auth/Token/PW → 404, falsches PW → 404, korrektes PW → 200, gueltiger shared-Token → 200 mehrfach, ungueltiger Token → 404, One-Time → erstes 200, zweites 404, expired → 410. node --test: 438/0.
 
+## Phase 7 — Profil-Ebene (fertig)
+
+- **`src/lib/user-privacy-defaults.js`**: `getUserPrivacyDefaults(user)`, `upsertUserPrivacyDefaults(user, patch)`, `getFullHiddenUsernames() → Set`, `getHubExcludedUsernames() → Set`, `isAuthorBlockAllAi(user)`. DEFAULTS-Objekt als Fallback. Flags werden gefiltert (nur Booleans).
+- **`GET/PUT /api/user/privacy-defaults`** (Login + `blogpost_poster`).
+- **C1 Default-Anwendung** in `POST /api/posts/add`: wenn `visibility`/`privacyFlags` nicht im Body, fall auf `userDefaults.default_visibility`/`default_flags` zurueck.
+- **C4 Hub-Ausschluss** in `src/pages/blogpost.astro`: liest `getHubExcludedUsernames()` (umfasst hub_excluded ODER full_hidden) und filtert Hub-Tiles.
+- **C5 Full-Hidden** in `src/pages/blog.astro`, `src/pages/index.astro`, `src/pages/sitemap.xml.js`, `src/pages/robots.txt.js`: liest `getFullHiddenUsernames()`. In robots.txt landen *alle* Posts dieses Users zusaetzlich als `Disallow:`-Zeilen.
+- **C7 Block-All-AI** in `posts/db/[id].astro`: `isAuthorBlockAllAi(post.username)` erweitert das `effective.uaGateBlock`-Set um `ai` + `archive` — auch fuer public Posts wird der UA-Gate aktiv.
+- Profilseite `/me` (`src/pages/me.astro`) jetzt in Memory dokumentiert (`memory/profile-page.mdc`).
+
+Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidden → /blog/sitemap leer + robots.txt listet alle Posts unter Disallow, block_all_ai → Browser 200 / GPTBot 403.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-7. Profil-Ebene + Memory-Update für `/me.astro`.
+6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).

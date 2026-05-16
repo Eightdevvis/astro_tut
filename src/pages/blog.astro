@@ -2,6 +2,7 @@
 import BlogPost from '../components/BlogPost.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { ensureDbSchema, getDb } from '../lib/db.js';
+import { getFullHiddenUsernames } from '../lib/user-privacy-defaults.js';
 
 const pageTitle = 'My Astro Learning Blog';
 
@@ -16,6 +17,7 @@ type DbBlogRow = {
 let posts: DbBlogRow[] = [];
 try {
   await ensureDbSchema();
+  const hidden = await getFullHiddenUsernames();
   const result = await getDb().execute({
     sql: `SELECT id, public_slug, username, content_text, created_at
           FROM blog_posts
@@ -23,7 +25,7 @@ try {
          ORDER BY datetime(created_at) DESC, id DESC`,
     args: [],
   });
-  posts = (result.rows || []).map((row) => ({
+  posts = (result.rows || []).filter((row) => !hidden.has(String(row.username || ''))).map((row) => ({
     id: Number(row.id ?? 0),
     slug: row.public_slug ? String(row.public_slug) : null,
     username: String(row.username ?? ''),
