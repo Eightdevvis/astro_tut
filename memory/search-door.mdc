@@ -21,7 +21,11 @@ Aus `/api/search`-Antwort wird **ein** Treffer ausgewaehlt und hinter der Tuer a
 
 `GET /api/search?q=<query>` — `src/pages/api/search.js`:
 - Kein Login noetig.
-- `posts`: bis 5 oeffentliche Posts (LIKE auf `content_text`, `WHERE deleted_at IS NULL AND visibility = 'public'`). **Snippet ist eine rein zufaellige Textstelle** (`pickRandomSnippet`) ohne Titel, ohne Datum, ohne `…`-Markierungen — das Anzeigeziel ist ein "zufaellig geoeffnetes Fenster" auf den Post, kein Listing-Snippet. Hartes Cropping macht das CSS in der Tuer.
+- `posts`: bis 5 oeffentliche Posts (LIKE auf `content_text`, `WHERE deleted_at IS NULL AND visibility = 'public'`). **Snippet ist ein zufaelliger ~1400-Zeichen-Block** (`pickRandomSnippet`) mit erhaltenen `\n`/Absaetzen, ohne Titel/Datum/`…`-Markierungen. Soll wie ein **Screenshot mitten aus dem Post** wirken: Tuer rendert den Block mit `white-space: pre-wrap` linksbuendig, negativem `margin-top` (Top-Clip) und `overflow:hidden` (Seiten + Bottom-Clip). Server-side bevorzugt Start an einem Zeilenanfang.
+
+## Visuals (Door-Design — Cartoon-Touch)
+
+Strikt schwarz/weiss ueber Theme-Variablen. **Tuerknauf = Lupe** (SVG), die mit Stiel nach links in die Tuer ragt und mit der Linse (`circle`) als runder Knauf rechts an der Tuer rausgukt. Hover schiebt den Knauf 1px nach rechts. **Cartoon-Kratzer** (7 kleine schraege Striche per `.door-scratch.s1..s7`, fest positioniert) verstreut auf der Tuer fuer einen handgezeichneten Touch. Namensschild zentriert (vertikal + horizontal, 70% Breite, monospace, Placeholder `???`). Innenraum-Hintergrund nimmt `--home-page-bg` an, Card-Variablen fuer das Post-Peek.
 - `users`: bis 5 (LIKE auf `username` ODER `display_name`).
 - Full-hidden User (`user_privacy_defaults.full_hidden=1`) werden in **beiden** Listen geblockt (auch deren Posts).
 - LIKE-Escape (`\%`, `\_`, `\\`) gegen Injection ueber `%`/`_`-Wildcards.
@@ -36,10 +40,6 @@ Aus `/api/search`-Antwort wird **ein** Treffer ausgewaehlt und hinter der Tuer a
 - `src/pages/users/[username].astro` — read-only User-Profil (Display-Name + User-Icon + `@username`), styling-identisch zum Hero-Block in `/me`.
 - Full-hidden User werden hier mit "User nicht gefunden" angezeigt (kein Leak).
 - Keine privaten Daten — nur `username` und `display_name` aus der `users`-Tabelle.
-
-## Visuals (Door-Design)
-
-Strict schwarz/weiss, scharfe Kanten passend zum restlichen Site-Stil — nutzt `--site-card-bg/-text/-border` und `--site-body-text`. Tuerpaneele als zwei eckige Rechtecke per `::before/::after`. Lupe ist klein (26x26 px), eckig, fuellt sich auf Hover invers. Namensschild **zentriert auf der Tuer** (vertikal + horizontal, 70% Breite, 48px hoch). Eingabe in **monospace**, Placeholder `???`. Innenraum hinter der Tuer nimmt `--home-page-bg` an — Post-Ergebnis ist eine Site-Card im Standard-Stil.
 
 Dark-Mode: alle Farben kippen automatisch ueber die Theme-Variablen.
 

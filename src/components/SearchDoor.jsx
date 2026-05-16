@@ -122,7 +122,16 @@ export default function SearchDoor() {
         {/* Die Tuer selbst */}
         <div class="door-panel" aria-hidden={isOpen}>
           <div class="door-panel-inner">
-            {/* Tuergriff = Lupe (Such-Button) */}
+            {/* Cartoon-Kratzer: ein paar kleine schraege Striche, fest positioniert */}
+            <span class="door-scratch s1" aria-hidden="true"></span>
+            <span class="door-scratch s2" aria-hidden="true"></span>
+            <span class="door-scratch s3" aria-hidden="true"></span>
+            <span class="door-scratch s4" aria-hidden="true"></span>
+            <span class="door-scratch s5" aria-hidden="true"></span>
+            <span class="door-scratch s6" aria-hidden="true"></span>
+            <span class="door-scratch s7" aria-hidden="true"></span>
+
+            {/* Tuergriff = Lupe, die als Knauf aus der Tuer rausgukt */}
             <button
               type="button"
               class="door-handle"
@@ -131,9 +140,13 @@ export default function SearchDoor() {
               title="Suchen"
               disabled={state === 'searching'}
             >
-              <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <circle cx="13" cy="13" r="7" fill="none" stroke="currentColor" stroke-width="2.5" />
-                <line x1="18.5" y1="18.5" x2="26" y2="26" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" />
+              <svg class="door-handle-glass" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                {/* Stiel ragt nach links in die Tuer rein */}
+                <line x1="6" y1="20" x2="14" y2="20" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                {/* Linse als runder Knauf */}
+                <circle cx="24" cy="20" r="10" fill="var(--site-card-bg, #fff)" stroke="currentColor" stroke-width="2.5" />
+                {/* Glanz-Andeutung links oben */}
+                <path d="M19 15 Q21 13 24 13" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.55" />
               </svg>
             </button>
 
@@ -206,24 +219,32 @@ export default function SearchDoor() {
           font-size: 0.95rem;
           opacity: 0.7;
         }
-        /* Post-Peek: wirkt wie ein zufaellig geoeffnetes Fenster auf den
-           Post. Kein Datum, keine Ueberschrift, keine Innen-Padding —
-           Text laeuft bis an die Tuerkante und wird dort hart abgeschnitten. */
+        /* Post-Peek: wirkt wie ein Screenshot mitten aus dem Post. Original-
+           Zeilenumbrueche und Absaetze sind erhalten (white-space: pre-wrap),
+           links-buendig, KEINE Ueberschrift / kein Datum. Der Text ueberfuellt
+           die Tuer absichtlich — overflow:hidden croppt seitlich und unten,
+           der negative margin-top am Snippet-Element auch oben. */
         .behind-post {
           width: 100%; height: 100%;
           display: block;
-          padding: 0.5rem 0.6rem;
+          padding: 0 0.55rem;
           box-sizing: border-box;
           background: var(--site-card-bg);
           color: var(--site-card-text);
           text-decoration: none;
           font-size: 0.82rem;
-          line-height: 1.4;
+          line-height: 1.42;
           overflow: hidden;
-          word-break: break-word;
+          text-align: left;
         }
         .behind-post:hover { filter: invert(0.04); }
-        .behind-post-snippet { display: block; overflow: hidden; }
+        .behind-post-snippet {
+          display: block;
+          white-space: pre-wrap;
+          /* Top-Clip: erste Zeile ist nur halb sichtbar — wirkt screenshothaft */
+          margin-top: -14px;
+          font-family: var(--font-family);
+        }
 
         .behind-user {
           width: 100%;
@@ -290,30 +311,47 @@ export default function SearchDoor() {
         .door-panel-inner::before { top: 16px; }
         .door-panel-inner::after  { bottom: 16px; }
 
-        /* Lupengriff — klein, schwarz/weiss, eckig */
+        /* Tuerknauf = Lupe — keine Umrandung am Button selbst, die SVG-Linse
+           ist der sichtbare Knauf, der Stiel zeigt nach links in die Tuer. */
         .door-handle {
           position: absolute;
-          right: 12px;
+          right: 8px;
           top: 50%;
           transform: translateY(-50%);
-          width: 26px;
-          height: 26px;
+          width: 36px;
+          height: 36px;
           padding: 0;
-          border: 1.5px solid currentColor;
-          background: var(--site-card-bg, #fff);
+          border: none;
+          background: transparent;
           color: inherit;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          border-radius: 0;
+          z-index: 2;
         }
-        .door-handle svg { width: 16px; height: 16px; display: block; }
-        .door-handle:hover:not(:disabled) {
-          background: currentColor;
+        .door-handle-glass { width: 100%; height: 100%; display: block; }
+        .door-handle:hover:not(:disabled) .door-handle-glass {
+          transform: translateX(1px);
         }
-        .door-handle:hover:not(:disabled) svg { color: var(--site-card-bg, #fff); }
+        .door-handle-glass { transition: transform 140ms ease; }
         .door-handle:disabled { opacity: 0.5; cursor: progress; }
+
+        /* Cartoon-Kratzer auf der Tuer — kleine schraege Striche, fest verteilt. */
+        .door-scratch {
+          position: absolute;
+          background: currentColor;
+          opacity: 0.55;
+          pointer-events: none;
+          border-radius: 1px;
+        }
+        .door-scratch.s1 { top: 30px;  left: 32px;  width: 14px; height: 1.5px; transform: rotate(-18deg); }
+        .door-scratch.s2 { top: 64px;  right: 26px; width: 9px;  height: 1.5px; transform: rotate(22deg); }
+        .door-scratch.s3 { top: 96px;  left: 22px;  width: 6px;  height: 1.5px; transform: rotate(-50deg); }
+        .door-scratch.s4 { bottom: 90px; left: 38px; width: 11px; height: 1.5px; transform: rotate(35deg); }
+        .door-scratch.s5 { bottom: 56px; right: 42px; width: 8px; height: 1.5px; transform: rotate(-12deg); }
+        .door-scratch.s6 { top: 50%;   left: 12px;  width: 5px;  height: 1.5px; transform: rotate(60deg); }
+        .door-scratch.s7 { bottom: 28px; left: 96px; width: 13px; height: 1.5px; transform: rotate(-5deg); }
 
         /* Namensschild — zentriert auf der Tuer (horizontal + vertikal) */
         .name-plate {
@@ -386,8 +424,7 @@ export default function SearchDoor() {
           .search-door-frame { width: 200px; height: 300px; }
           .name-plate { height: 42px; }
           .name-plate-input { font-size: 0.9rem; }
-          .door-handle { width: 22px; height: 22px; right: 10px; }
-          .door-handle svg { width: 13px; height: 13px; }
+          .door-handle { width: 30px; height: 30px; right: 6px; }
           .behind-user svg { width: 70px; height: 70px; }
           .behind-user-name { font-size: 1.05rem; }
         }

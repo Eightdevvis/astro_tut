@@ -15,7 +15,9 @@ import { ensureDbSchema, getDb } from '../../lib/db.js';
 import { getFullHiddenUsernames } from '../../lib/user-privacy-defaults.js';
 
 const MAX_RESULTS = 5;
-const SNIPPET_LEN = 220;
+// Snippet ist gross genug, dass es die Tuer-Vorschau ueberfuellt und an allen
+// Seiten gecroppt aussieht (wie ein Screenshot mitten aus dem Post).
+const SNIPPET_LEN = 1400;
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -28,22 +30,27 @@ function escapeLike(s) {
   return String(s).replace(/[\\%_]/g, (ch) => '\\' + ch);
 }
 
-// Zufaelliger roher Textausschnitt — KEINE "…"-Markierungen, KEIN
-// Titel-/Datum-Voranstellen. Soll wirken wie ein zufaellig aufgemachtes
-// Fenster auf den Post: am Anfang faengt evtl. mitten im Wort an
-// (Word-Boundary-Skip ist optional am Start), am Ende hart abgeschnitten —
-// das visuelle Crop macht das CSS-overflow:hidden.
+// Zufaelliger roher Textausschnitt — Original-Zeilenumbrueche / Absaetze
+// bleiben erhalten. Soll wie ein Screenshot wirken: das CSS in der Tuer
+// croppt das Ergebnis dann an allen Seiten (overflow:hidden + negativer
+// margin-top fuer den top-clip). Wir schicken bewusst mehr als die Tuer
+// fassen kann.
 function pickRandomSnippet(plain, length = SNIPPET_LEN) {
-  const text = String(plain || '').replace(/\s+/g, ' ').trim();
+  // Nur Carriage-Returns + tab normalisieren, Zeilenumbrueche bewahren.
+  const text = String(plain || '').replace(/\r/g, '').replace(/\t/g, '  ').trim();
   if (!text) return '';
   if (text.length <= length) return text;
   const maxStart = text.length - length;
   const rawStart = Math.floor(Math.random() * (maxStart + 1));
-  // Zum naechsten Wortanfang springen, damit das erste Wort lesbar ist.
-  const spaceAfter = text.indexOf(' ', rawStart);
-  const start = rawStart === 0
-    ? 0
-    : (spaceAfter > -1 && spaceAfter - rawStart < 30 ? spaceAfter + 1 : rawStart);
+  // Bevorzugt zum Anfang einer neuen Zeile/Absatz springen, sonst zum
+  // naechsten Wortanfang — beides nur, wenn der Sprung kurz ist.
+  let start = rawStart;
+  if (rawStart > 0) {
+    const nlAfter = text.indexOf('\n', rawStart);
+    const spAfter = text.indexOf(' ', rawStart);
+    if (nlAfter > -1 && nlAfter - rawStart < 80) start = nlAfter + 1;
+    else if (spAfter > -1 && spAfter - rawStart < 30) start = spAfter + 1;
+  }
   return text.slice(start, start + length);
 }
 
