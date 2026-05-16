@@ -602,16 +602,26 @@ function VocabEditor({ cards, onClose, onChanged }) {
         }
         .vocab-editor-actions button {
           font: inherit;
-          padding: 0.5rem 1rem;
-          border: 1.5px solid currentColor;
+          font-weight: 600;
+          padding: 0.55rem 1.1rem;
+          border: 1.5px solid #1d1a14;
           border-radius: 8px;
-          background: currentColor;
-          color: var(--card-bg, #fffaf2);
+          background: #1d1a14;
+          color: #fffaf2;
           cursor: pointer;
+        }
+        :global(html.dark) .vocab-editor-actions button {
+          border-color: #f4f1ea;
+          background: #f4f1ea;
+          color: #1d1a14;
         }
         .vocab-editor-actions button.ghost {
           background: transparent;
           color: inherit;
+          border-color: currentColor;
+        }
+        .vocab-editor-actions button:hover:not(:disabled) {
+          opacity: 0.88;
         }
         .vocab-editor-actions button:disabled {
           opacity: 0.5;
