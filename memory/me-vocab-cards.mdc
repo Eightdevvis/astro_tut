@@ -1,0 +1,38 @@
+# /me Vokabelkarten-Stack
+
+Persoenliche Vokabel-Sammlung pro User; Anzeige als Karten-Stack unten rechts auf `/me`.
+
+## Verhalten
+
+- Stack fix unten rechts (`position: fixed; right: 1rem; bottom: 1rem; z-index: 380`).
+- Sortierung: aufsteigend nach `created_at` — neueste Karte sitzt visuell unten, voll sichtbar; aeltere Karten lugen mit `PEEK=38px` oben heraus (nur Wort sichtbar).
+- z-index: neueste Karte hoechstes z (vorn); aeltere weiter hinten.
+- Hover auf den Stack: alle Karten faechern auf (`GAP=14px` zwischen voll sichtbaren Karten); Mouse-Leave: Kollaps. Transition 240ms.
+- Karte zeigt: Wort gross (`Protest Demo`), darunter Lautschrift (mono, `/.../`), darunter Definition (max 4 Zeilen, clamp).
+- Bei 0 Karten + Owner: Platzhalter-Karte mit Hinweis "Klick + zum Hinzufügen". Bei 0 Karten ohne Owner: gar nichts.
+
+## Owner-only Editor
+
+- Plus-Knopf (`+`, 28x28 Kreis) oben mittig **eingebettet im Rand** der vordersten/neuesten Karte. Nur wenn `isOwner={true}`.
+- Klick auf `+` oeffnet Modal `VocabEditor`: Form (Wort/Lautschrift/Definition) + Liste aller Karten mit "Bearbeiten" / "Löschen".
+- Owner-Prop steuert **nur die UI**. Die echte Autorisierung passiert server-seitig anhand der Session.
+
+## Dateien
+
+- Component: `src/components/VocabCardStack.jsx` (Stack + Editor in einer Datei).
+- Page-Einbindung: `src/pages/me.astro` — `<VocabCardStack client:load isOwner={true} />`. Die Seite ist sowieso owner-only (Redirect bei fehlendem Login), daher hartcodiert `isOwner=true`.
+- API:
+  - `GET /api/user/vocab` — listet eigene Karten (auth required).
+  - `POST /api/user/vocab` — neue Karte. Body: `{word, pronunciation?, definition?}`. Limit 200 Karten/User.
+  - `PUT /api/user/vocab/[id]` — eigene Karte aendern.
+  - `DELETE /api/user/vocab/[id]` — eigene Karte loeschen.
+- DB-Tabelle: `user_vocab_cards (id, username, word, pronunciation, definition, created_at, updated_at)` + Index `idx_user_vocab_cards_user_created`. Schema in `src/lib/db.js` (`SCHEMA_DDL`), `scripts/init_db.cjs`, `scripts/init_turso.js`.
+
+## Strikte Trennung
+
+- Jede API-Route holt `username` aus dem JWT-Session-Cookie (`getUsernameFromCookies`) und filtert `WHERE username = ?` auf **alle** Selects/Updates/Deletes — fremde Karten sind weder lesbar noch schreibbar.
+- Kein `userId`-Param in der URL, kein "user-by-name"-Endpoint. Wer auf `/me` ist, sieht ausschliesslich seinen eigenen Stack.
+
+## Limits
+
+- `word` <= 80 Zeichen; `pronunciation` <= 120; `definition` <= 1000; max 200 Karten/User. Server-seitig getrimmt + gekappt.

@@ -445,6 +445,18 @@ const SCHEMA_DDL = `
     PRIMARY KEY (date, scope_kind, scope_id, ua_category, ua_bot_name, status)
   );
 
+  CREATE TABLE IF NOT EXISTS user_vocab_cards (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL,
+    word          TEXT NOT NULL,
+    pronunciation TEXT NOT NULL DEFAULT '',
+    definition    TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_vocab_cards_user_created
+    ON user_vocab_cards (username, created_at ASC, id ASC);
+
   CREATE TABLE IF NOT EXISTS user_privacy_defaults (
     username           TEXT PRIMARY KEY,
     default_visibility TEXT NOT NULL DEFAULT 'public',

@@ -19,6 +19,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | fgraffiti (globales Overlay, Hotkey, Stift/Spray, Settings) | [`fgraffiti.mdc`](fgraffiti.mdc) |
 | KI-Nutzung (DB-Log, Einstellungen-Tab) | [`database.mdc`](database.mdc) (`ai_usage_log`, `ai-usage-db.js`) |
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
+| /me Vokabelkarten-Stack (unten rechts, owner-only Editor, strikt user-spezifisch) | [`me-vocab-cards.mdc`](me-vocab-cards.mdc) |
 | Mikrobiologie-Seite + Molecule Builder (Ketcher, Preact-Bridge) | [`mikrobiologie.mdc`](mikrobiologie.mdc) |
 | Minigames-Pattern (Karten-Prozente, Server-Sync, Konfetti, Tool-Vorlagen, Practice-Mode) | [`minigames-pattern.mdc`](minigames-pattern.mdc) |
 | Minigame-Mechaniken (Katalog: Quiz, Tiles, Structure-Build, Lab-Bench, …) | [`minigame-mechanics.mdc`](minigame-mechanics.mdc) |

@@ -205,6 +205,18 @@ await db.executeMultiple(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     host_pattern TEXT NOT NULL UNIQUE
   );
+
+  CREATE TABLE IF NOT EXISTS user_vocab_cards (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT NOT NULL,
+    word          TEXT NOT NULL,
+    pronunciation TEXT NOT NULL DEFAULT '',
+    definition    TEXT NOT NULL DEFAULT '',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_vocab_cards_user_created
+    ON user_vocab_cards (username, created_at ASC, id ASC);
 `);
 
 console.log('✓ Alle Tabellen in Turso angelegt.');

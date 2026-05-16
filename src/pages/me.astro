@@ -7,6 +7,7 @@ import TesterBugBar from '../components/TesterBugBar.jsx';
 import GraffitiLayer from '../components/GraffitiLayer.jsx';
 import SiteInventory from '../components/SiteInventory.jsx';
 import SitePlacedItemsLayer from '../components/SitePlacedItemsLayer.jsx';
+import VocabCardStack from '../components/VocabCardStack.jsx';
 import PageFavicon from '../components/PageFavicon.astro';
 import { getSessionUserFromCookies } from '../lib/session.js';
 import '../styles/global.css';
@@ -48,6 +49,7 @@ const showLoginId = displayName !== username;
     <GraffitiLayer client:load />
     <SitePlacedItemsLayer client:load />
     <SiteInventory client:load />
+    <VocabCardStack client:load isOwner={true} />
     <TesterBugBar client:load />
     <ThemeClient />
   </body>

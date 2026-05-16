@@ -272,6 +272,25 @@ db.serialize(() => {
   `);
   console.log('✓ Topic-Feed-Tabellen bereit.');
 
+  // --- Tabelle: user_vocab_cards ---
+  // Persoenliche Vokabelkarten je User. Anzeige in der Karten-Stack-Box
+  // unten rechts auf /me. Strikt user-spezifisch — andere User koennen
+  // weder lesen noch schreiben.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_vocab_cards (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      username      TEXT NOT NULL,
+      word          TEXT NOT NULL,
+      pronunciation TEXT NOT NULL DEFAULT '',
+      definition    TEXT NOT NULL DEFAULT '',
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_vocab_cards_user_created
+          ON user_vocab_cards (username, created_at ASC, id ASC)`);
+  console.log('✓ user_vocab_cards-Tabelle bereit.');
+
 });
 
 db.close();
