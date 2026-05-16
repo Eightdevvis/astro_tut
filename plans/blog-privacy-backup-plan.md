@@ -467,6 +467,180 @@ Aggregate bleiben unbegrenzt.
 - `GET /api/user/stats?range=30d` — Aggregate ueber alle eigenen Posts.
 - `GET /api/admin/stats` (Superuser) — global.
 
+## 9c. Datenschutz-Details-Tab (vollstaendige technische Transparenz)
+
+Neuer Untertab `Datenschutz → Details` in `/settings`. Zweck: jedem User
+ehrlich, vollstaendig und technisch zeigen, was wir wo speichern, wofuer,
+wie lange, mit wem geteilt, wie geschuetzt — und welche Rechte daraus
+folgen. DSGVO Art. 13/14 verlangt das ohnehin; wir machen daraus ein
+echtes Werkzeug, nicht eine versteckte Pflicht-PDF.
+
+### Drei Buckets — was wohin
+
+**Bucket 1 — Voll oeffentlich (Details-Tab):**
+- Liste aller DB-Tabellen mit Zweck und Datenkategorien.
+- Empfaenger / externe Dienste mit Funktion und Region.
+- Aufbewahrungsfristen pro Tabelle.
+- User-Rechte und konkrete Schaltflaechen (Export, Loeschung, Berichtigung).
+- Verfahren (Passwort-Hash-Algorithmus, JWT-Cookies, IP-Hash, Token-Hash).
+- Browser-Speicher (welcher Key liegt wo, was steht drin).
+- Logging-Schema `request_log` (welche Felder, dass IP gehasht ist).
+- Privacy-Toggles und deren Wirkung (ohnehin UI-sichtbar).
+
+**Bucket 2 — Mit Bedacht oeffentlich:**
+- Vollstaendige Bot-Fingerprint-Liste. Argument: ist ohnehin per curl
+  ablesbar; Veroeffentlichung erhoeht Vertrauen ohne neue Angriffsflaeche.
+- Existenz von Rate-Limits erwaehnen ("wir limitieren uebermaessigen
+  Verkehr"), ohne konkrete Schwellen.
+
+**Bucket 3 — Nicht oeffentlich (`memory/security-sensitive.md`, gitignored
+laut CLAUDE.md-Konvention):**
+- Exakte Rate-Limit-Schwellen (Requests/Minute/IP).
+- Cron-Endpoint-URLs + Secrets.
+- Salt-Rotations-Kadenz im Detail.
+- ENV-Variable-Namen und ihre Werte.
+- Honeypot-Pfade (falls eingefuehrt).
+- Heuristik-Schwellen fuer JS-Heartbeat / Bot-Detection.
+- JWT-Secret-Quelle.
+
+### Inhalts-Gliederung des Details-Tabs
+
+1. **Welche Daten ueber dich existieren** — pro DB-Tabelle eine Karte mit:
+   Tabellenname, eine Zeile Klartext-Erklaerung, Liste der Felder,
+   Datenkategorie (Auth / Inhalt / Verhalten / Tester / Netzwerk), Anzahl
+   aktueller Zeilen mit deinem `username`.
+2. **Wofuer wir das speichern** — Zweckbindung pro Tabelle in einem Satz.
+3. **Wer Zugriff hat** — du selbst / Superuser-Konto / externer Dienstleister
+   (mit Name + Funktion). Keine Drittweitergabe zu Marketing/Werbe-Zwecken.
+4. **Wo das physisch liegt** — Hosting (Vercel, Region), DB (Turso libsql,
+   Region; lokal SQLite-Datei im Dev). Quelle: `memory/database.mdc`.
+5. **Wie lange wir das halten** — Retention pro Tabelle. Default-Tabelle:
+   - `users`: solange Account besteht (Loeschung auf Anfrage).
+   - `blog_posts` aktiv: unbegrenzt; soft-deleted: 30 Tage; danach hart weg.
+   - `blog_post_revisions`: pro Post limitiert (z. B. 50 Revisions/Post),
+     dann verdichtet.
+   - `blog_post_drafts`: aelteste Drafts ueberschrieben (1 Slot pro Post).
+   - `request_log` (Rohlog): 30 Tage. Aggregat unbegrenzt, aber ohne `ip_hash`.
+   - `ai_usage_log`: Schreib-Log, Retention nach Doku in
+     `memory/database.mdc` (`ai_usage_log` / `ai-usage-db.js`).
+   - `tester_bug_reports` (inkl. Screenshots): bis User oder Superuser
+     loescht.
+   - Dieser Block wird **datengetrieben** aus einer Liste in
+     `src/lib/data-inventory.js` gerendert — dieselbe Quelle wird vom
+     Lint-Test geprueft (siehe unten).
+6. **Externe Dienste** — Tabelle mit Name, Funktion, Datenkategorie, Region,
+   Vertragsstand (AVV vorhanden ja/nein):
+   - Vercel (Hosting, Edge, evtl. Analytics) — alle eingehenden Requests.
+   - Turso (libsql-DB, Produktion) — alle DB-Daten.
+   - AI-Anbieter (Anthropic / OpenAI / o. ä. je nach Feature, siehe
+     `memory/database.mdc#ai_usage_log`) — Eingabetexte gem. AI-Feature.
+   - GitHub (Code-Hosting, kein User-Daten-Empfaenger).
+7. **Was im Browser liegt** — pro Storage-Mechanismus:
+   - Cookies: `session` (JWT, httpOnly), Zweck, Lebensdauer.
+   - `localStorage`: Theme, ggf. Format-Praeferenzen, `blogpost:draft:*`
+     (Crash-Recovery), tester-features-Flags.
+   - `IndexedDB`: noch ungenutzt; bei A1 fuer groessere Drafts geplant.
+   - Service Worker: keiner.
+8. **Logging und Bot-Erkennung** — `request_log`-Schema 1:1 aus Section 9b,
+   plus Erklaerung: IP wird sha256+Salt gehasht (Klartext nie gespeichert),
+   Salt rotiert (Cadenz im Bucket 3).
+9. **Sicherheitsverfahren** —
+   - Passwort: bcrypt/argon2 (welcher tatsaechlich, siehe `users` /
+     `permissions.js`), kein Klartext.
+   - Session: JWT-Cookie, httpOnly, SameSite, Secret aus `getJwtSecretBytes`.
+   - Token (Privacy-Tokens): nur sha256-Hash in DB.
+   - HTTPS: erzwungen via Vercel + HSTS.
+10. **Deine Rechte und wie du sie ausuebst** — direkt verlinkt mit
+    Knoepfen im Tab:
+    - **Auskunft / Export** → `GET /api/user/export` (alle Tabellen mit
+      `username` = du, als ZIP). Erweiterung von A5, deckt aber alles ab.
+    - **Berichtigung** → in den jeweiligen UI-Bereichen ([Profil] / [Posts]
+      / [Quotes] / …).
+    - **Loeschung** → `POST /api/user/delete-account` (Hard-Delete aller
+      eigenen Zeilen + Account-Loeschung, mit Bestaetigungs-Dialog).
+    - **Widerspruch gegen einzelne Verarbeitung** → die jeweiligen
+      Feature-Toggles (z. B. AI-Usage-Log abschalten, falls vorhanden).
+    - **Datenuebertragbarkeit** → der Export liefert JSON, technisch
+      portabel.
+    - **Beschwerde** → Hinweis auf die zustaendige Aufsichtsbehoerde.
+
+### Architektur
+
+- Route: neue Astro-Page `src/pages/settings/datenschutz.astro` mit zwei
+  Tabs: `Uebersicht` (zusammenfassend, freundlich) und `Details` (alles
+  oben).
+- Inhalts-Source-of-Truth: `src/lib/data-inventory.js` als Array von
+  Tabellen-Beschreibungen:
+  ```
+  {
+    table: 'blog_posts',
+    category: 'content',
+    purpose: 'Eigene Blog-Posts speichern und versionieren.',
+    fields: { id: 'pk', username: 'eigentum', content_html: 'inhalt',
+              content_text: 'plaintext-spiegel', accent_color: 'design',
+              doodle_data_url: 'kritzel-bild', created_at: 'zeitstempel',
+              deleted_at: 'soft-delete', public_slug: 'unguessbar' },
+    retention: 'unbegrenzt aktiv, 30 Tage nach Soft-Delete hart geloescht',
+    accessRoles: ['owner', 'superuser'],
+    external: [],
+  }
+  ```
+- Die Astro-Seite rendert die Liste, gruppiert nach `category`. Tabellen
+  ohne Eintrag in `data-inventory.js` lassen den Tab automatisch eine
+  Warnung anzeigen (Self-Audit).
+- Lint-Test in `tests/data-inventory.test.js`:
+  - Liest alle `CREATE TABLE`-Statements aus `src/lib/db.js`.
+  - Schlaegt fehl, wenn eine DB-Tabelle nicht in `data-inventory.js`
+    dokumentiert ist.
+  - Schlaegt fehl, wenn `data-inventory.js`-Eintraege auf nicht-existente
+    Tabellen verweisen.
+  - Damit ist Memory-Pflicht hier durch CI gestuetzt — niemand kann eine
+    neue Tabelle einfuehren, ohne den Datenschutz-Eintrag mitzuziehen.
+
+### Pflege-Pflicht
+
+- Bei jedem neuen DB-Speicher: Eintrag in `data-inventory.js` MUSS mit, sonst
+  schlagen die Tests fehl.
+- Bei neuem externen Dienst: Eintrag in `src/lib/external-services.js`
+  (parallele Datei mit Name, Funktion, Region, AVV-Status).
+- Bei neuem Browser-Storage-Key: Eintrag in
+  `src/lib/browser-storage-inventory.js`.
+- Diese drei Inventar-Dateien werden bei Code-Reviews mitgeprueft.
+
+### Bereits bekannte Tabellen mit User-Daten (Start-Inventar)
+
+Aus `src/lib/db.js`:
+- `users` (Auth)
+- `user_permissions`, `global_permissions`, `permission_warnings` (Rechte)
+- `quotes` (Inhalt)
+- `blog_posts` (Inhalt; +geplante Erweiterungen: Slug, Soft-Delete,
+  Privacy-Flags, Passwort-Hash, Expires)
+- `site_settings` (kein User-Bezug, global)
+- `custom_fonts` (Inhalt; User-Uploads von Schriften)
+- `fractal_snapshots` (Inhalt)
+- `rpg_user_state`, `rpg_user_state_backups`, `rpg_questmaker_items`,
+  `rpg_achievements`, `rpg_locations`, `minigame_progress` (RPG-Verhalten)
+- `ai_usage_log` (Verhalten; siehe `memory/database.mdc`)
+- `tester_bug_reports` (User-Submitted, inkl. Screenshots),
+  `tester_ui_preferences` (Verhalten)
+- `graffiti_tiles` (Inhalt)
+- `site_item_catalog` (global), `site_user_inventory`, `site_placed_items`
+- `user_feeds`, `user_feed_sources`, `user_feed_items`, `user_feed_pins`,
+  `user_feed_summaries`, `feed_allowlist`, `feed_blocklist` (Inhalt /
+  Verhalten / externe URLs)
+- Geplant durch dieses Update: `blog_post_revisions`, `blog_post_drafts`,
+  `blog_post_tokens`, `request_log`, `request_stats_daily`,
+  `user_privacy_defaults`.
+
+### Sicherheitsbewertung der Veroeffentlichung
+
+- Tabellenstruktur ist ohnehin durch SQL-Injection-Schutz unkritisch (wir
+  benutzen parametrierte Queries via libsql); deren Veroeffentlichung gibt
+  Angreifern nichts zusaetzlich.
+- Schwellenwerte und Cron-Geheimnisse bleiben in Bucket 3.
+- Bot-Fingerprint-Liste ist bewusst public — Vertrauensgewinn ueberwiegt.
+- AVV-Status und Anbieter-Namen sind ohnehin gefordert offenzulegen.
+
 ## 10. Rollout-Reihenfolge
 
 1. Datenmodell-Migration (idempotent in `ensureDbSchema`).
@@ -484,6 +658,10 @@ Aggregate bleiben unbegrenzt.
 12. Observability (9b): `request_log` + `bot-fingerprints.js` + Per-Post-Mini-
     Stats + `/settings`-Dashboard. Sinnvollerweise frueh (gleich nach UA-Gate,
     so Phase 5/6), damit man die Wirkung der Toggles ueberhaupt sieht.
+13. Datenschutz-Details-Tab (9c): `data-inventory.js` als SoT,
+    `settings/datenschutz.astro` mit Uebersicht- + Details-Tab, Lint-Test
+    gegen `db.js`, Export- und Delete-Account-Endpoints. Frueh, weil der
+    Lint-Test ab da jede neue Tabelle abfaengt.
 
 ## 11. Risiken / offene Punkte
 
@@ -516,3 +694,9 @@ Aggregate bleiben unbegrenzt.
 - Traffic-/Crawler-Observability ergaenzt (Section 9b): eigener `request_log`,
   geteilte Bot-Fingerprints, Per-Post-Stats + globales `/settings`-Dashboard,
   JS-Heartbeat-Idee fuer UA-Faelscher-Heuristik.
+- Datenschutz-Details-Tab ergaenzt (Section 9c): vollstaendige technische
+  Transparenz unter `/settings/datenschutz` (Tab `Details`), 3-Bucket-Regel
+  fuer was wohin gehoert, `data-inventory.js` als Single-Source-of-Truth mit
+  Lint-Test gegen `src/lib/db.js`, parallele Inventare fuer externe Dienste
+  und Browser-Storage, Export- und Account-Loesch-Endpoints fuer
+  User-Rechte.
