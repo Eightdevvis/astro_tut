@@ -178,6 +178,14 @@ export default function UserSettings() {
           {user.isTester ? (
             <TabButton id="tester" label="Tester" active={tab === 'tester'} onPick={setTab} />
           ) : null}
+          {/* Datenschutz hat eine eigene Seite (zu viel Inhalt fuer einen
+              Inline-Tab) — wir verlinken sie hier optisch wie einen Tab. */}
+          <a
+            href="/settings/datenschutz"
+            style={{ ...tabBtn(false), textDecoration: 'none', color: 'inherit', display: 'inline-block' }}
+          >
+            Datenschutz
+          </a>
         </div>
       ) : null}
 

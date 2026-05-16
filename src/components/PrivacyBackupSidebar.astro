@@ -17,7 +17,7 @@ import { LAYERS, BACKUP_AXES } from '../lib/backup-layers.js';
 
 <aside class="pb-sidebar" id="pbSidebar" aria-label="Privatsphaere und Sicherung">
   <!-- Privacy-Werkzeugkasten -->
-  <section class="pb-box pb-box--privacy is-open" data-box="privacy" aria-labelledby="pbPrivacyTitle">
+  <section class="pb-box pb-box--privacy" data-box="privacy" aria-labelledby="pbPrivacyTitle">
     <button class="pb-box-head" type="button" data-toggle="privacy">
       <svg class="pb-icon" viewBox="0 0 64 48" aria-hidden="true">
         <!-- offener Werkzeugkasten -->
@@ -173,16 +173,20 @@ import { LAYERS, BACKUP_AXES } from '../lib/backup-layers.js';
 
 <style>
   .pb-sidebar {
-    position: sticky;
-    top: calc(var(--nav-strip-h, 56px) + 1rem);
-    width: 280px;
-    flex: 0 0 280px;
+    /* Auf breitem Viewport: absolut links der Editor-Shell, damit der
+       Editor exakt in der Mitte der Seite bleibt. Unterhalb des
+       Breakpoints (siehe unten) wird die Sidebar wieder in den
+       normalen Fluss eingegliedert und stackt oberhalb des Editors. */
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 260px;
     display: flex;
     flex-direction: column;
     gap: 0.7rem;
-    align-self: flex-start;
     max-height: calc(100dvh - var(--nav-strip-h, 56px) - 2rem);
     overflow: visible;
+    z-index: 1;
   }
   .pb-box {
     border: 1px solid var(--site-card-border);
@@ -354,8 +358,14 @@ import { LAYERS, BACKUP_AXES } from '../lib/backup-layers.js';
   }
 
   .pb-popover {
+    /* MUSS ueber allem liegen, sonst verschwindet das Tooltip-Fenster
+       hinter dem Editor (der mit overflow:hidden + transform/Transitions
+       eigene Stacking-Contexts bildet). Bewusst absurd hoher z-index;
+       Modal-Layer liegen bei 120, post-modal bei 120, Toolbar 5 — wir
+       gehen auf 10000 mit einem isolation:isolate-Fallback. */
     position: fixed;
-    z-index: 200;
+    z-index: 10000;
+    isolation: isolate;
     min-width: 260px;
     max-width: 320px;
     background: var(--site-card-bg);
@@ -401,11 +411,16 @@ import { LAYERS, BACKUP_AXES } from '../lib/backup-layers.js';
     align-items: center;
   }
 
-  @media (max-width: 900px) {
+  /* Sobald der Viewport nicht mehr genug Platz fuer "Sidebar absolut +
+     mittiger Editor + Format-Tool-Kranz" bietet, kippt das Layout in
+     den Stapel-Modus: Sidebar oben, Editor darunter. Schwelle 1180 px
+     ergibt sich aus 260 (Sidebar) + ~24 (Luft) + 51 (Tool-Ausleger
+     bis ~3.2rem) + 620 (Editor) + 51 + 24 + 260 = 1290; Stack-Modus
+     greift schon ein wenig frueher, damit es nicht klemmt. */
+  @media (max-width: 1180px) {
     .pb-sidebar {
       position: static;
       width: 100%;
-      flex: 0 0 auto;
       max-height: none;
       margin-bottom: 1rem;
     }
