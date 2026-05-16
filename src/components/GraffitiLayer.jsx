@@ -297,7 +297,14 @@ export default function GraffitiLayer() {
         for (const t of list) map.set(`${t.x}:${t.y}`, t);
         // Synchron + State, damit alles aus dem gleichen Map liest.
         tilesRef.current = map;
+        // EXPLIZIT hier den Base-Rebuild ausloesen — und nicht generisch in
+        // useEffect([tiles]). Der Initial-Load ist der einzige Pfad, fuer den
+        // tilesRef neue Information bringt, die ins Base muss; alle spaeteren
+        // setTiles-Calls kommen aus eigenen Upload-Acks, wo das Base den Stroke
+        // selbst schon enthaelt (wir haben ihn ja vorher per commit-base reingemalt).
+        baseDirtyRef.current = true;
         setTiles(map);
+        schedulePaint();
       } catch (err) {
         if (err?.name === 'AbortError') return;
         console.warn('[graffiti] Tiles laden fehlgeschlagen', err);
@@ -528,20 +535,26 @@ export default function GraffitiLayer() {
   }
 
   useEffect(() => {
-    // KRITISCH fuer das Flicker-Investigation: jeder tiles-State-Change wird
-    // hier zum baseDirty=true und damit zu einem Base-Rebuild aus tilesRef.
-    // Wenn waehrenddessen ein Tag/Spray-Stroke in bctx schon committed wurde,
-    // aber sein Upload-Task noch nicht extractTilePngBase64 aufgerufen hat,
-    // wird der Stroke vom Rebuild ueberschrieben → genau das gesuchte
-    // "Strich erscheint kurz und verschwindet". Diese Logs zeigen das Race.
-    dbg('tiles-effect', {
+    // Bewusst KEIN baseDirty=true und KEIN schedulePaint hier. Nach Init kommen
+    // tiles-State-Updates ausschliesslich aus erfolgreichen eigenen Upload-Acks
+    // (siehe pointerUp/Queue-Task): an dem Zeitpunkt enthaelt das Base bereits
+    // exakt die Pixel, die wir gerade als PNG hochgeladen haben — wir haben sie
+    // ja per commit-base selbst gemalt und extractTilePngBase64 hat sie genau
+    // dort gelesen. Ein Rebuild aus tilesRef brachte daher keine neue Information,
+    // aber er hat noch-nicht-extrahierte Pixel folgender Strokes vernichtet:
+    // setTiles(N) → tiles-effect → baseDirty=true → naechster paint clearRect +
+    // drawTilesOntoContext (nur Stroke N drin) → der gerade committete Stroke N+1
+    // war damit aus dem Base verschwunden, BEVOR sein eigener Upload-Task
+    // extractTilePngBase64 aufrufen konnte. Ergebnis: Stroke N+1 fehlt im
+    // hochgeladenen PNG → permanent im Server-Tile verloren, und dazwischen
+    // sichtbar geflackert. Der Initial-Load-Trigger sitzt jetzt im Fetch-Handler
+    // selbst, wo er hingehoert.
+    dbg('tiles-effect-noop', {
       tilesSize: tiles.size,
       drActive: drawRef.current.active,
       strokeId: drawRef.current.strokeId,
       mode: modeRef.current,
     });
-    baseDirtyRef.current = true;
-    schedulePaint();
   }, [tiles]);
 
   useEffect(() => {
