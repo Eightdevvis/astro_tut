@@ -506,17 +506,19 @@ export default function LabBench({
           if (isDragging) return null;
           const cx = meta.w / 2;
           const cy = meta.h / 2;
-          const transform =
-            `translate(${item.x},${item.y})` +
-            (item.state?.tilted ? ` rotate(38 ${cx} ${cy})` : '');
+          // Translate auf outerem g (snappy beim Drag, keine Transition);
+          // Rotate auf innerem g (mit Transition fuer sanftes Kippen).
+          const rotateTransform = item.state?.tilted ? `rotate(-38 ${cx} ${cy})` : 'rotate(0)';
           return (
             <g
               key={item.id}
-              transform={transform}
+              transform={`translate(${item.x},${item.y})`}
               onPointerDown={(e) => startDragPlaced(e, item)}
               style={{ cursor: 'grab' }}
             >
-              {renderItem(item.type, item.state)}
+              <g className="lb-tilt" transform={rotateTransform}>
+                {renderItem(item.type, item.state)}
+              </g>
               <title>{meta.label}{meta.interaction ? ` — Klick: ${meta.interaction === 'toggle' ? 'an/aus' : meta.interaction === 'rotate' ? 'kippen' : meta.interaction}` : ''}</title>
             </g>
           );
@@ -822,6 +824,12 @@ function Styles() {
       @keyframes lb-steam-puff {
         0%, 100% { transform: translateY(0)  scale(1);    opacity: 1; }
         50%      { transform: translateY(-6px) scale(1.1); opacity: 0.75; }
+      }
+      /* Sanftes Kippen: nur das innere .lb-tilt g hat eine Transform-
+         Transition. Das aeussere translate-g animiert nicht (sonst wuerde
+         Drag laggen). */
+      .lb-tilt {
+        transition: transform 0.45s cubic-bezier(0.4, 1.3, 0.45, 1.0);
       }
     `}</style>
   );

@@ -232,11 +232,16 @@ function Lab() {
       // Hier kein Menue-Pfad mehr.
       // pull_neck als Menue-Aktion ebenfalls entfernt — siehe onPlacedChange.
       case 'tip': {
-        // Kippen: Meilenstein einmalig, `tilted` togglebar.
+        // Kippen: Meilenstein einmalig, `tilted` togglebar. Kipprichtung
+        // ist -38 deg (in LabBench), Flasche lehnt nach hinten — sieht
+        // nicht aus als wuerde gleich Liquid rausschwappen.
+        //
         // Kontaminations-Logik (Pasteurs Idee):
         //   - Unsteriles Liquid ohne Sterilisation -> immer kontaminiert
         //   - Sterilisiert + gerader Hals + Hals-Schmutz -> Schmutz faellt
-        //     beim Kippen ins Liquid -> kontaminiert
+        //     beim Kippen ins Liquid -> kontaminiert (verzoegert nach dem
+        //     Kipp-Visual, damit man sieht: Liquid trifft Dreck, Farbe
+        //     wechselt sichtbar zurueck zu unsteril-braun)
         //   - Sterilisiert + Schwanenhals -> Schmutz steckt in Biegung,
         //     erreicht das Liquid auch beim Kippen nicht -> sauber
         const s = item.state || {};
@@ -244,12 +249,20 @@ function Lab() {
         const unsterileTipped = s.liquid === 'unsterile' && !s.sterilized;
         const dustFallsIn = !!s.neckContaminated && s.neck !== 'swan';
         const willContaminate = unsterileTipped || dustFallsIn;
-        helpers.update({
-          tipped: true,
-          tilted: true,
-          contaminated: alreadyContaminated || willContaminate,
-        });
+        helpers.update({ tipped: true, tilted: true });
         award('tipped');
+
+        if (willContaminate && !alreadyContaminated) {
+          // Nach Kipp-Animation (~450ms) ein Tick warten, dann Liquid
+          // visuell kontaminieren: Farbe wieder auf unsteril-braun, plus
+          // Kontaminations-Punkte ueber dem Liquid.
+          setTimeout(() => {
+            helpers.update({
+              contaminated: true,
+              liquidColor: '#c8a55a', // unsteriles Braun aus den Bottles
+            });
+          }, 700);
+        }
         return;
       }
       case 'untip':
