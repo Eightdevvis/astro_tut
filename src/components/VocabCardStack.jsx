@@ -245,6 +245,18 @@ export default function VocabCardStack({ isOwner = false }) {
   );
 }
 
+// IPA-Tastatur: Auswahl der gaengigsten Symbole fuer DE/EN-Lautschrift,
+// gruppiert in Reihen. Jeder Tastendruck fuegt das Symbol an der aktuellen
+// Cursor-Position im Lautschrift-Feld ein.
+const IPA_ROWS = [
+  ['ˈ', 'ˌ', 'ː', '.', '̯', '̥', '̃'],
+  ['ə', 'ɐ', 'ɛ', 'ɪ', 'ɔ', 'ʊ', 'œ', 'ø', 'y', 'ʏ'],
+  ['æ', 'ɑ', 'ɒ', 'ʌ', 'ɜ', 'ɵ', 'ɤ', 'ɯ'],
+  ['aɪ', 'aʊ', 'ɔɪ', 'eɪ', 'oʊ', 'ɔʏ'],
+  ['ʃ', 'ʒ', 'ʧ', 'ʤ', 'ŋ', 'ç', 'ʁ', 'ʔ'],
+  ['θ', 'ð', 'ɣ', 'χ', 'ɲ', 'ɬ', 'ɫ', 'ɾ'],
+];
+
 function VocabEditor({ cards, onClose, onChanged }) {
   const [word, setWord] = useState('');
   const [pron, setPron] = useState('');
@@ -252,6 +264,27 @@ function VocabEditor({ cards, onClose, onChanged }) {
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [ipaOpen, setIpaOpen] = useState(false);
+  const pronRef = useRef(null);
+
+  function insertIpa(symbol) {
+    const el = pronRef.current;
+    if (!el) {
+      setPron((p) => (p + symbol).slice(0, 120));
+      return;
+    }
+    const start = el.selectionStart ?? pron.length;
+    const end = el.selectionEnd ?? pron.length;
+    const next = (pron.slice(0, start) + symbol + pron.slice(end)).slice(0, 120);
+    setPron(next);
+    // Cursor hinter das eingefuegte Symbol setzen (nach dem Re-Render).
+    requestAnimationFrame(() => {
+      if (!pronRef.current) return;
+      const pos = Math.min(next.length, start + symbol.length);
+      pronRef.current.focus();
+      pronRef.current.setSelectionRange(pos, pos);
+    });
+  }
 
   function resetForm() {
     setWord(''); setPron(''); setDef(''); setEditingId(null); setError('');
@@ -330,6 +363,7 @@ function VocabEditor({ cards, onClose, onChanged }) {
           <label>
             <span>Lautschrift (optional)</span>
             <input
+              ref={pronRef}
               type="text"
               maxLength={120}
               value={pron}
@@ -337,6 +371,38 @@ function VocabEditor({ cards, onClose, onChanged }) {
               placeholder="z. B. ˈvoː.kaː.bəl"
             />
           </label>
+          <button
+            type="button"
+            class={`ipa-toggle ${ipaOpen ? 'is-open' : ''}`}
+            onClick={() => setIpaOpen((v) => !v)}
+            aria-expanded={ipaOpen}
+            aria-controls="vocab-ipa-keyboard"
+          >
+            <span class="ipa-toggle-label">Lautschrift-Tastatur</span>
+            <span class="ipa-toggle-arrow" aria-hidden="true">▾</span>
+          </button>
+          {ipaOpen && (
+            <div id="vocab-ipa-keyboard" class="ipa-keyboard" role="group" aria-label="IPA-Symbole">
+              {IPA_ROWS.map((row, ri) => (
+                <div class="ipa-row" key={ri}>
+                  {row.map((sym) => (
+                    <button
+                      key={sym}
+                      type="button"
+                      class="ipa-key"
+                      onClick={() => insertIpa(sym)}
+                      // mousedown verhindert dass das Input den Fokus verliert
+                      // (sonst ist selectionStart immer am Ende)
+                      onMouseDown={(e) => e.preventDefault()}
+                      tabIndex={-1}
+                    >
+                      {sym}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <label>
             <span>Definition (optional)</span>
             <textarea
@@ -465,6 +531,69 @@ function VocabEditor({ cards, onClose, onChanged }) {
         .vocab-editor-error {
           color: #b3261e;
           font-size: 0.9rem;
+        }
+        .ipa-toggle {
+          align-self: flex-start;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.4rem;
+          font: inherit;
+          font-size: 0.85rem;
+          padding: 0.3rem 0.65rem;
+          margin-top: -0.35rem;
+          border: 1px solid currentColor;
+          border-radius: 999px;
+          background: transparent;
+          color: inherit;
+          cursor: pointer;
+          opacity: 0.8;
+        }
+        .ipa-toggle:hover { opacity: 1; }
+        .ipa-toggle-arrow {
+          display: inline-block;
+          transition: transform 180ms ease;
+          font-size: 0.9em;
+          line-height: 1;
+        }
+        .ipa-toggle.is-open .ipa-toggle-arrow {
+          transform: rotate(180deg);
+        }
+        .ipa-keyboard {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+          padding: 0.5rem;
+          border: 1px solid rgba(128,128,128,0.4);
+          border-radius: 8px;
+          background: rgba(128,128,128,0.08);
+        }
+        .ipa-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.3rem;
+        }
+        .ipa-key {
+          font: inherit;
+          font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+          font-size: 1rem;
+          min-width: 2rem;
+          height: 2rem;
+          padding: 0 0.45rem;
+          border: 1px solid currentColor;
+          border-radius: 6px;
+          background: var(--card-bg, #fffaf2);
+          color: inherit;
+          cursor: pointer;
+          line-height: 1;
+        }
+        :global(html.dark) .ipa-key {
+          background: #2a2722;
+        }
+        .ipa-key:hover {
+          background: rgba(128,128,128,0.25);
+        }
+        .ipa-key:active {
+          transform: scale(0.94);
         }
         .vocab-editor-actions {
           display: flex;

@@ -17,6 +17,12 @@ Persoenliche Vokabel-Sammlung pro User; Anzeige als Karten-Stack unten rechts au
 - Klick auf `+` oeffnet Modal `VocabEditor`: Form (Wort/Lautschrift/Definition) + Liste aller Karten mit "Bearbeiten" / "Löschen".
 - Owner-Prop steuert **nur die UI**. Die echte Autorisierung passiert server-seitig anhand der Session.
 
+### IPA-Tastatur im Editor
+
+- Unter der Lautschrift-Zeile ein Pill-Knopf "Lautschrift-Tastatur ▾" — klappt eine Tastatur mit gaengigen IPA-Symbolen auf/zu (Rotation des Pfeils 180°).
+- Symbole in Reihen gruppiert (Stress/Laenge, zentrale/vordere Vokale, hintere Vokale, Diphthonge, Konsonanten DE/EN). Datenkonstante `IPA_ROWS` oben in `VocabCardStack.jsx`.
+- Tastendruck fuegt das Symbol **an der aktuellen Cursor-Position** im Lautschrift-Input ein (`insertIpa`); `onMouseDown` mit `preventDefault` erhaelt den Fokus des Inputs, sonst waere `selectionStart` immer am Ende.
+
 ## Dateien
 
 - Component: `src/components/VocabCardStack.jsx` (Stack + Editor in einer Datei).
