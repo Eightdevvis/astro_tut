@@ -4,6 +4,12 @@
  * Pflichtfeld pro DB-Tabelle: { table, category, purpose, retention,
  * accessRoles, fields }
  *
+ * Optional: { permissionsAnyOf: [...] }
+ *   - Wenn gesetzt: der Eintrag wird im Datenschutz-Tab nur User
+ *     angezeigt, die mindestens eines dieser Rechte haben.
+ *   - Superuser (`super_access`) sieht alle Eintraege grundsaetzlich.
+ *   - Ohne `permissionsAnyOf` (oder leeres Array) → fuer alle sichtbar.
+ *
  * `category` einer von:
  *   - 'auth'         — Anmeldung, Berechtigungen
  *   - 'content'      — User-erzeugte Inhalte
@@ -59,6 +65,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt; Loeschung auf Anfrage',
     accessRoles: ['owner', 'superuser'],
     fields: ['id', 'username', 'text', 'author', 'created_at'],
+    permissionsAnyOf: ['quote_poster'],
   },
   {
     table: 'blog_posts',
@@ -71,6 +78,7 @@ export const DATA_INVENTORY = [
       'doodle_data_url', 'created_at', 'deleted_at', 'public_slug',
       'visibility', 'privacy_flags', 'password_hash (bcrypt)', 'expires_at',
     ],
+    permissionsAnyOf: ['blogpost_poster'],
   },
   {
     table: 'blog_post_revisions',
@@ -79,6 +87,7 @@ export const DATA_INVENTORY = [
     retention: 'pro Post limitiert; alte Revisionen werden verdichtet',
     accessRoles: ['owner', 'superuser'],
     fields: ['id', 'post_id', 'username', 'content_html', 'content_text', 'accent_color', 'doodle_data_url', 'privacy_flags', 'change_reason', 'created_at'],
+    permissionsAnyOf: ['blogpost_poster'],
   },
   {
     table: 'blog_post_drafts',
@@ -87,6 +96,7 @@ export const DATA_INVENTORY = [
     retention: 'ueberschrieben oder bis erfolgreichem Save',
     accessRoles: ['owner'],
     fields: ['username', 'post_id', 'content_html', 'content_text', 'accent_color', 'doodle_data_url', 'updated_at'],
+    permissionsAnyOf: ['blogpost_poster'],
   },
   {
     table: 'blog_post_tokens',
@@ -95,6 +105,7 @@ export const DATA_INVENTORY = [
     retention: 'bis Widerruf, Ablauf oder Verbrauch',
     accessRoles: ['owner'],
     fields: ['id', 'owner_user', 'post_id', 'token_hash (sha256)', 'kind', 'label', 'max_uses', 'used_count', 'expires_at', 'created_at', 'revoked_at'],
+    permissionsAnyOf: ['blogpost_poster'],
   },
   {
     table: 'custom_fonts',
@@ -103,6 +114,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt; Loeschung im Admin-Panel',
     accessRoles: ['superuser', 'global lesbar'],
     fields: ['id', 'family_name', 'original_filename', 'mime_type', 'format_hint', 'data (BLOB)', 'created_at'],
+    permissionsAnyOf: ['super_access'],
   },
   {
     table: 'fractal_snapshots',
@@ -111,6 +123,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt; Loeschung auf Anfrage',
     accessRoles: ['owner', 'superuser'],
     fields: ['id', 'username', 'mode', '...'],
+    permissionsAnyOf: ['minigames_access', 'rpg_access'],
   },
   {
     table: 'graffiti_tiles',
@@ -145,6 +158,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt; Reset im RPG-Settings',
     accessRoles: ['owner', 'superuser'],
     fields: ['username', 'payload (JSON)', '...'],
+    permissionsAnyOf: ['rpg_access'],
   },
   {
     table: 'rpg_user_state_backups',
@@ -153,6 +167,7 @@ export const DATA_INVENTORY = [
     retention: 'rolling, aelteste Backups werden verdichtet',
     accessRoles: ['owner', 'superuser'],
     fields: ['id', 'username', 'backup_kind', 'payload (JSON)', 'created_at'],
+    permissionsAnyOf: ['rpg_access'],
   },
   {
     table: 'minigame_progress',
@@ -161,6 +176,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['username', 'game_id', 'progress (JSON)'],
+    permissionsAnyOf: ['minigames_access'],
   },
   {
     table: 'rpg_questmaker_items',
@@ -169,6 +185,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['global lesbar', 'superuser'],
     fields: ['id', 'category', 'title', 'description'],
+    permissionsAnyOf: ['rpg_access'],
   },
   {
     table: 'rpg_achievements',
@@ -177,6 +194,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['siehe rpg.mdc'],
+    permissionsAnyOf: ['rpg_access'],
   },
   {
     table: 'rpg_locations',
@@ -185,6 +203,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['siehe rpg.mdc'],
+    permissionsAnyOf: ['rpg_access'],
   },
   {
     table: 'ai_usage_log',
@@ -193,6 +212,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt (Abrechnung)',
     accessRoles: ['owner', 'superuser'],
     fields: ['username', 'feature', 'tokens', 'cost', 'created_at'],
+    permissionsAnyOf: ['rpg_access', 'feed_access'],
   },
   {
     table: 'user_feeds',
@@ -201,6 +221,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['siehe custom-topic-feeds.mdc'],
+    permissionsAnyOf: ['feed_access'],
   },
   {
     table: 'user_feed_sources',
@@ -209,6 +230,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['feed_id', 'url', 'kind'],
+    permissionsAnyOf: ['feed_access'],
   },
   {
     table: 'user_feed_items',
@@ -217,6 +239,7 @@ export const DATA_INVENTORY = [
     retention: 'rolling cache',
     accessRoles: ['owner', 'superuser'],
     fields: ['feed_id', 'title', 'url', 'image_url', 'published_at', 'fetched_at'],
+    permissionsAnyOf: ['feed_access'],
   },
   {
     table: 'user_feed_pins',
@@ -225,6 +248,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner', 'superuser'],
     fields: ['feed_id', 'item_id'],
+    permissionsAnyOf: ['feed_access'],
   },
   {
     table: 'user_feed_summaries',
@@ -233,6 +257,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt; ueberschrieben',
     accessRoles: ['owner', 'superuser'],
     fields: ['feed_id', 'summary', 'generated_at'],
+    permissionsAnyOf: ['feed_access'],
   },
 
   // === tester ===
@@ -243,6 +268,7 @@ export const DATA_INVENTORY = [
     retention: 'bis User oder Superuser loescht',
     accessRoles: ['owner', 'superuser'],
     fields: ['id', 'username', 'screenshot', 'message', 'created_at'],
+    permissionsAnyOf: ['tester_access'],
   },
   {
     table: 'tester_ui_preferences',
@@ -251,6 +277,7 @@ export const DATA_INVENTORY = [
     retention: 'unbegrenzt',
     accessRoles: ['owner'],
     fields: ['username', 'preferences (JSON)'],
+    permissionsAnyOf: ['tester_access'],
   },
 
   // === network ===
@@ -279,6 +306,7 @@ export const DATA_INVENTORY = [
     retention: 'solange Account besteht',
     accessRoles: ['owner'],
     fields: ['username', 'default_visibility', 'default_flags', 'hub_excluded', 'full_hidden', 'block_all_ai', 'backup_webhook_url', 'updated_at'],
+    permissionsAnyOf: ['blogpost_poster'],
   },
 
   // === global ===
@@ -355,6 +383,23 @@ export const EXTERNAL_SERVICES = [
     avv: '—',
   },
 ];
+
+/**
+ * Filtert das Inventar gegen die effektiven Permissions eines Users.
+ * `userPermissions`: Array von Permission-Strings, die der User HAT.
+ * Eintraege ohne `permissionsAnyOf` (oder leer) sind immer sichtbar.
+ * Superuser sieht grundsaetzlich alles.
+ */
+export function filterInventoryForUser(userPermissions = []) {
+  const have = new Set(userPermissions || []);
+  const isSuper = have.has('super_access');
+  return DATA_INVENTORY.filter((entry) => {
+    if (isSuper) return true;
+    const req = entry.permissionsAnyOf;
+    if (!Array.isArray(req) || req.length === 0) return true;
+    return req.some((p) => have.has(p));
+  });
+}
 
 export const BROWSER_STORAGE = [
   {

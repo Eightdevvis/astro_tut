@@ -6,23 +6,57 @@ import {
   CATEGORY_LABELS,
   EXTERNAL_SERVICES,
   BROWSER_STORAGE,
+  filterInventoryForUser,
 } from '../../lib/data-inventory.js';
 import { BOT_FINGERPRINTS, LAST_REVIEWED } from '../../lib/bot-fingerprints.js';
 import { TOGGLES, VISIBILITIES } from '../../lib/privacy-toggles.js';
 import { LAYERS } from '../../lib/backup-layers.js';
+import { hasPermission, KNOWN_PERMISSIONS, SUPER_PERMISSION } from '../../lib/permissions.js';
 
 const sessionUser = await getSessionUserFromCookies(Astro.cookies);
 if (!sessionUser) return Astro.redirect('/');
 
 const username = sessionUser.username;
 
+// Effektive Permissions des Users serverseitig auflisten — `hasPermission`
+// macht parallel zwei DB-Queries und liefert das echte Effective-Set
+// inkl. Bootstrap-Super + Global-Grants.
+const activePermissions = [];
+for (const perm of KNOWN_PERMISSIONS) {
+  // hasPermission liefert true auch fuer super_access, deshalb extra-Pruefen
+  // ob `super_access` direkt vergeben ist, damit wir den User korrekt
+  // markieren koennen.
+  if (await hasPermission(username, perm)) {
+    activePermissions.push(perm);
+  }
+}
+const isSuper = activePermissions.includes(SUPER_PERMISSION);
+
+// Inventar gegen die Permissions des Users filtern. Superuser sieht alles.
+const visibleEntries = filterInventoryForUser(activePermissions);
+
 const grouped = Object.create(null);
-for (const entry of DATA_INVENTORY) {
+for (const entry of visibleEntries) {
   const cat = entry.category;
   if (!grouped[cat]) grouped[cat] = [];
   grouped[cat].push(entry);
 }
 const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'global'];
+
+const totalCount = DATA_INVENTORY.length;
+const visibleCount = visibleEntries.length;
+const hiddenCount = totalCount - visibleCount;
+
+// Permission-Anzeige-Labels (kuerzer / freundlicher als die DB-Konstanten).
+const PERM_LABEL = {
+  super_access:     'Superuser',
+  blogpost_poster:  'Blog-Posts',
+  quote_poster:     'Zitate',
+  rpg_access:       'RPG / Quests',
+  minigames_access: 'Minigames',
+  tester_access:    'Tester',
+  feed_access:      'Topic-Feeds',
+};
 ---
 
 <BaseLayout pageTitle={`Datenschutz — ${username}`}>
@@ -39,6 +73,22 @@ const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'glob
         Drei-Bucket-Prinzip: <em>oeffentlich offengelegt</em> &nbsp;·&nbsp;
         <em>mit Bedacht oeffentlich</em> &nbsp;·&nbsp; <em>nicht oeffentlich</em>
         (Schwellenwerte/Cron-Geheimnisse stehen in <code>memory/security-sensitive.md</code>).
+      </p>
+      <p class="dp-sub dp-perms">
+        Deine aktiven Bereiche:
+        {activePermissions.length === 0 ? (
+          <em>—</em>
+        ) : (
+          activePermissions.map((p, i) => (
+            <span class="dp-perm-chip">{PERM_LABEL[p] || p}</span>
+          ))
+        )}
+      </p>
+      <p class="dp-sub">
+        Diese Datenschutz-Seite zeigt dir <strong>{visibleCount} von {totalCount}</strong> Tabellen — Eintraege fuer Bereiche, auf die du keinen Zugriff hast, werden nicht angezeigt.
+        {hiddenCount > 0 && !isSuper && (
+          <span> <a href="#" id="dpShowAllToggle">Alle anzeigen</a></span>
+        )}
       </p>
     </header>
 
@@ -81,12 +131,39 @@ const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'glob
                   <dt>Aufbewahrung</dt><dd>{entry.retention}</dd>
                   <dt>Zugriff</dt><dd>{(entry.accessRoles || []).join(', ')}</dd>
                   <dt>Felder</dt><dd><code>{(entry.fields || []).join(', ')}</code></dd>
+                  {entry.permissionsAnyOf && entry.permissionsAnyOf.length > 0 && (
+                    <Fragment>
+                      <dt>Voraussetzung</dt>
+                      <dd>{entry.permissionsAnyOf.map((p) => PERM_LABEL[p] || p).join(' oder ')}</dd>
+                    </Fragment>
+                  )}
                 </dl>
               </li>
             ))}
           </ul>
         </details>
       ))}
+
+      {hiddenCount > 0 && !isSuper && (
+        <details class="dp-cat dp-hidden-cat" id="dpHiddenSection">
+          <summary>Weitere {hiddenCount} Tabellen, die fuer dich nicht aktiv sind</summary>
+          <p class="dp-mini">
+            Diese Tabellen existieren in der DB, aber dein Account hat aktuell keinen Zugriff auf die zugehoerigen Bereiche — wir speichern fuer dich also nichts in ihnen.
+          </p>
+          <ul class="dp-table-list">
+            {DATA_INVENTORY.filter((e) => !visibleEntries.includes(e)).map((entry) => (
+              <li class="dp-table-entry dp-table-entry--inactive">
+                <h3>{entry.table}</h3>
+                <p class="dp-purpose">{entry.purpose}</p>
+                <dl>
+                  <dt>Voraussetzung</dt>
+                  <dd>{(entry.permissionsAnyOf || []).map((p) => PERM_LABEL[p] || p).join(' oder ')}</dd>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <h2>Externe Dienste</h2>
       <table class="dp-services">
@@ -125,8 +202,27 @@ const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'glob
 
       <h2>Bot-Fingerprints (UA-Gate)</h2>
       <p>
-        Liste der Bots, die wir hart blocken (403) bzw. fuer Statistik klassifizieren.
-        Letzte Aktualisierung: <code>{LAST_REVIEWED}</code>.
+        Eine einzige Liste mit zwei Aufgaben. Jeder eingehende Besuch wird
+        anhand des <code>User-Agent</code>-Headers gegen diese Liste verglichen:
+      </p>
+      <ul>
+        <li>
+          <strong>Hart blocken (403)</strong> — wenn der Post per Toggle
+          „KI-Block (hart)" oder einer nicht-oeffentlichen Sichtbarkeit
+          KI-/Archiv-Crawler ausschliesst. Treffer in der Bot-Liste
+          bekommen sofort 403 statt Inhalt.
+        </li>
+        <li>
+          <strong>Fuer Statistik klassifizieren</strong> — auch wenn wir
+          den Bot durchlassen, zaehlen wir ihn in den Server-Logs nach
+          Kategorie (KI / Suche / Social / Archiv). Damit sehen wir
+          spaeter, welche Crawler ueberhaupt unterwegs sind und welche
+          Toggles greifen.
+        </li>
+      </ul>
+      <p class="dp-mini">
+        Eine Liste, damit „was wir blocken" und „was wir zaehlen" nicht
+        auseinanderlaufen. Letzte Aktualisierung: <code>{LAST_REVIEWED}</code>.
       </p>
       <details class="dp-bots">
         <summary>Alle {BOT_FINGERPRINTS.length} Eintraege</summary>
@@ -220,6 +316,27 @@ const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'glob
   .dp-panel.is-active { display: block; }
   .dp-summary li { margin: 0.4rem 0; }
   .dp-mini { opacity: 0.7; font-size: 0.9rem; }
+  .dp-perms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    align-items: center;
+  }
+  .dp-perm-chip {
+    display: inline-block;
+    border: 1px solid var(--site-card-border);
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+  }
+  .dp-hidden-cat summary { opacity: 0.6; }
+  .dp-table-entry--inactive {
+    opacity: 0.55;
+    background: transparent;
+    border-style: dashed;
+  }
   .dp-cat { margin: 1rem 0; }
   .dp-cat summary {
     cursor: pointer;
@@ -300,11 +417,23 @@ const categoryOrder = ['content', 'auth', 'behavior', 'tester', 'network', 'glob
   (function () {
     const tabs = document.querySelectorAll('.dp-tab');
     const panels = document.querySelectorAll('.dp-panel');
-    tabs.forEach((btn) => btn.addEventListener('click', () => {
-      const t = btn.getAttribute('data-tab');
-      tabs.forEach((b) => b.classList.toggle('is-active', b === btn));
+    function selectTab(t) {
+      tabs.forEach((b) => b.classList.toggle('is-active', b.getAttribute('data-tab') === t));
       panels.forEach((p) => p.classList.toggle('is-active', p.getAttribute('data-panel') === t));
-    }));
+    }
+    tabs.forEach((btn) => btn.addEventListener('click', () => selectTab(btn.getAttribute('data-tab'))));
+
+    // "Alle anzeigen"-Link springt in den Details-Tab und klappt die
+    // Hidden-Sektion auf.
+    document.getElementById('dpShowAllToggle')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      selectTab('details');
+      const hidden = document.getElementById('dpHiddenSection');
+      if (hidden) {
+        hidden.open = true;
+        hidden.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
 
     // Webhook
     const wf = document.getElementById('dpWebhookForm');
