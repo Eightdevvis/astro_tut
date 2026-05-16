@@ -136,9 +136,21 @@ Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidd
 - **Neuer Endpoint `src/pages/api/posts/[id]/content.js`**: liefert nur das `contentHtml`, aber **wendet ALLE Gates an** (Expire, Token, Visibility, Passwort, UA-Gate, C7-block_all_ai, no_referrer-Link-Rewrite). Damit kein Gate-Bypass durch JS-only. `Cache-Control: no-store`.
 - Verifiziert per curl: js_only-Page enthaelt nur Skelett (`post-js-only-host` 2x, Original-Text 0x); CSS-Klassen `is-watermarked`/`is-soft-select` sind da; `/api/posts/3/content` liefert Volltext; UA-Gate auf content-API blockt GPTBot bei unlisted.
 
+## Phase 8 — Export (fertig)
+
+- **`GET /api/user/export`** (Login + `blogpost_poster`): JSON-Download mit `Content-Disposition: attachment`. Dateiname `astro-tut-export-<user>-<YYYY-MM-DD>.json`. Enthaelt:
+  - alle eigenen Posts (auch soft-deleted; alle Privacy-Spalten),
+  - alle Revisionen,
+  - alle Server-Drafts,
+  - alle Tokens (Hash, nie Klartext),
+  - Privacy-Defaults,
+  - eigene Permissions.
+- `Cache-Control: no-store`. Hinweis im `meta.note`-Feld, dass Token-Klartext und Passwort-Klartext nicht im Export sind (DB hat sie auch nie gespeichert).
+- DSGVO Art. 20 (Datenuebertragbarkeit) erfuellt.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-8. Export.
+11. Webhook-Mirror, Rate-Limit, Revisions-UI in `/settings`.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
