@@ -248,15 +248,16 @@ function Lab() {
         helpers.update({ tipped: true, tilted: true });
         award('tipped');
         if (s.liquid && s.neck !== 'swan') {
-          // SPILL. Puddle direkt unter dem Kolben (auf Tischhoehe),
-          // versetzt nach links damit sie nicht das Stativ ueberdeckt.
+          // SPILL. Farbe vom aktuellen Liquid uebernehmen (steril hell oder
+          // unsteril braun) — wird der Lache zugewiesen.
+          const spilledColor = s.liquidColor || LIQUID_COLOR_UNSTERILE;
+          // Puddle weiter nach links und tiefer, damit sie nicht wie ein
+          // Deckel auf dem Bunsen unter dem Kolben sitzt. Bunsen ist 70 px
+          // breit und sitzt mittig unter dem Kolben — links vorbei.
+          const puddleX = item.x - 80;
+          const puddleY = item.y + ITEM_META[item.type].h + 70;
           setTimeout(() => {
-            helpers.addAt(
-              'puddle',
-              item.x - 8,
-              item.y + ITEM_META[item.type].h + 20,
-              {},
-            );
+            helpers.addAt('puddle', puddleX, puddleY, { color: spilledColor });
             // Flasche leeren + Sterilisations-Status zurueck (man muesste
             // ja eh neu sterilisieren).
             helpers.update({

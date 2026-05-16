@@ -395,18 +395,22 @@ function PasteurFlask({ state }) {
   );
 }
 
-function Puddle() {
-  // Brauner Lache mit Spritzern. Lebt forever bis User sie in den Muelleimer
-  // zieht. Item-Typ `puddle` (kind: 'spill') ist nicht-snap-fähig.
+function Puddle({ state }) {
+  // Lache mit Spritzern. Farbe spiegelt das Liquid wider, das im Kolben war,
+  // bevor's rausgeschwappt ist — sterile wird hell, unsteril braun.
+  const color = state?.color || LIQUID_COLOR_UNSTERILE;
+  const isSterile = color === LIQUID_COLOR_STERILE;
+  const stroke   = isSterile ? '#a89464' : '#7a5d20';
+  const highlight = isSterile ? '#fbf2da' : '#d8b272';
   return (
     <g>
-      <ellipse cx="40" cy="13" rx="38" ry="6" fill={LIQUID_COLOR_UNSTERILE} stroke="#7a5d20" stroke-width="1.4" />
-      <ellipse cx="40" cy="11" rx="30" ry="4" fill="#d8b272" opacity="0.7" />
+      <ellipse cx="40" cy="13" rx="38" ry="6" fill={color} stroke={stroke} stroke-width="1.4" />
+      <ellipse cx="40" cy="11" rx="30" ry="4" fill={highlight} opacity="0.7" />
       {/* Spritzer */}
-      <circle cx="7"  cy="16" r="2.5" fill={LIQUID_COLOR_UNSTERILE} />
-      <circle cx="73" cy="14" r="2"   fill={LIQUID_COLOR_UNSTERILE} />
-      <circle cx="18" cy="6"  r="1.5" fill={LIQUID_COLOR_UNSTERILE} />
-      <circle cx="60" cy="4"  r="1.4" fill={LIQUID_COLOR_UNSTERILE} />
+      <circle cx="7"  cy="16" r="2.5" fill={color} />
+      <circle cx="73" cy="14" r="2"   fill={color} />
+      <circle cx="18" cy="6"  r="1.5" fill={color} />
+      <circle cx="60" cy="4"  r="1.4" fill={color} />
     </g>
   );
 }
