@@ -363,6 +363,98 @@ const SCHEMA_DDL = `
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     host_pattern  TEXT NOT NULL UNIQUE
   );
+
+  CREATE TABLE IF NOT EXISTS blog_post_revisions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id         INTEGER NOT NULL,
+    username        TEXT NOT NULL,
+    content_html    TEXT NOT NULL,
+    content_text    TEXT NOT NULL DEFAULT '',
+    accent_color    TEXT NOT NULL DEFAULT '#8dc5ff',
+    doodle_data_url TEXT NOT NULL DEFAULT '',
+    privacy_flags   TEXT NOT NULL DEFAULT '{}',
+    change_reason   TEXT NOT NULL DEFAULT 'save',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_blog_post_revisions_post
+    ON blog_post_revisions (post_id, created_at DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_blog_post_revisions_user
+    ON blog_post_revisions (username, created_at DESC, id DESC);
+
+  CREATE TABLE IF NOT EXISTS blog_post_drafts (
+    username        TEXT NOT NULL,
+    post_id         INTEGER NOT NULL DEFAULT 0,
+    content_html    TEXT NOT NULL DEFAULT '',
+    content_text    TEXT NOT NULL DEFAULT '',
+    accent_color    TEXT NOT NULL DEFAULT '#8dc5ff',
+    doodle_data_url TEXT NOT NULL DEFAULT '',
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (username, post_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_blog_post_drafts_user_updated
+    ON blog_post_drafts (username, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS blog_post_tokens (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user   TEXT NOT NULL,
+    post_id      INTEGER,
+    token_hash   TEXT NOT NULL UNIQUE,
+    kind         TEXT NOT NULL DEFAULT 'shared',
+    label        TEXT NOT NULL DEFAULT '',
+    max_uses     INTEGER,
+    used_count   INTEGER NOT NULL DEFAULT 0,
+    expires_at   TEXT,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    revoked_at   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_blog_post_tokens_owner
+    ON blog_post_tokens (owner_user, post_id, revoked_at);
+  CREATE INDEX IF NOT EXISTS idx_blog_post_tokens_post
+    ON blog_post_tokens (post_id, revoked_at);
+
+  CREATE TABLE IF NOT EXISTS request_log (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts             TEXT NOT NULL DEFAULT (datetime('now')),
+    path           TEXT NOT NULL,
+    post_id        INTEGER,
+    username       TEXT,
+    ua_string      TEXT NOT NULL DEFAULT '',
+    ua_category    TEXT NOT NULL DEFAULT 'unknown',
+    ua_bot_name    TEXT,
+    ip_hash        TEXT NOT NULL DEFAULT '',
+    country        TEXT,
+    referer        TEXT,
+    status         INTEGER NOT NULL DEFAULT 200,
+    blocked_reason TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_request_log_post_ts
+    ON request_log (post_id, ts DESC);
+  CREATE INDEX IF NOT EXISTS idx_request_log_user_ts
+    ON request_log (username, ts DESC);
+  CREATE INDEX IF NOT EXISTS idx_request_log_blocked_ts
+    ON request_log (blocked_reason, ts DESC);
+
+  CREATE TABLE IF NOT EXISTS request_stats_daily (
+    date         TEXT NOT NULL,
+    scope_kind   TEXT NOT NULL,
+    scope_id     TEXT NOT NULL DEFAULT '',
+    ua_category  TEXT NOT NULL,
+    ua_bot_name  TEXT NOT NULL DEFAULT '',
+    status       INTEGER NOT NULL,
+    count        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, scope_kind, scope_id, ua_category, ua_bot_name, status)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_privacy_defaults (
+    username           TEXT PRIMARY KEY,
+    default_visibility TEXT NOT NULL DEFAULT 'public',
+    default_flags      TEXT NOT NULL DEFAULT '{}',
+    hub_excluded       INTEGER NOT NULL DEFAULT 0,
+    full_hidden        INTEGER NOT NULL DEFAULT 0,
+    block_all_ai       INTEGER NOT NULL DEFAULT 0,
+    backup_webhook_url TEXT NOT NULL DEFAULT '',
+    updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;
 
 let schemaPromise = null;
@@ -428,6 +520,42 @@ async function ensureUsersDisplayNameColumn() {
   }
 }
 
+async function ensureBlogPostsPrivacyColumns() {
+  const db = createDbClient();
+  const statements = [
+    "ALTER TABLE blog_posts ADD COLUMN deleted_at TEXT",
+    "ALTER TABLE blog_posts ADD COLUMN public_slug TEXT",
+    "ALTER TABLE blog_posts ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'",
+    "ALTER TABLE blog_posts ADD COLUMN privacy_flags TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE blog_posts ADD COLUMN password_hash TEXT",
+    "ALTER TABLE blog_posts ADD COLUMN expires_at TEXT",
+  ];
+  for (const sql of statements) {
+    try {
+      await db.execute(sql);
+    } catch (err) {
+      const msg = err?.message ?? String(err);
+      if (!/duplicate column name/i.test(msg)) throw err;
+    }
+  }
+  try {
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_blog_posts_public_slug ON blog_posts (public_slug) WHERE public_slug IS NOT NULL'
+    );
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/already exists/i.test(msg)) throw err;
+  }
+  try {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_blog_posts_visibility ON blog_posts (visibility, deleted_at)'
+    );
+  } catch (err) {
+    const msg = err?.message ?? String(err);
+    if (!/already exists/i.test(msg)) throw err;
+  }
+}
+
 export async function ensureDbSchema() {
   // Alle Wartungs-Statements (ALTER/DROP/Seeds) liefen früher pro Request frisch
   // gegen Turso — 8+ Round-Trips überall, selbst auf der Home. Jetzt einmal pro
@@ -442,6 +570,7 @@ export async function ensureDbSchema() {
       await ensureUserPermissionsStateColumn();
       await dropUsersGlobalColumn();
       await ensureUsersDisplayNameColumn();
+      await ensureBlogPostsPrivacyColumns();
       await seedFeedPolicyDefaults(db);
     })().catch((err) => {
       schemaPromise = null;

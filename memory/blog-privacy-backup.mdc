@@ -1,0 +1,53 @@
+# Blog Backup-Tresor + Privacy-Werkzeugkasten
+
+Großes Vorhaben für Blogger: mehrschichtige Verlustsicherung + togglebare Privacy-Optionen pro Post (inkl. Profil-Defaults), Tooltip-Popovers mit Effekt-Checklisten, Crawler-/AI-Bot-Sicht­barkeit messen, und ein technisch transparenter Datenschutz-Details-Tab.
+
+- **Voller Plan:** [`/plans/blog-privacy-backup-plan.md`](../plans/blog-privacy-backup-plan.md) (Sections 1–13, Rollout-Reihenfolge, Risiken).
+- **Branch der Umsetzung:** `claude/backup-privacy-update-G1UAA`; jeweils auch direkt auf `master`.
+
+## Datenmodell (Phase 1, fertig)
+
+Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
+
+- **`blog_posts` neue Spalten** (per `ensureBlogPostsPrivacyColumns()`):
+  - `deleted_at` (Soft-Delete-Marker, Papierkorb).
+  - `public_slug` (nanoid-Slug für unraidbare URLs).
+  - `visibility` `'public'|'unlisted'|'private'|'password'`.
+  - `privacy_flags` JSON-Bag aller Toggles.
+  - `password_hash`, `expires_at`.
+  - Partial UNIQUE Index `idx_blog_posts_public_slug` (WHERE NOT NULL).
+  - Index `idx_blog_posts_visibility` auf `(visibility, deleted_at)`.
+
+- **Neue Tabellen** in SCHEMA_DDL:
+  - `blog_post_revisions` — Versionshistorie pro Save; Indizes auf `(post_id, created_at DESC)` und `(username, created_at DESC)`.
+  - `blog_post_drafts` — Server-Autosave; PK `(username, post_id)`.
+  - `blog_post_tokens` — Shared/One-Time-Tokens; `token_hash` UNIQUE; `post_id` NULL = user-globaler Hauptschlüssel; Indizes auf `(owner_user, post_id, revoked_at)` und `(post_id, revoked_at)`.
+  - `request_log` — Crawler-/Traffic-Erfassung mit `ua_category`, `ua_bot_name`, gehashter `ip_hash`, `blocked_reason`.
+  - `request_stats_daily` — Aggregat-Tabelle, composite PK über `(date, scope_kind, scope_id, ua_category, ua_bot_name, status)`.
+  - `user_privacy_defaults` — pro-User-Defaults, Webhook-URL, Hub-/Full-Hide-Flags.
+
+- **Init-Skripte (`scripts/init_db.cjs`, `scripts/init_turso.js`) hängen schon vor diesem Update zurück** — beide haben mehrere Tabellen nicht (`blog_posts`, `minigame_progress`, …); Runtime-`ensureDbSchema` ist die echte Quelle. Beim nächsten manuellen Init-Run müssen sie aufgeräumt werden (offener Punkt, nicht in Phase 1).
+
+## Offene Phasen (siehe Plan-Datei)
+
+2. Backup-Basis (A1 Browser-Draft, A2 Server-Draft, A3 Revision-on-Save, A4 Soft-Delete + Papierkorb).
+3. Visibility + Slug + Hub-Ausschluss.
+4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
+5. UA-Gate + dynamische robots.txt.
+6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
+7. Profil-Ebene + Memory-Update für `/me.astro` (Profilseite ist `src/pages/me.astro`, in Memory bisher nicht erwähnt).
+8. Export.
+9. Token/Passwort/Expire/Burn.
+10. Watermark/Anti-Scrape-Soft/JS-only.
+11. Webhook-Mirror, Rate-Limit, Revisions-UI in `/settings`, optionaler Reverse-DNS-Verschärfer.
+12. Observability (`request_log` + `bot-fingerprints.js`).
+13. Datenschutz-Details-Tab in `/settings/datenschutz` mit `data-inventory.js` als Single-Source-of-Truth + Lint-Test gegen `db.js`.
+
+## Regeln & Defaults
+
+- Default für **neue** Posts: `visibility='public'`, alle Privacy-Toggles aus.
+- Default für **Backups**: alle Schichten ein; User-Reibung minimal (kleine "autosaved"-Notif, Crash-Recovery-Banner).
+- Tooltip-System einheitlich: `<InfoToggle>`-Komponente + Daten-Tabellen `src/lib/privacy-toggles.js` (12 Effekt-Achsen) und `src/lib/backup-layers.js` (8 Achsen) als Single Source of Truth — wird auch von Server-Middleware gelesen.
+- Bot-Liste `src/lib/bot-fingerprints.js` ist Quelle sowohl für UA-Gate als auch Log-Klassifizierung — keine Drift.
+- Sicherheit: Tokens als sha256-Hash gespeichert, IP als sha256+Salt, Passwörter via bcrypt (`bcryptjs` ist Dep), JWT in httpOnly-Cookie.
+- 3-Bucket-Regel für Datenschutz-Doku: voll öffentlich (Tabellen/Zwecke/Retention) / mit Bedacht öffentlich (Bot-Liste) / nicht öffentlich (Rate-Limit-Schwellen, Cron-Secrets, Salt-Cadenz) → letzteres in `memory/security-sensitive.md` (gitignored).

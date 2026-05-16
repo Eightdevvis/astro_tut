@@ -34,6 +34,7 @@ Vollständiges DDL nur in **`db.js`** / Init-Skripten; hier nur Namen:
 | `ai_usage_log` | KI-Token/Kosten pro User (`feature` z. B. `rpg`, `topic_feed_plan`, `topic_feed_summary`); siehe `src/lib/ai-usage-db.js`, UI `/settings` Tab KI-Nutzung |
 | `user_feeds`, `user_feed_sources`, `user_feed_items` (u. a. `image_url`), `user_feed_pins`, `user_feed_summaries` | Topic-Feeds pro User; Logik `src/lib/feed-db.js`, Ingest `feed-ingest.js`, Bild-Helfer `feed-item-image.js`, Policy `feed-policy.js` |
 | `feed_allowlist`, `feed_blocklist` | RSS/Host-Vertrauen; Super-UI „Topic-Feed Vertrauen“, API `GET/POST /api/admin/feed-policy` |
+| `blog_post_revisions`, `blog_post_drafts`, `blog_post_tokens`, `request_log`, `request_stats_daily`, `user_privacy_defaults` | Blog Backup-Tresor + Privacy-Werkzeugkasten (siehe [`blog-privacy-backup.mdc`](blog-privacy-backup.mdc)); `blog_posts` zusätzlich um `deleted_at, public_slug, visibility, privacy_flags, password_hash, expires_at` ergänzt |
 | Cron | `POST/GET /api/cron/ingest-feeds` mit `CRON_SECRET` (Bearer oder `?secret=`); `vercel.json` → 1× täglich 06:00 UTC (`0 6 * * *`) |
 
 **Auth** (JWT, Session-Cookie) ist getrennt dokumentiert im Code (`session.js`, `login.js`); die **User-Daten** liegen aber in derselben DB wie oben.
