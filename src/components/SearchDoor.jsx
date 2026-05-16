@@ -138,11 +138,8 @@ export default function SearchDoor() {
               </svg>
             </button>
 
-            {/* Namensschild — haengt am "Nagel" */}
+            {/* Namensschild — zentriert auf der Tuer */}
             <div class="name-plate">
-              <span class="name-plate-nail" aria-hidden="true"></span>
-              <span class="name-plate-string name-plate-string-left" aria-hidden="true"></span>
-              <span class="name-plate-string name-plate-string-right" aria-hidden="true"></span>
               <input
                 ref={inputRef}
                 type="text"
@@ -152,7 +149,7 @@ export default function SearchDoor() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
                 }}
-                placeholder="Suchen…"
+                placeholder="???"
                 aria-label="Suchanfrage"
                 maxLength={120}
                 spellcheck={false}
@@ -173,7 +170,6 @@ export default function SearchDoor() {
           justify-content: flex-end;
           padding: 1rem max(0.75rem, env(safe-area-inset-right, 0px)) 2.5rem 1rem;
           box-sizing: border-box;
-          /* Subtiles Fade rein wie die letzten Posts */
           opacity: 0.92;
         }
         .search-door-frame {
@@ -184,99 +180,84 @@ export default function SearchDoor() {
           transform-style: preserve-3d;
         }
 
-        /* Tuerrahmen-Bg (immer sichtbar als "dahinter") */
+        /* "Hinter der Tuer": Innenraum-Optik passend zum Site-Stil
+           (schwarz/weiss, eckig, harte Kanten). */
         .door-behind {
           position: absolute;
           inset: 0;
-          border-radius: 14px 14px 6px 6px;
-          background:
-            radial-gradient(ellipse at 50% 30%, rgba(255,240,210,0.06), transparent 65%),
-            linear-gradient(180deg, #2a221b 0%, #1a1310 100%);
-          border: 3px solid #3b2f23;
-          box-shadow: inset 0 0 24px rgba(0,0,0,0.6);
+          background: var(--home-page-bg, #ffffff);
+          border: 2px solid currentColor;
+          color: var(--site-body-text, #000);
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 1rem;
-          box-sizing: border-box;
-          color: #f6efdb;
-          font-family: var(--font-family);
-          text-align: center;
-          /* Kein scrollbares Verhalten — wir wollen Wand-Feeling */
-          overflow: hidden;
-        }
-        .behind-empty {
-          font-size: 1rem;
-          opacity: 0.65;
-          font-style: italic;
-        }
-        .behind-post {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
           padding: 0.6rem;
           box-sizing: border-box;
-          background: var(--site-card-bg, #fffaf2);
-          color: var(--site-card-text, #1d1a14);
-          border-radius: 10px;
+          font-family: var(--font-family);
+          text-align: center;
+          overflow: hidden;
+        }
+        :global(html.dark) .door-behind {
+          background: var(--home-page-bg, #000);
+          color: var(--site-body-text, #fff);
+        }
+        .behind-empty {
+          font-family: ui-monospace, 'Courier New', Courier, monospace;
+          font-size: 0.95rem;
+          opacity: 0.7;
+        }
+        .behind-post {
+          width: 100%; height: 100%;
+          display: flex; flex-direction: column; gap: 0.4rem;
+          padding: 0.6rem;
+          box-sizing: border-box;
+          background: var(--site-card-bg);
+          color: var(--site-card-text);
+          border: 1px solid var(--site-card-border);
+          box-shadow: var(--site-card-inset-strong);
           text-decoration: none;
           font-size: 0.78rem;
           line-height: 1.4;
           overflow: hidden;
-          transition: transform 200ms ease, box-shadow 200ms;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         }
-        .behind-post:hover { transform: scale(1.02); box-shadow: 0 6px 16px rgba(0,0,0,0.32); }
+        .behind-post:hover { background: var(--site-card-bg); filter: invert(0.04); }
         .behind-post-date {
+          font-family: ui-monospace, 'Courier New', Courier, monospace;
           font-size: 0.68rem;
           letter-spacing: 0.05em;
-          opacity: 0.55;
-          font-family: ui-monospace, 'JetBrains Mono', monospace;
+          opacity: 0.6;
         }
-        .behind-post-snippet {
-          font-style: italic;
-          opacity: 0.92;
-          overflow: hidden;
-          flex: 1;
-        }
+        .behind-post-snippet { font-style: italic; opacity: 0.92; overflow: hidden; flex: 1; }
 
         .behind-user {
           width: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 0.4rem;
-          color: #f6efdb;
-          text-decoration: none;
-          padding: 1rem;
+          display: flex; flex-direction: column;
+          align-items: center; gap: 0.35rem;
+          color: inherit; text-decoration: none;
+          padding: 0.6rem;
           box-sizing: border-box;
-          border-radius: 8px;
-          transition: transform 200ms ease;
         }
-        .behind-user:hover { transform: scale(1.05); }
+        .behind-user:hover { filter: invert(0.06); }
         .behind-user svg {
-          width: 90px; height: 90px;
-          color: #f6efdb;
-          filter: drop-shadow(0 0 8px rgba(255, 230, 170, 0.25));
+          width: 88px; height: 88px;
+          color: inherit;
         }
         .behind-user-name {
-          font-family: 'Protest Demo', var(--font-hero, 'Protest Demo'), serif;
-          font-size: 1.3rem;
+          font-family: var(--font-hero, 'Protest Demo'), serif;
+          font-size: 1.25rem;
           line-height: 1.1;
           text-align: center;
           word-break: break-word;
         }
         .behind-user-id {
-          font-family: ui-monospace, 'JetBrains Mono', monospace;
-          font-size: 0.75rem;
-          opacity: 0.55;
+          font-family: ui-monospace, 'Courier New', Courier, monospace;
+          font-size: 0.72rem;
+          opacity: 0.6;
           letter-spacing: 0.04em;
         }
 
-        /* Die Tuer selbst (3D-Rotation um linke Kante) */
+        /* Die Tuer (3D-Rotation um linke Kante) */
         .door-panel {
           position: absolute;
           inset: 0;
@@ -294,135 +275,96 @@ export default function SearchDoor() {
         .door-panel-inner {
           position: absolute;
           inset: 0;
-          border-radius: 14px 14px 6px 6px;
-          background:
-            repeating-linear-gradient(
-              90deg,
-              rgba(0,0,0,0.04) 0 2px,
-              transparent 2px 8px
-            ),
-            linear-gradient(180deg, #8b6b3d 0%, #6e5128 100%);
-          border: 3px solid #3b2a14;
-          box-shadow:
-            inset 0 0 24px rgba(0,0,0,0.32),
-            inset 0 6px 0 rgba(255,255,255,0.06),
-            0 10px 24px rgba(0,0,0,0.35);
+          background: var(--site-card-bg, #fff);
+          color: var(--site-card-text, #000);
+          border: 2px solid currentColor;
+          box-shadow: var(--site-card-inset-strong);
           overflow: hidden;
         }
-        /* Tuerpaneele: zwei "Felder" */
+        /* Tuerpaneele: zwei rechteckige Felder, scharfkantig */
         .door-panel-inner::before,
         .door-panel-inner::after {
           content: '';
           position: absolute;
-          left: 16px;
-          right: 16px;
-          height: 32%;
-          border: 2px solid rgba(0,0,0,0.35);
-          border-radius: 4px;
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07);
+          left: 18px;
+          right: 18px;
+          height: 30%;
+          border: 1.5px solid currentColor;
+          opacity: 0.85;
         }
-        .door-panel-inner::before { top: 14px; }
-        .door-panel-inner::after  { bottom: 80px; }
+        .door-panel-inner::before { top: 16px; }
+        .door-panel-inner::after  { bottom: 16px; }
 
-        /* Lupengriff */
+        /* Lupengriff — klein, schwarz/weiss, eckig */
         .door-handle {
           position: absolute;
-          right: 14px;
+          right: 12px;
           top: 50%;
           transform: translateY(-50%);
-          width: 50px;
-          height: 50px;
+          width: 26px;
+          height: 26px;
           padding: 0;
-          border: 3px solid #1b1108;
-          border-radius: 50%;
-          background:
-            radial-gradient(circle at 35% 30%, #f6d77a 0%, #b9892b 60%, #6a4a14 100%);
-          color: #1b1108;
+          border: 1.5px solid currentColor;
+          background: var(--site-card-bg, #fff);
+          color: inherit;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow:
-            inset 0 0 6px rgba(255,255,255,0.4),
-            0 4px 8px rgba(0,0,0,0.4);
-          transition: transform 160ms ease, box-shadow 160ms;
+          border-radius: 0;
         }
-        .door-handle svg { width: 28px; height: 28px; }
+        .door-handle svg { width: 16px; height: 16px; display: block; }
         .door-handle:hover:not(:disabled) {
-          transform: translateY(-50%) scale(1.06);
-          box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 6px 12px rgba(0,0,0,0.5);
+          background: currentColor;
         }
-        .door-handle:active:not(:disabled) { transform: translateY(-50%) scale(0.96); }
-        .door-handle:disabled { opacity: 0.7; cursor: progress; }
+        .door-handle:hover:not(:disabled) svg { color: var(--site-card-bg, #fff); }
+        .door-handle:disabled { opacity: 0.5; cursor: progress; }
 
-        /* Namensschild */
+        /* Namensschild — zentriert auf der Tuer (horizontal + vertikal) */
         .name-plate {
           position: absolute;
-          left: 14px;
-          right: 80px;
-          top: 22%;
-          height: 56px;
-          background: linear-gradient(180deg, #f6efdb 0%, #e9dfb9 100%);
-          border: 2px solid #3b2a14;
-          border-radius: 6px;
-          box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 70%;
+          height: 48px;
+          background: var(--site-card-bg, #fff);
+          color: inherit;
+          border: 1.5px solid currentColor;
           display: flex;
           align-items: center;
-          padding: 0 0.5rem;
+          justify-content: center;
+          padding: 0 0.4rem;
+          box-sizing: border-box;
         }
-        .name-plate-nail {
-          position: absolute;
-          top: -10px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          background: radial-gradient(circle at 30% 30%, #d8b367, #6f4f17);
-          border: 1.5px solid #2c1f0d;
-          z-index: 2;
-        }
-        .name-plate-string {
-          position: absolute;
-          top: -6px;
-          width: 2px;
-          background: #2c1f0d;
-          height: 18px;
-          transform-origin: top;
-        }
-        .name-plate-string-left  { left: calc(50% - 1px); transform: rotate(-32deg); }
-        .name-plate-string-right { left: calc(50% - 1px); transform: rotate( 32deg); }
-
         .name-plate-input {
           flex: 1; min-width: 0;
           background: transparent;
           border: none;
           outline: none;
-          font: inherit;
-          font-family: 'Protest Demo', var(--font-hero, 'Protest Demo'), serif;
-          font-size: 1.1rem;
-          color: #2a1d0c;
+          font-family: ui-monospace, 'Courier New', Courier, monospace;
+          font-size: 1rem;
+          color: inherit;
           text-align: center;
+          letter-spacing: 0.02em;
         }
         .name-plate-input::placeholder {
-          color: #6b5a35;
-          opacity: 0.6;
-          font-style: italic;
+          color: inherit;
+          opacity: 0.4;
+          font-family: ui-monospace, 'Courier New', Courier, monospace;
         }
 
-        /* Close-Button rechts oben am Rahmen */
+        /* Close-Button */
         .door-close {
           position: absolute;
-          top: -14px;
-          right: -14px;
-          width: 30px;
-          height: 30px;
-          border-radius: 50%;
-          border: 2px solid #1b1108;
-          background: #f6efdb;
-          color: #1b1108;
-          font-size: 1.1rem;
-          font-weight: bold;
+          top: -12px;
+          right: -12px;
+          width: 24px;
+          height: 24px;
+          border: 1.5px solid currentColor;
+          background: var(--site-card-bg, #fff);
+          color: inherit;
+          font-size: 1rem;
           line-height: 1;
           cursor: pointer;
           padding: 0;
@@ -430,36 +372,29 @@ export default function SearchDoor() {
           align-items: center;
           justify-content: center;
           z-index: 5;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+          border-radius: 0;
         }
-        .door-close:hover { transform: scale(1.08); }
+        .door-close:hover { background: currentColor; color: var(--site-card-bg, #fff); }
 
-        /* Shake-Animation wenn leeres Query */
         .search-door-frame.is-shaking {
           animation: door-shake 360ms ease;
         }
         @keyframes door-shake {
           0%, 100% { transform: translateX(0); }
-          20%      { transform: translateX(-6px) rotate(-1deg); }
-          40%      { transform: translateX(6px)  rotate(1deg); }
-          60%      { transform: translateX(-4px); }
-          80%      { transform: translateX(4px); }
+          20%      { transform: translateX(-5px); }
+          40%      { transform: translateX(5px);  }
+          60%      { transform: translateX(-3px); }
+          80%      { transform: translateX(3px); }
         }
 
         @media (max-width: 520px) {
           .search-door-frame { width: 200px; height: 300px; }
-          .name-plate { height: 48px; top: 20%; right: 70px; }
-          .door-handle { width: 42px; height: 42px; right: 12px; }
-          .door-handle svg { width: 22px; height: 22px; }
+          .name-plate { height: 42px; }
+          .name-plate-input { font-size: 0.9rem; }
+          .door-handle { width: 22px; height: 22px; right: 10px; }
+          .door-handle svg { width: 13px; height: 13px; }
           .behind-user svg { width: 70px; height: 70px; }
-          .behind-user-name { font-size: 1.1rem; }
-        }
-
-        /* Dark-Mode: Tuer bleibt holzig, Hinten leicht dunkler */
-        :global(html.dark) .door-behind {
-          background:
-            radial-gradient(ellipse at 50% 30%, rgba(255,240,210,0.04), transparent 65%),
-            linear-gradient(180deg, #150f0a 0%, #0c0805 100%);
+          .behind-user-name { font-size: 1.05rem; }
         }
       `}</style>
     </div>

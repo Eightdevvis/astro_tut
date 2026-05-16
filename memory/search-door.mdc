@@ -39,9 +39,9 @@ Aus `/api/search`-Antwort wird **ein** Treffer ausgewaehlt und hinter der Tuer a
 
 ## Visuals (Door-Design)
 
-Holzfarbene Tuer mit zwei eingeprägten Paneelen (CSS `::before/::after`); Lupe als runder "Knauf" mit Verlauf goldgelb→braun und SVG-Lupensymbol. Namensschild als helle Plakette an einem Nagel mit zwei "Schnueren" links/rechts. Innenraum hinter der Tuer: dunkelbrauner Verlauf, Post-Ergebnis als helle Karte (Hub-Snippet-Stil), User-Ergebnis als grosses User-Icon + Name.
+Strict schwarz/weiss, scharfe Kanten passend zum restlichen Site-Stil — nutzt `--site-card-bg/-text/-border` und `--site-body-text`. Tuerpaneele als zwei eckige Rechtecke per `::before/::after`. Lupe ist klein (26x26 px), eckig, fuellt sich auf Hover invers. Namensschild **zentriert auf der Tuer** (vertikal + horizontal, 70% Breite, 48px hoch). Eingabe in **monospace**, Placeholder `???`. Innenraum hinter der Tuer nimmt `--home-page-bg` an — Post-Ergebnis ist eine Site-Card im Standard-Stil.
 
-Dark-Mode: Innenraum wird noch dunkler, Tuer bleibt holzig.
+Dark-Mode: alle Farben kippen automatisch ueber die Theme-Variablen.
 
 ## Spaeter erweiterbar
 
