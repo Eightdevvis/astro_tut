@@ -45,10 +45,31 @@ const hudListeners = new Set();
 
 function readPersistedFlag() {
   try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem(STATE_KEY) === '1';
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(STATE_KEY) === '1') return true;
   } catch {
-    return false;
+    // ignore
   }
+  // URL-Schalter fuer Tablet-Nutzung ohne DevTools-Zugang:
+  //   …/seite#fgraffiti-debug   → Debug an + persistiert
+  //   …/seite#fgraffiti-debug-off → Debug aus + Buffer geleert
+  // Hash bleibt bewusst stehen, damit ein Reload weiter im Debug-Modus startet
+  // bis aktiv deaktiviert wird.
+  try {
+    if (typeof location !== 'undefined') {
+      const hash = (location.hash || '').toLowerCase();
+      if (hash.includes('fgraffiti-debug-off')) {
+        try { localStorage.removeItem(STATE_KEY); } catch { /* ignore */ }
+        return false;
+      }
+      if (hash.includes('fgraffiti-debug')) {
+        try { localStorage.setItem(STATE_KEY, '1'); } catch { /* ignore */ }
+        return true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false;
 }
 
 export function isEnabled() {
