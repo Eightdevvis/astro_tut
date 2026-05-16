@@ -1,0 +1,48 @@
+# Suchtür auf der Hauptseite
+
+Eine "Tür" unten rechts auf `/` (nach den ausgefadeten Blogpost-Karten). Der Türgriff ist eine Lupe (= Such-Knopf), an der Tür hängt ein Namensschild mit Eingabefeld. Beim Treffer schwingt die Tür 3D-mässig auf und zeigt dahinter das Ergebnis.
+
+## UI / Verhalten
+
+- Komponente: `src/components/SearchDoor.jsx` (Preact, `client:load`).
+- Eingebettet in `src/pages/index.astro` direkt nach `.home-tail` — sitzt im normalen Page-Flow (kein fixed) und erscheint beim Runter-Scrollen am unteren Ende.
+- States: `idle | searching | open | empty`. `Esc` schliesst die geoeffnete Tuer; Enter im Namensschild triggert die Suche; leeres Query → Frame-Shake-Animation + Fokus aufs Namensschild.
+- Tuer schwingt mit `transform: rotateY(-82deg)` + `transform-origin: left center` + 700ms cubic-bezier. Dahinter sitzt der `.door-behind`-Div als "Innenraum".
+
+## Treffer-Logik (Client)
+
+Aus `/api/search`-Antwort wird **ein** Treffer ausgewaehlt und hinter der Tuer angezeigt:
+1. Exakter User-Match (Username oder Display-Name == Query, case-insensitive) → User-Ergebnis.
+2. Sonst erster Post-Treffer → Post-Ergebnis.
+3. Sonst erster User-Treffer → User-Ergebnis.
+4. Sonst `empty`-State ("Niemand zu Hause.").
+
+## API
+
+`GET /api/search?q=<query>` — `src/pages/api/search.js`:
+- Kein Login noetig.
+- `posts`: bis 5 oeffentliche Posts (LIKE auf `content_text`, `WHERE deleted_at IS NULL AND visibility = 'public'`), Snippet rund um den Treffer (Fallback: random), Wortgrenzen-respektierend.
+- `users`: bis 5 (LIKE auf `username` ODER `display_name`).
+- Full-hidden User (`user_privacy_defaults.full_hidden=1`) werden in **beiden** Listen geblockt (auch deren Posts).
+- LIKE-Escape (`\%`, `\_`, `\\`) gegen Injection ueber `%`/`_`-Wildcards.
+
+## Verlinkungs-Ziele
+
+- Post-Treffer: `<a href="/posts/db/<slug-oder-id>">` — gleicher Pfad wie auf der Home/Hub-Seite.
+- User-Treffer: `<a href="/users/<username>">` — neue Public-Profile-Seite (siehe unten).
+
+## Neue Seite: `/users/[username]`
+
+- `src/pages/users/[username].astro` — read-only User-Profil (Display-Name + User-Icon + `@username`), styling-identisch zum Hero-Block in `/me`.
+- Full-hidden User werden hier mit "User nicht gefunden" angezeigt (kein Leak).
+- Keine privaten Daten — nur `username` und `display_name` aus der `users`-Tabelle.
+
+## Visuals (Door-Design)
+
+Holzfarbene Tuer mit zwei eingeprägten Paneelen (CSS `::before/::after`); Lupe als runder "Knauf" mit Verlauf goldgelb→braun und SVG-Lupensymbol. Namensschild als helle Plakette an einem Nagel mit zwei "Schnueren" links/rechts. Innenraum hinter der Tuer: dunkelbrauner Verlauf, Post-Ergebnis als helle Karte (Hub-Snippet-Stil), User-Ergebnis als grosses User-Icon + Name.
+
+Dark-Mode: Innenraum wird noch dunkler, Tuer bleibt holzig.
+
+## Spaeter erweiterbar
+
+Aktuell sucht nur Posts + User. Fuer weitere Typen (Minigames, Quotes …) entweder `/api/search` erweitern oder typ-spezifische Endpoints; Client kann die Priorisierungs-Liste in `SearchDoor.jsx` ausbauen.

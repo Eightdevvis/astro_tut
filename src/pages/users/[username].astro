@@ -1,0 +1,138 @@
+---
+import Nav2 from '../../components/Nav2.astro';
+import SiteFontOverrides from '../../components/SiteFontOverrides.astro';
+import ThemeInit from '../../components/ThemeInit.astro';
+import ThemeClient from '../../components/ThemeClient.astro';
+import PageFavicon from '../../components/PageFavicon.astro';
+import { ensureDbSchema, getDb } from '../../lib/db.js';
+import { getFullHiddenUsernames } from '../../lib/user-privacy-defaults.js';
+import '../../styles/global.css';
+
+const usernameParam = String(Astro.params.username || '').trim();
+
+if (!usernameParam) {
+  return Astro.redirect('/');
+}
+
+let userRow: { username: string; display_name: string | null } | null = null;
+try {
+  await ensureDbSchema();
+  const hidden = await getFullHiddenUsernames();
+  if (!hidden.has(usernameParam)) {
+    const r = await getDb().execute({
+      sql: 'SELECT username, display_name FROM users WHERE username = ? LIMIT 1',
+      args: [usernameParam],
+    });
+    const row = r.rows?.[0];
+    if (row) {
+      userRow = {
+        username: String(row.username || ''),
+        display_name: row.display_name ? String(row.display_name) : null,
+      };
+    }
+  }
+} catch (err) {
+  console.error('users/[username]: load failed', err);
+}
+
+const found = Boolean(userRow);
+const username = userRow?.username || usernameParam;
+const displayName = userRow?.display_name || username;
+const showLoginId = displayName !== username;
+---
+
+<html lang="de" class="home">
+  <head>
+    <meta charset="utf-8" />
+    <ThemeInit />
+    <PageFavicon icon="user" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f1ea" />
+    <title>{found ? `${displayName} — Profil` : 'Nicht gefunden'}</title>
+    <SiteFontOverrides />
+  </head>
+  <body>
+    <Nav2 variant="home" />
+    {found ? (
+      <header class="me-hero">
+        <svg
+          class="me-hero-icon"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+        </svg>
+        <h1 class="me-hero-name">{displayName}</h1>
+        {showLoginId && <p class="me-hero-id">@{username}</p>}
+      </header>
+    ) : (
+      <header class="me-hero">
+        <h1 class="me-hero-name not-found">User nicht gefunden</h1>
+        <p class="me-hero-id">@{usernameParam}</p>
+      </header>
+    )}
+    <ThemeClient />
+  </body>
+</html>
+
+<style is:global>
+  html.home { background-color: var(--home-page-bg); }
+  html.home body {
+    background-color: var(--home-page-bg);
+    margin: 0; padding: 0;
+    padding-top: calc(var(--nav-strip-h) + env(safe-area-inset-top, 0px));
+  }
+  html.home .me-hero-name { margin: 0; font-weight: normal; }
+</style>
+<style>
+  .me-hero {
+    position: relative;
+    width: 100%; max-width: 100%; margin: 0;
+    padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+    overflow-x: clip;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding-top: calc(1rem + 4vh);
+    gap: 1vh;
+  }
+  .me-hero-icon {
+    width: clamp(120px, 22vh, 320px);
+    height: clamp(120px, 22vh, 320px);
+    color: var(--home-hero-text);
+    display: block;
+  }
+  .me-hero-name {
+    font-family: var(--font-hero, 'Protest Demo');
+    font-size: clamp(2rem, 10vh, 8rem);
+    color: var(--home-hero-text);
+    line-height: 1; text-align: center;
+    transform: scaleX(0.6);
+    transform-origin: center top;
+    width: max-content;
+    max-width: min(100%, 100vw - 1.5rem);
+  }
+  .me-hero-name.not-found {
+    transform: none;
+    font-size: clamp(1.5rem, 5vh, 3rem);
+    opacity: 0.7;
+  }
+  .me-hero-id {
+    margin: 0.4rem 0 0;
+    font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    font-size: clamp(0.85rem, 1.6vh, 1.05rem);
+    letter-spacing: 0.04em;
+    color: var(--home-hero-text);
+    opacity: 0.55;
+  }
+  @media screen and (max-width: 767px) {
+    .me-hero-icon {
+      width: clamp(96px, 16vh, 200px);
+      height: clamp(96px, 16vh, 200px);
+    }
+    .me-hero-name { font-size: clamp(1.75rem, min(9vh, 11vw), 3.25rem); }
+  }
+</style>

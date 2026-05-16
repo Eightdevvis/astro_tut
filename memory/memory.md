@@ -22,6 +22,7 @@ Vor größeren Änderungen: **hier starten**, dann nur die **Unterdateien** öff
 | Math-Minigames (Fluss, Fraktale, Korrektheit, Pfade) | [`math-minigames.mdc`](math-minigames.mdc) |
 | /me Vokabelkarten-Stack (unten rechts, owner-only Editor, strikt user-spezifisch) | [`me-vocab-cards.mdc`](me-vocab-cards.mdc) |
 | /me Zitate-Lianen-Stack (oben links, vertikaler Text, Tail-Garantie nicht vergraben) | [`me-quote-lianas.mdc`](me-quote-lianas.mdc) |
+| Suchtür auf der Hauptseite (unten rechts, Tür mit Lupengriff + Namensschild, Posts+User-Suche) | [`search-door.mdc`](search-door.mdc) |
 | Mikrobiologie-Seite + Molecule Builder (Ketcher, Preact-Bridge) | [`mikrobiologie.mdc`](mikrobiologie.mdc) |
 | Minigames-Pattern (Karten-Prozente, Server-Sync, Konfetti, Tool-Vorlagen, Practice-Mode) | [`minigames-pattern.mdc`](minigames-pattern.mdc) |
 | Minigame-Mechaniken (Katalog: Quiz, Tiles, Structure-Build, Lab-Bench, …) | [`minigame-mechanics.mdc`](minigame-mechanics.mdc) |
