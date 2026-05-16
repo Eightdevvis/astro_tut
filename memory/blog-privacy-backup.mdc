@@ -128,9 +128,17 @@ Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidd
 - **Hub-Modus blendet die Sidebar automatisch mit aus** ueber das bestehende `.page[data-mode="hub"] .editor-shell { opacity: 0; max-height: 0; }`.
 - Verifiziert per curl: HTML rendert alle 4 Visibility-Radios, 9 Toggle-Checkboxen, 6 Backup-Layer-Eintraege und 19 InfoToggle-Buttons; Editor-Save-Pfad nimmt jetzt `visibility`, `privacyFlags`, optional `password` + `expiresAt` mit.
 
+## Phase 10 — Watermark + Soft-Select + JS-only (fertig)
+
+- **B19 Watermark**: CSS-`::after` auf `.db-post-content.is-watermarked` rendert wiederholtes "username · datum"-Muster (opacity 0.07, rotate -22°). Inhalt aus `data-watermark`-Attribut. Erklart sich ueber den Tooltip ehrlich als "kein echter Schutz, nur rueckverfolgbar".
+- **B18 Soft-Select**: CSS `user-select: none` + Inline-JS, das `contextmenu` und `copy` auf `.is-soft-select`-Elementen unterdrueckt. Tooltip kennzeichnet als kosmetisch.
+- **B21 JS-only-Render**: bei `privacy_flags.js_only` wird im SSR-HTML nur ein leeres `<div id="post-js-only-host" data-slug=… data-token-qs=…>` geliefert; ein inline-`<script>` fetcht `/api/posts/<slugOrId>/content[?key=…]` und injiziert das HTML. Bricht jeden klassischen Crawler — auch Suchindex.
+- **Neuer Endpoint `src/pages/api/posts/[id]/content.js`**: liefert nur das `contentHtml`, aber **wendet ALLE Gates an** (Expire, Token, Visibility, Passwort, UA-Gate, C7-block_all_ai, no_referrer-Link-Rewrite). Damit kein Gate-Bypass durch JS-only. `Cache-Control: no-store`.
+- Verifiziert per curl: js_only-Page enthaelt nur Skelett (`post-js-only-host` 2x, Original-Text 0x); CSS-Klassen `is-watermarked`/`is-soft-select` sind da; `/api/posts/3/content` liefert Volltext; UA-Gate auf content-API blockt GPTBot bei unlisted.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-10. Watermark / Anti-Scrape-Soft / JS-only (B18 + B19 + B21).
+8. Export.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).

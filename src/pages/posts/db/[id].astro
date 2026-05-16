@@ -281,6 +281,18 @@ try {
 const renderedHtml = effective.noReferrer
   ? rewriteOutboundLinks(post.content_html, { siteHost })
   : post.content_html;
+
+// B19/B18/B21 — fuer den Render brauchen wir drei Klassen + ggf. den
+// JS-only-Pfad. Watermark-Text wird einmal serverseitig vorbereitet,
+// damit das CSS::before-Pseudo den Username + Datum zeigen kann.
+const articleClass = [
+  'db-post-content',
+  effective.watermark ? 'is-watermarked' : '',
+  effective.softSelect ? 'is-soft-select' : '',
+].filter(Boolean).join(' ');
+const watermarkText = `${post.username} · ${pubDate}`;
+const slugForApi = post.public_slug || String(post.id);
+const tokenQs = tokenParam ? `?key=${encodeURIComponent(tokenParam)}` : '';
 ---
 
 <BaseLayout pageTitle={title}>
@@ -291,15 +303,90 @@ const renderedHtml = effective.noReferrer
   </Fragment>
   <p>{pubDate}</p>
   <p>Written by: {author}</p>
-  <article class="db-post-content" set:html={renderedHtml}></article>
+  {effective.jsOnly ? (
+    <article class={articleClass} data-watermark={watermarkText}>
+      <div
+        id="post-js-only-host"
+        data-slug={slugForApi}
+        data-token-qs={tokenQs}
+      >
+        <p class="db-loading">Inhalt wird geladen …</p>
+      </div>
+    </article>
+  ) : (
+    <article class={articleClass} data-watermark={watermarkText} set:html={renderedHtml}></article>
+  )}
 </BaseLayout>
+
+{effective.jsOnly && (
+  <script type="module" is:inline>
+    const host = document.getElementById('post-js-only-host');
+    if (host) {
+      const slug = host.getAttribute('data-slug');
+      const tokenQs = host.getAttribute('data-token-qs') || '';
+      fetch(`/api/posts/${slug}/content${tokenQs}`, { credentials: 'same-origin' })
+        .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+        .then((d) => { host.innerHTML = d.contentHtml || '<p>Inhalt nicht verfuegbar.</p>'; })
+        .catch(() => { host.innerHTML = '<p>Inhalt nicht verfuegbar.</p>'; });
+    }
+  </script>
+)}
+
+{effective.softSelect && (
+  <script is:inline>
+    document.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('.db-post-content.is-soft-select')) e.preventDefault();
+    });
+    document.addEventListener('copy', (e) => {
+      const sel = document.getSelection();
+      if (sel && sel.anchorNode && sel.anchorNode.parentElement &&
+          sel.anchorNode.parentElement.closest('.db-post-content.is-soft-select')) {
+        e.preventDefault();
+      }
+    });
+  </script>
+)}
 
 <style>
   .db-post-content {
     white-space: normal;
     line-height: 1.6;
+    position: relative;
   }
   .db-post-content :global(*) {
     max-width: 100%;
+  }
+  .db-loading {
+    opacity: 0.6;
+    font-style: italic;
+  }
+
+  /* B19 Watermark — sich wiederholendes Pseudo-Element ueber dem Inhalt. */
+  .db-post-content.is-watermarked::after {
+    content: attr(data-watermark) " · " attr(data-watermark) " · " attr(data-watermark);
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: space-around;
+    justify-content: space-around;
+    color: currentColor;
+    opacity: 0.07;
+    font-size: 1.4rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    transform: rotate(-22deg);
+    transform-origin: center;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* B18 Soft-Select — bremst Text-Auswahl + Copy. Erklart sich nicht als
+     echter Schutz; Tooltip sagt das auch. */
+  .db-post-content.is-soft-select {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 </style>
