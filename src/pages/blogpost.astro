@@ -39,6 +39,7 @@ try {
   const r = await getDb().execute({
     sql: `SELECT id, content_text, created_at
             FROM blog_posts
+           WHERE deleted_at IS NULL
            ORDER BY datetime(created_at) DESC, id DESC
            LIMIT ?`,
     args: [HUB_TILE_COUNT],
@@ -234,6 +235,47 @@ try {
         text-align: right;
         font-size: 0.85rem;
         opacity: 0.85;
+      }
+      .autosave-note {
+        position: absolute;
+        right: 0.4rem;
+        bottom: -1.4rem;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        transition: opacity 360ms ease;
+        pointer-events: none;
+        color: var(--site-body-text);
+      }
+      .autosave-note.visible {
+        opacity: 0.6;
+      }
+      .recovery-banner {
+        margin: 0.7rem auto 0;
+        max-width: min(620px, 100%);
+        border: 1px solid var(--site-card-border);
+        border-radius: 0.6rem;
+        padding: 0.55rem 0.7rem;
+        font-size: 0.85rem;
+        display: none;
+        gap: 0.5rem;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--site-card-bg);
+      }
+      .recovery-banner.show { display: flex; }
+      .recovery-banner button {
+        border: 1px solid var(--site-card-border);
+        background: transparent;
+        color: inherit;
+        border-radius: 0.4rem;
+        padding: 0.25rem 0.55rem;
+        cursor: pointer;
+        font-size: 0.78rem;
+      }
+      .recovery-banner .recovery-actions {
+        display: flex;
+        gap: 0.35rem;
       }
       .past-posts {
         margin-top: var(--past-posts-offset);
@@ -549,6 +591,14 @@ try {
               <button id="savePostBtn" class="save-btn" type="button">Post speichern</button>
             </div>
             <div class="msg" id="msg"></div>
+            <div class="autosave-note" id="autosaveNote" aria-live="polite"></div>
+            <div class="recovery-banner" id="recoveryBanner" role="status" aria-live="polite">
+              <span class="recovery-label" id="recoveryLabel">Ungespeicherten Entwurf wiederherstellen?</span>
+              <span class="recovery-actions">
+                <button id="recoveryRestoreBtn" type="button">Wiederherstellen</button>
+                <button id="recoveryDiscardBtn" type="button">Verwerfen</button>
+              </span>
+            </div>
           </div>
         </section>
 
@@ -729,6 +779,11 @@ try {
       const postModalBody = document.getElementById('postModalBody');
       const doodleCanvas = document.getElementById('doodleCanvas');
       const toolButtons = Array.from(document.querySelectorAll('.tool'));
+      const autosaveNote = document.getElementById('autosaveNote');
+      const recoveryBanner = document.getElementById('recoveryBanner');
+      const recoveryLabel = document.getElementById('recoveryLabel');
+      const recoveryRestoreBtn = document.getElementById('recoveryRestoreBtn');
+      const recoveryDiscardBtn = document.getElementById('recoveryDiscardBtn');
 
       let fontMode = 0;
       const fonts = ['inherit', 'serif', 'sans-serif'];
@@ -1072,11 +1127,17 @@ try {
             }
             if (isEditing) {
               setMsg('Post aktualisiert.', true);
+              const editedSlot = currentEditingPostId;
               currentEditingPostId = null;
               if (savePostBtn) savePostBtn.textContent = 'Post speichern';
+              clearLocalDraft(editedSlot);
+              void clearServerDraft(editedSlot);
             } else {
               setMsg('Post gespeichert.', true);
+              clearLocalDraft(0);
+              void clearServerDraft(0);
             }
+            lastAutosaveSig = null;
             await loadPosts();
           } catch {
             setMsg('Netzwerkfehler.', false);
@@ -1086,9 +1147,203 @@ try {
         });
       }
 
+      // --- A1/A2: Auto-Save (Browser-Draft + Server-Draft) ---------------
+      // Idee: bei jedem Tippen oder Kritzeln packen wir den aktuellen Stand
+      // sofort in localStorage (A1) und debounced auf den Server (A2). Beim
+      // erfolgreichen Speichern leeren wir beides. Beim Pageload wird gegen
+      // den Server-Stand verglichen und bei Drift ein Recovery-Banner
+      // gezeigt — so ueberlebt der Entwurf Crashs, Tab-Schliessen und
+      // Geraetewechsel.
+      const AUTOSAVE_DEBOUNCE_MS = 2500;
+      const LS_KEY_BASE = 'blogpost:draft';
+      const lsKeyFor = (postId) => `${LS_KEY_BASE}:${postId || 'new'}`;
+      let autosaveTimer = null;
+      let lastAutosaveSig = null;
+      let autosaveNoteTimer = null;
+
+      function showAutosaveNote(text) {
+        if (!autosaveNote) return;
+        autosaveNote.textContent = text || '';
+        autosaveNote.classList.add('visible');
+        if (autosaveNoteTimer) clearTimeout(autosaveNoteTimer);
+        autosaveNoteTimer = setTimeout(() => {
+          autosaveNote.classList.remove('visible');
+        }, 2200);
+      }
+
+      function currentDraftSnapshot() {
+        const html = (editor?.innerHTML || '').trim();
+        const text = (editor?.innerText || '').trim();
+        const doodle = doodleCanvas ? doodleCanvas.toDataURL('image/png') : '';
+        return {
+          postId: Number.isInteger(currentEditingPostId) && currentEditingPostId > 0 ? currentEditingPostId : 0,
+          contentHtml: html,
+          contentText: text,
+          accentColor: currentColor,
+          doodleDataUrl: doodle,
+        };
+      }
+
+      function writeLocalDraft(snap) {
+        try {
+          const payload = { ...snap, savedAt: new Date().toISOString() };
+          window.localStorage.setItem(lsKeyFor(snap.postId), JSON.stringify(payload));
+        } catch {
+          // localStorage kann voll sein / disabled — kein Fehler an den User.
+        }
+      }
+
+      function readLocalDraft(postId) {
+        try {
+          const raw = window.localStorage.getItem(lsKeyFor(postId));
+          if (!raw) return null;
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      }
+
+      function clearLocalDraft(postId) {
+        try { window.localStorage.removeItem(lsKeyFor(postId)); } catch {}
+      }
+
+      async function pushServerDraft(snap) {
+        try {
+          const res = await fetch('/api/posts/draft', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(snap),
+          });
+          if (!res.ok) return false;
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      async function clearServerDraft(postId) {
+        try {
+          await fetch(`/api/posts/draft?postId=${postId || 0}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          });
+        } catch {}
+      }
+
+      function scheduleAutosave() {
+        if (!editor) return;
+        if (blogpostPage?.dataset.canPost !== 'true') return; // nur erlaubte User loggen Drafts
+        const snap = currentDraftSnapshot();
+        if (!snap.contentText) return; // leerer Editor lohnt keinen Save
+        const sig = `${snap.postId}|${snap.contentHtml.length}|${snap.contentText}`;
+        if (sig === lastAutosaveSig) return;
+        lastAutosaveSig = sig;
+
+        // A1: sofort lokal sichern (synchron, billig).
+        writeLocalDraft(snap);
+
+        // A2: debounced an den Server.
+        if (autosaveTimer) clearTimeout(autosaveTimer);
+        autosaveTimer = setTimeout(async () => {
+          const ok = await pushServerDraft(snap);
+          if (ok) {
+            const t = new Date();
+            const hh = String(t.getHours()).padStart(2, '0');
+            const mm = String(t.getMinutes()).padStart(2, '0');
+            showAutosaveNote(`autosaved ${hh}:${mm}`);
+          }
+        }, AUTOSAVE_DEBOUNCE_MS);
+      }
+
+      function applySnapshotToEditor(snap, opts = {}) {
+        if (!editor || !editorWrap) return;
+        editorWrap.classList.add('active');
+        editor.innerHTML = String(snap.contentHtml || '');
+        if (snap.accentColor && /^#[0-9a-fA-F]{6}$/.test(snap.accentColor)) {
+          currentColor = snap.accentColor;
+          applyColor();
+        }
+        if (opts.enterEditor) enterEditorMode();
+        else editor.focus();
+        resizeCanvasToBox();
+      }
+
+      function hideRecoveryBanner() {
+        recoveryBanner?.classList.remove('show');
+      }
+
+      // Pageload: pruefen, ob Server- oder Browser-Draft existiert und ob
+      // er neuer ist als der letzte echte Save. Wenn ja: Banner zeigen.
+      async function checkRecovery() {
+        if (!recoveryBanner) return;
+        if (blogpostPage?.dataset.canPost !== 'true') return;
+        // Nur fuer den "neuer Post"-Slot (0) automatisch beim Aufruf —
+        // post-spezifische Drafts werden beim Edit-Open des Modals geprueft.
+        try {
+          const res = await fetch('/api/posts/draft?postId=0', { credentials: 'same-origin' });
+          const data = await res.json().catch(() => ({}));
+          const serverDraft = data?.draft;
+          const localDraft = readLocalDraft(0);
+          // Bevorzugt der lokal-neuere Draft.
+          let candidate = null;
+          if (serverDraft && localDraft) {
+            const sTs = Date.parse(serverDraft.updated_at || '') || 0;
+            const lTs = Date.parse(localDraft.savedAt || '') || 0;
+            candidate = lTs > sTs
+              ? { ...localDraft, postId: 0, _source: 'local' }
+              : {
+                  postId: 0,
+                  contentHtml: serverDraft.content_html,
+                  contentText: serverDraft.content_text,
+                  accentColor: serverDraft.accent_color,
+                  doodleDataUrl: serverDraft.doodle_data_url,
+                  _source: 'server',
+                };
+          } else if (serverDraft) {
+            candidate = {
+              postId: 0,
+              contentHtml: serverDraft.content_html,
+              contentText: serverDraft.content_text,
+              accentColor: serverDraft.accent_color,
+              doodleDataUrl: serverDraft.doodle_data_url,
+              _source: 'server',
+            };
+          } else if (localDraft) {
+            candidate = { ...localDraft, postId: 0, _source: 'local' };
+          }
+          if (!candidate || !String(candidate.contentText || '').trim()) {
+            return;
+          }
+          if (recoveryLabel) {
+            const preview = String(candidate.contentText || '').slice(0, 60).replace(/\s+/g, ' ').trim();
+            recoveryLabel.textContent = `Ungespeicherten Entwurf wiederherstellen? "${preview}…"`;
+          }
+          recoveryBanner.classList.add('show');
+          recoveryRestoreBtn?.addEventListener('click', () => {
+            applySnapshotToEditor(candidate, { enterEditor: true });
+            hideRecoveryBanner();
+          }, { once: true });
+          recoveryDiscardBtn?.addEventListener('click', async () => {
+            clearLocalDraft(0);
+            await clearServerDraft(0);
+            hideRecoveryBanner();
+          }, { once: true });
+        } catch {
+          /* still — Recovery ist Komfort, kein Pflicht-Pfad. */
+        }
+      }
+
+      editor?.addEventListener('input', scheduleAutosave);
+      doodleCanvas?.addEventListener('mouseup', scheduleAutosave);
+      doodleCanvas?.addEventListener('touchend', scheduleAutosave, { passive: true });
+
+      // -------------------------------------------------------------------
+
       applyColor();
       decorateHubTiles();
       void loadPosts();
+      void checkRecovery();
 
       // Beim Resize Layout neu rechnen — Spaltenanzahl passt sich an,
       // damit auch nach Browser-Resize keine schmale Mittel-Spur entsteht.

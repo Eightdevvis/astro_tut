@@ -33,6 +33,7 @@ try {
   const result = await getDb().execute({
     sql: `SELECT id, created_at, content_text
        FROM blog_posts
+      WHERE deleted_at IS NULL
       ORDER BY datetime(created_at) DESC, id DESC
       LIMIT ?`,
     args: [POSTS_ON_HOME],

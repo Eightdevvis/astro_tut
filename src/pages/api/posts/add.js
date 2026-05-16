@@ -58,6 +58,16 @@ export async function POST({ request, cookies }) {
       args: [username, contentHtml, contentText, accentColor, doodleDataUrl],
     });
     const id = result.lastInsertRowid == null ? null : String(result.lastInsertRowid);
+    // A2-Cleanup: der "neuer Post"-Draft-Slot (post_id = 0) ist nach
+    // erfolgreichem Erst-Post obsolet.
+    try {
+      await db.execute({
+        sql: `DELETE FROM blog_post_drafts WHERE username = ? AND post_id = 0`,
+        args: [username],
+      });
+    } catch (cleanupErr) {
+      console.warn('posts/add: draft cleanup', cleanupErr);
+    }
     return new Response(JSON.stringify({ success: true, id }), { status: 201 });
   } catch (err) {
     console.error('posts/add', err);

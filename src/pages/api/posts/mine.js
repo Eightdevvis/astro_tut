@@ -23,9 +23,10 @@ export async function GET({ cookies }) {
     const db = getDb();
     const result = await db.execute({
       sql: `SELECT id, content_html, content_text, accent_color, doodle_data_url, created_at
-            FROM blog_posts WHERE username = ?
-            ORDER BY datetime(created_at) DESC, id DESC
-            LIMIT 100`,
+            FROM blog_posts
+           WHERE username = ? AND deleted_at IS NULL
+           ORDER BY datetime(created_at) DESC, id DESC
+           LIMIT 100`,
       args: [username],
     });
     const posts = (result.rows || []).map((row) => ({

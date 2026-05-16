@@ -19,8 +19,8 @@ if (Number.isInteger(id) && id > 0) {
     const result = await getDb().execute({
       sql: `SELECT id, username, content_html, content_text, created_at
             FROM blog_posts
-            WHERE id = ?
-            LIMIT 1`,
+           WHERE id = ? AND deleted_at IS NULL
+           LIMIT 1`,
       args: [id],
     });
     const row = result.rows?.[0];

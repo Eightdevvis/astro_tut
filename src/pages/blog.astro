@@ -18,7 +18,8 @@ try {
   const result = await getDb().execute({
     sql: `SELECT id, username, content_text, created_at
           FROM blog_posts
-          ORDER BY datetime(created_at) DESC, id DESC`,
+         WHERE deleted_at IS NULL
+         ORDER BY datetime(created_at) DESC, id DESC`,
     args: [],
   });
   posts = (result.rows || []).map((row) => ({

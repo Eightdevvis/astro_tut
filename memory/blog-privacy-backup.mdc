@@ -28,9 +28,16 @@ Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
 
 - **Init-Skripte (`scripts/init_db.cjs`, `scripts/init_turso.js`) hängen schon vor diesem Update zurück** — beide haben mehrere Tabellen nicht (`blog_posts`, `minigame_progress`, …); Runtime-`ensureDbSchema` ist die echte Quelle. Beim nächsten manuellen Init-Run müssen sie aufgeräumt werden (offener Punkt, nicht in Phase 1).
 
+## Phase 2 — Backup-Basis (fertig)
+
+- **A1 Browser-Draft** + **A2 Server-Draft**: Editor schreibt bei jedem `input` (auch Kritzel-`mouseup`/`touchend`) sofort in `localStorage` (`blogpost:draft:<postId|new>`) und debounced (2.5 s) per `PUT /api/posts/draft` (Endpoint `src/pages/api/posts/draft.js`, GET/PUT/DELETE). Erfolgreicher Save loescht Browser- + Server-Draft (Slot `0` = neuer Post, sonst `post_id`). Kleine `autosave-note` rechts unten am Editor zeigt `autosaved HH:MM`.
+- **Crash-Recovery**: beim Page-Aufruf prueft `checkRecovery()` Server- und Browser-Draft fuer Slot `0` (neuer Post), bevorzugt den juengeren, bietet ein Recovery-Banner (`#recoveryBanner`) mit Wiederherstellen / Verwerfen.
+- **A3 Revision-on-Save**: `PATCH /api/posts/[id]` schreibt vor dem Update den aktuellen DB-Stand mit `change_reason='patch'` in `blog_post_revisions`. PATCH auf einen soft-deleted Post liefert 409. Erfolgreicher PATCH putzt Server-Draft fuer diesen Post mit.
+- **A4 Soft-Delete + Papierkorb**: `DELETE /api/posts/[id]` setzt nur `deleted_at = datetime('now')`. Neue Endpoints: `GET /api/posts/trash` (Liste), `POST /api/posts/[id]/restore` (Wiederherstellen). Alle Lese-Queries filtern `WHERE deleted_at IS NULL`: `src/pages/api/posts/mine.js`, `src/pages/blogpost.astro` (Hub-Tiles), `src/pages/posts/db/[id].astro` (Detail), `src/pages/blog.astro` (Liste), `src/pages/index.astro` (Home-Snippet). Hartes Loeschen kommt spaeter via Cron/Admin.
+- **Edit-Recovery fuer bestehende Posts (offen):** Recovery-Banner laeuft nur fuer Slot 0. Wenn ein Server-Draft fuer einen existierenden Post existiert (User hat in den Edit-Modus gewechselt, getippt, nicht gespeichert), bietet der Modal aktuell noch nicht automatisch den Draft an. Folge-Schritt.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-2. Backup-Basis (A1 Browser-Draft, A2 Server-Draft, A3 Revision-on-Save, A4 Soft-Delete + Papierkorb).
 3. Visibility + Slug + Hub-Ausschluss.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
