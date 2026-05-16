@@ -223,29 +223,29 @@ function Lab() {
       // Hier kein Menue-Pfad mehr.
       // pull_neck als Menue-Aktion ebenfalls entfernt — siehe onPlacedChange.
       case 'tip': {
-        // Kippen-Regeln (umstrukturiert nach Sasha-Feedback):
-        //   - Gerader Hals + Liquid drin -> Bruehe schwappt raus, Puddle
-        //     erscheint daneben, Kolben leer, spilled=true -> Smiley sehr
-        //     schlecht. Steril/unsteril egal — Hals-Form ist das Problem.
-        //   - Schwanenhals -> Bruehe bleibt drin (Hals haelt sie zurueck);
-        //     bleibt steril wenn vorher sterilisiert, sonst eh schon braun.
-        //   - Empty -> nichts passiert ausser Animation + Meilenstein.
+        // Kippen-Regeln:
+        //   - Gerader Hals + Liquid -> Bruehe schwappt raus (Puddle, Kolben
+        //     leer, sterilized + neckContaminated zurueck, spilled=true).
+        //   - Schwanenhals + sterilisiert + Hals-Schmutz + steriles Liquid
+        //     -> Pasteurs Disconfirmation-Schritt: beim Kippen wandert das
+        //     Liquid durch die Biegung und schwemmt den festsitzenden Dreck
+        //     mit. Liquid wird wieder unsteril (braun); Schmutz im Hals
+        //     verschwindet (jetzt im Liquid). Genau das was Pasteur als
+        //     Kontroll-Experiment gemacht hat um zu zeigen: der Trap war
+        //     der aktive Bestandteil.
+        //   - Schwanenhals + unsteril (nie sterilisiert) -> Liquid eh braun,
+        //     keine Aenderung. Hals-Schmutz gibt's hier nicht.
+        //   - Empty Flask -> nur Animation + Meilenstein.
         const s = item.state || {};
         helpers.update({ tipped: true, tilted: true });
         award('tipped');
         if (s.liquid && s.neck !== 'swan') {
-          // SPILL. Farbe vom aktuellen Liquid uebernehmen (steril hell oder
-          // unsteril braun) — wird der Lache zugewiesen.
+          // SPILL. Farbe vom aktuellen Liquid uebernehmen.
           const spilledColor = s.liquidColor || LIQUID_COLOR_UNSTERILE;
-          // Puddle weiter nach links und tiefer, damit sie nicht wie ein
-          // Deckel auf dem Bunsen unter dem Kolben sitzt. Bunsen ist 70 px
-          // breit und sitzt mittig unter dem Kolben — links vorbei.
           const puddleX = item.x - 80;
           const puddleY = item.y + ITEM_META[item.type].h + 70;
           setTimeout(() => {
             helpers.addAt('puddle', puddleX, puddleY, { color: spilledColor });
-            // Flasche leeren + Sterilisations-Status zurueck (man muesste
-            // ja eh neu sterilisieren).
             helpers.update({
               liquid: null,
               liquidColor: null,
@@ -256,6 +256,24 @@ function Lab() {
             showHint(
               'Ohne Schwanenhals laeuft die Bruehe einfach aus dem geraden Hals raus! Sauber machen: Puddle in den Muelleimer ziehen.',
               7000,
+            );
+          }, 700);
+        } else if (
+          s.liquid &&
+          s.neck === 'swan' &&
+          s.neckContaminated &&
+          s.liquidColor !== LIQUID_COLOR_UNSTERILE
+        ) {
+          // Pasteurs entscheidendes Kontroll-Experiment: Liquid wandert
+          // durch die Biegung, beruehrt den Schmutz -> wird unsteril.
+          setTimeout(() => {
+            helpers.update({
+              liquidColor: LIQUID_COLOR_UNSTERILE,
+              neckContaminated: false, // Schmutz ist jetzt im Liquid
+            });
+            showHint(
+              'Beim Kippen wandert die Bruehe durch die Biegung und schwemmt den festsitzenden Schmutz mit — die zuvor sterile Loesung wird wieder unsteril. Pasteurs entscheidender Kontroll-Schritt.',
+              8000,
             );
           }, 700);
         }
