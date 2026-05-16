@@ -24,7 +24,7 @@ Ergebnis: in jeder Spalte hat jede Liane einen unverdeckten Bottom-Streifen >= 3
 
 ## Klick / Modal
 
-- Klick auf eine Liane oeffnet `QuoteModal`: full Zitat horizontal lesbar + Author. Owner bekommt Loeschen-Knopf.
+- Klick auf eine Liane oeffnet `QuoteModal`: full Zitat horizontal lesbar + Author. Owner bekommt **Bearbeiten + Loeschen** (Bearbeiten oeffnet `QuoteEditor` im Edit-Mode, PATCH `/api/quotes/:id`).
 - `+`-Knopf oben mittig auf der **neuesten** Liane (mit `is-newest`) oeffnet `QuoteEditor` (Text + Author). Knopf nur wenn `canPost`.
 
 ## API / Permission

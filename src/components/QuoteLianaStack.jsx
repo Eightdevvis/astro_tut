@@ -68,6 +68,7 @@ export default function QuoteLianaStack({ canPost = false }) {
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState(null); // Quote-Objekt im Edit-Mode
   const [vh, setVh] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
 
   useEffect(() => {
@@ -171,16 +172,18 @@ export default function QuoteLianaStack({ canPost = false }) {
       {selected && (
         <QuoteModal
           quote={selected}
-          canDelete={canPost}
+          canEdit={canPost}
           onClose={() => setSelected(null)}
+          onEdit={() => { setEditing(selected); setSelected(null); }}
           onDeleted={async () => { setSelected(null); await reload(); }}
         />
       )}
 
-      {editorOpen && canPost && (
+      {(editorOpen || editing) && canPost && (
         <QuoteEditor
-          onClose={() => setEditorOpen(false)}
-          onSaved={async () => { setEditorOpen(false); await reload(); }}
+          existing={editing}
+          onClose={() => { setEditorOpen(false); setEditing(null); }}
+          onSaved={async () => { setEditorOpen(false); setEditing(null); await reload(); }}
         />
       )}
 
@@ -354,7 +357,7 @@ function computeLayout(sortedAsc, vh) {
   return items.map((it) => ({ x: it.x, length: it.length, rot: it.rot }));
 }
 
-function QuoteModal({ quote, canDelete, onClose, onDeleted }) {
+function QuoteModal({ quote, canEdit, onClose, onEdit, onDeleted }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -384,8 +387,11 @@ function QuoteModal({ quote, canDelete, onClose, onDeleted }) {
         <blockquote class="quote-modal-text">„{quote.text}"</blockquote>
         {quote.author && <div class="quote-modal-author">— {quote.author}</div>}
         {error && <div class="quote-modal-error">{error}</div>}
-        {canDelete && (
+        {canEdit && (
           <div class="quote-modal-actions">
+            <button type="button" class="primary" onClick={onEdit} disabled={busy}>
+              Bearbeiten
+            </button>
             <button type="button" class="danger" onClick={remove} disabled={busy}>
               Löschen
             </button>
@@ -433,26 +439,35 @@ function QuoteModal({ quote, canDelete, onClose, onDeleted }) {
         }
         .quote-modal-error { color: #b3261e; font-size: 0.9rem; margin-top: 0.8rem; }
         .quote-modal-actions {
-          margin-top: 1rem; display: flex; justify-content: flex-end;
+          margin-top: 1rem; display: flex; gap: 0.6rem; justify-content: flex-end;
         }
-        .quote-modal-actions .danger {
-          font: inherit; padding: 0.5rem 1rem;
-          border: 1.5px solid #b3261e;
-          background: transparent; color: #b3261e;
+        .quote-modal-actions button {
+          font: inherit; font-weight: 600; padding: 0.5rem 1rem;
           border-radius: 8px; cursor: pointer;
+          border: 1.5px solid;
+        }
+        .quote-modal-actions .primary {
+          border-color: #1d1a14; background: #1d1a14; color: #fffaf2;
+        }
+        :global(html.dark) .quote-modal-actions .primary {
+          border-color: #f4f1ea; background: #f4f1ea; color: #1d1a14;
+        }
+        .quote-modal-actions .primary:hover:not(:disabled) { opacity: 0.88; }
+        .quote-modal-actions .danger {
+          border-color: #b3261e; background: transparent; color: #b3261e;
         }
         .quote-modal-actions .danger:hover:not(:disabled) {
           background: #b3261e; color: #fffaf2;
         }
-        .quote-modal-actions .danger:disabled { opacity: 0.5; cursor: not-allowed; }
+        .quote-modal-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
       `}</style>
     </div>
   );
 }
 
-function QuoteEditor({ onClose, onSaved }) {
-  const [text, setText] = useState('');
-  const [author, setAuthor] = useState('');
+function QuoteEditor({ existing, onClose, onSaved }) {
+  const [text, setText] = useState(existing?.text || '');
+  const [author, setAuthor] = useState(existing?.author || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -462,8 +477,10 @@ function QuoteEditor({ onClose, onSaved }) {
     if (!t) { setError('Zitat darf nicht leer sein.'); return; }
     setBusy(true); setError('');
     try {
-      const res = await fetch('/api/quotes/add', {
-        method: 'POST',
+      const url = existing ? `/api/quotes/${existing.id}` : '/api/quotes/add';
+      const method = existing ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: t, author: author.trim() }),
       });
@@ -481,7 +498,7 @@ function QuoteEditor({ onClose, onSaved }) {
       <div class="quote-modal-backdrop" onClick={onClose} />
       <div class="quote-modal quote-editor">
         <div class="quote-editor-head">
-          <h2>Neues Zitat</h2>
+          <h2>{existing ? 'Zitat bearbeiten' : 'Neues Zitat'}</h2>
           <button type="button" class="quote-modal-close" onClick={onClose} aria-label="Schließen">×</button>
         </div>
         <form onSubmit={save} class="quote-editor-form">
@@ -505,7 +522,7 @@ function QuoteEditor({ onClose, onSaved }) {
           </label>
           {error && <div class="quote-modal-error">{error}</div>}
           <div class="quote-editor-actions">
-            <button type="submit" disabled={busy}>Hinzufügen</button>
+            <button type="submit" disabled={busy}>{existing ? 'Speichern' : 'Hinzufügen'}</button>
           </div>
         </form>
       </div>

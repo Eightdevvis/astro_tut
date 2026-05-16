@@ -227,19 +227,18 @@ export default function VocabCardStack({ isOwner = false }) {
         /* Alle drei Felder: feste Box-Groesse + overflow:hidden, damit
            AutoFitText scrollHeight > clientHeight zuverlaessig erkennen kann.
            Die Schriftgroessen werden von JS gesetzt (max -> Schritt-fuer-Schritt
-           runter, bis es passt). */
+           runter, bis es passt). KEIN display:flex hier — sonst wrappt der
+           Text nicht und ueberlauft horizontal schon bei mittellangen Woertern. */
         .vocab-card-word {
           font-family: 'Protest Demo', var(--font-hero, 'Protest Demo'), serif;
           line-height: 1.05;
           margin-top: 0.15rem;
-          word-break: break-word;
+          overflow-wrap: anywhere;
           width: 100%;
-          max-height: 64px;
+          max-height: 70px;
           overflow: hidden;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           text-align: center;
+          align-self: center;
         }
         .vocab-card-pron {
           font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
@@ -250,7 +249,7 @@ export default function VocabCardStack({ isOwner = false }) {
           max-height: 24px;
           overflow: hidden;
           text-align: center;
-          word-break: break-word;
+          overflow-wrap: anywhere;
         }
         .vocab-card-def {
           line-height: 1.35;
@@ -260,7 +259,7 @@ export default function VocabCardStack({ isOwner = false }) {
           min-height: 0;
           width: 100%;
           overflow: hidden;
-          word-break: break-word;
+          overflow-wrap: anywhere;
           text-align: center;
         }
         .vocab-card-empty {

@@ -10,6 +10,7 @@ Persoenliche Vokabel-Sammlung pro User; Anzeige als Karten-Stack unten rechts au
 - Hover auf den Stack: alle Karten faechern auf (`GAP=14px` zwischen voll sichtbaren Karten); Mouse-Leave: Kollaps. Transition 240ms.
 - Karte zeigt: Wort gross (`Protest Demo`), darunter Lautschrift (mono, `/.../`), darunter Definition.
 - Schriftgroessen pro Feld werden von `AutoFitText` (in `VocabCardStack.jsx`) **iterativ geschrumpft**, bis der Inhalt in die jeweilige Box passt (kein Truncate, keine Ellipsis). Jedes Feld hat eine feste max-height / Breite + `overflow: hidden`, JS misst `scrollHeight > clientHeight` und reduziert die font-size in 1px-Schritten vom max bis zum min Wert. Re-Fit via `ResizeObserver` und beim Wechsel des Inhalts.
+- **Streng unabhaengig:** Wort, Lautschrift und Definition sind drei getrennte AutoFitText-Instanzen mit eigener Box. Definition kann schrumpfen ohne dass Wort betroffen ist. **Kein `display: flex` innerhalb der Felder** — sonst wrappt der Text nicht und ueberlauft horizontal schon bei mittellangen Woertern. Stattdessen `display: block; text-align: center; overflow-wrap: anywhere;` — Word darf auf 2 Zeilen wrappen (max-height 70px) bevor AutoFit schrumpft.
 - Bei 0 Karten + Owner: Platzhalter-Karte mit Hinweis "Klick + zum Hinzufügen". Bei 0 Karten ohne Owner: gar nichts.
 
 ## Owner-only Editor
