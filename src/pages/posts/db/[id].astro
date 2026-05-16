@@ -9,6 +9,8 @@ import {
   privacyMetaTags,
   rewriteOutboundLinks,
 } from '../../../lib/blog-privacy.js';
+import { classifyUserAgent } from '../../../lib/bot-fingerprints.js';
+import { extractClientMeta, safeLogRequest } from '../../../lib/request-log.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
@@ -83,7 +85,24 @@ if (post) {
   }
 }
 
+const requestPath = `/posts/db/${rawId}`;
+const client = extractClientMeta(Astro.request, Astro.clientAddress);
+
 if (!post) {
+  // Existenz wird bewusst nicht verraten — kein gesonderter Reason fuer
+  // private/password vs. wirklich nicht-da, sonst kann man durch
+  // Antwort-Vergleich die Existenz herausfinden.
+  void safeLogRequest({
+    path: requestPath,
+    postId: null,
+    username: null,
+    ua: client.ua,
+    ip: client.ip,
+    country: client.country,
+    referer: client.referer,
+    status: 404,
+    blockedReason: 'not_found_or_gated',
+  });
   return new Response('Post nicht gefunden', { status: 404 });
 }
 
@@ -92,6 +111,16 @@ if (!post) {
 // auf der zuletzt benutzten URL stehen, sonst koennten Referer-Logs die
 // Integer-ID verraten.
 if (isIntegerLookup && post.public_slug && post.visibility === 'public') {
+  void safeLogRequest({
+    path: requestPath,
+    postId: post.id,
+    username: post.username,
+    ua: client.ua,
+    ip: client.ip,
+    country: client.country,
+    referer: client.referer,
+    status: 301,
+  });
   return Astro.redirect(`/posts/db/${post.public_slug}`, 301);
 }
 
@@ -114,11 +143,45 @@ const effective = computeEffectivePrivacy({
   visibility: post.visibility,
   privacyFlags: post.privacy_flags,
 });
+
+// B4 UA-Gate: hartes Block auf Serverebene, bevor der Inhalt rendert.
+// Greift fuer alle Bots, deren Kategorie in uaGateBlock steht (nicht-public
+// erzwingt ai+archive; ein expliziter Toggle `noai_ua_gate` macht das
+// gleiche auch fuer public Posts).
+if (effective.uaGateBlock.size > 0) {
+  const { category, botName } = classifyUserAgent(client.ua);
+  if (effective.uaGateBlock.has(category)) {
+    void safeLogRequest({
+      path: requestPath,
+      postId: post.id,
+      username: post.username,
+      ua: client.ua,
+      ip: client.ip,
+      country: client.country,
+      referer: client.referer,
+      status: 403,
+      blockedReason: `ua_gate:${botName || category}`,
+    });
+    return new Response('Forbidden', { status: 403 });
+  }
+}
+
 const metaTags = privacyMetaTags(effective);
 const headers = privacyHeaders(effective);
 for (const [name, value] of Object.entries(headers)) {
   Astro.response.headers.set(name, String(value));
 }
+
+void safeLogRequest({
+  path: requestPath,
+  postId: post.id,
+  username: post.username,
+  ua: client.ua,
+  ip: client.ip,
+  country: client.country,
+  referer: client.referer,
+  status: 200,
+});
 
 // B10 (Teil 2): wenn no_referrer aktiv ist, bekommen alle externen
 // `<a href>` Links zusaetzlich rel="nofollow noreferrer noopener". Das

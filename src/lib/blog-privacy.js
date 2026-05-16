@@ -64,6 +64,18 @@ export function computeEffectivePrivacy({ visibility, privacyFlags } = {}) {
     noArchive: enforced || flags.no_archive === true,
     noReferrer: flags.no_referrer === true,
     noEmbed: flags.no_embed === true,
+    // B4 UA-Gate ist ein Opt-in, separat vom Meta-noai. Wenn der User
+    // den UA-Gate aktiviert, blocken wir KI- und Archive-Bots auf
+    // Serverebene (403 statt Inhalt). Suchmaschinen-Bots werden nicht
+    // automatisch geblockt — die respektieren typischerweise das Meta.
+    uaGateBlock: new Set(
+      (enforced || flags.noai_ua_gate === true) ? ['ai', 'archive'] : []
+    ),
+    // B19 / B18 / B21 — kleine UI-Helfer, werden im Detail-Pfad
+    // ausgewertet und an die Render-Logik gegeben.
+    watermark: flags.watermark === true,
+    softSelect: flags.soft_select === true,
+    jsOnly: flags.js_only === true,
   };
 }
 

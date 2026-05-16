@@ -70,9 +70,21 @@ Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
 - `src/pages/posts/db/[id].astro` wendet jetzt das alles an: holt `privacy_flags` aus der DB, berechnet `effective`, setzt Headers ueber `Astro.response.headers`, rendert Meta-Tags ueber den neuen `head`-Slot in `src/layouts/BaseLayout.astro`, transformiert HTML bei `no_referrer` mit `rewriteOutboundLinks`.
 - `src/layouts/BaseLayout.astro` hat jetzt einen `<slot name="head" />` direkt vor dem `</head>` — damit koennen Detail-Seiten Meta/Link-Tags injizieren, ohne das Layout zu duplizieren. Andere Konsumenten bleiben unbeeintraechtigt (Slot ist optional).
 
+## Phase 5 — UA-Gate + robots.txt + sitemap.xml + request_log-Write (fertig)
+
+- **Bot-Fingerprints (`src/lib/bot-fingerprints.js`)** Single-Source-of-Truth: `BOT_FINGERPRINTS` (Pattern/Name/Kategorie ai|search|social|archive), `classifyUserAgent(ua) → {category, botName}`, `botsInCategory(cat)`. `LAST_REVIEWED`-Konstante markiert Wartungsdruck. Human-Heuristik: bekannter Browser-UA + kein Crawler-Indikator → `human`, sonst `unknown`.
+- **UA-Gate** in `src/pages/posts/db/[id].astro`: bei `effective.uaGateBlock` (Set aus Kategorien) wird der UA klassifiziert; Treffer → **403** mit Body `Forbidden`, plus Logging. Nicht-`public`-Visibility erzwingt automatisch `{ai, archive}`-Block; expliziter Toggle `noai_ua_gate` schaltet das auch fuer public Posts ein.
+- **Dynamische `/robots.txt`** (`src/pages/robots.txt.js`): globaler `Disallow: /` fuer alle KI-Bots (Voreinstellung der Seite — kein KI-Training), `Allow: /` fuer `*`, pro Post zusaetzliche `Disallow:`-Zeile wenn `effective.noindex`. Cache 5 min.
+- **Dynamische `/sitemap.xml`** (`src/pages/sitemap.xml.js`): nur Posts mit `visibility='public'` UND `!noindex`. URL nutzt `slug || id`. Static-Pages `/`, `/blog`, `/blogpost` immer drin. Cache 5 min.
+- **`request_log`-Writer (`src/lib/request-log.js`)**: `safeLogRequest()` schluckt alle Fehler (Logging darf User-Request nie zerschiessen). `extractClientMeta(request, clientAddress)` zieht UA, Vercel-IP-Header, Country, Referer. `hashIp(ip)` sha256+Salt aus `REQUEST_LOG_IP_SALT` (Default-Salt im Code; Prod-Salt + monatliche Rotation steht in `memory/security-sensitive.md`).
+- **Logging-Punkte im Detail-Pfad**: 404 (not_found_or_gated), 301 (Integer→Slug-Redirect), 403 (`ua_gate:<botName|category>`), 200 (success). Damit ist auch zaehlbar, was geblockt wurde — Voraussetzung fuer das spaetere /settings-Dashboard.
+- **Helper-Erweiterung in `blog-privacy.js`**: `computeEffectivePrivacy()` liefert jetzt zusaetzlich `uaGateBlock: Set<string>` plus `watermark`, `softSelect`, `jsOnly` (fuer Phase 10).
+
+Verifiziert per curl gegen Dev-Server: GPTBot/ClaudeBot/archive.org_bot → 403, Googlebot → 200, Browser → 200; request_log enthielt jeweils korrekte Zeile mit `blocked_reason='ua_gate:<botName>'`; robots.txt listet alle 24 KI-Bots; sitemap.xml zeigt nur public+indexierbare Posts.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-5. UA-Gate + dynamische robots.txt.
+6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).
