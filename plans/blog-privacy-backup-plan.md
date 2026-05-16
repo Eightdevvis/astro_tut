@@ -348,6 +348,125 @@ user_privacy_defaults (NEU)    -- C: pro-User-Standards + Webhook + Display-Name
 - Middleware auf `/posts/db/[id|slug]`: UA-Gate (B4), Visibility-Check (B1),
   Token-Check (B15), Expire-Check (B17), View-Log (B20).
 
+## 9b. Traffic-/Crawler-Observability
+
+Ohne Messung weiss niemand, ob die Privacy-Toggles ueberhaupt wirken. Eigene
+Server-seitige Erhebung statt Drittanbieter-Analytics.
+
+### Loggen, was reinkommt
+
+- Neue Tabelle `request_log` an der Middleware der oeffentlichen Post-Routen
+  (`/posts/db/*`, `/me`, `/blogpost`-Hub, `/u/*` falls spaeter).
+- Pro Request festgehalten:
+  - `ts` Zeitstempel
+  - `path`
+  - `post_id` (NULL ausserhalb Post-Routen)
+  - `username` (NULL bei anonym)
+  - `ua_string` (Rohwert, fuer Debug)
+  - `ua_category` ('ai' | 'search' | 'social' | 'archive' | 'human' | 'unknown')
+  - `ua_bot_name` (z. B. 'GPTBot' / 'ClaudeBot' / NULL)
+  - `ip_hash` (sha256(ip + salt) — kein Klartext, DSGVO-konform)
+  - `country` (aus `x-vercel-ip-country`-Header)
+  - `referer`
+  - `status` (200 / 403 / 404 / 410 / 429)
+  - `blocked_reason` ('ua_gate' | 'visibility_private' | 'token_required' |
+    'token_invalid' | 'expired' | 'rate_limit' | NULL)
+
+```
+request_log (NEU)
+  id              INTEGER PK
+  ts              TEXT NOT NULL DEFAULT (datetime('now'))
+  path            TEXT NOT NULL
+  post_id         INTEGER NULL
+  username        TEXT NULL
+  ua_string       TEXT NOT NULL
+  ua_category     TEXT NOT NULL
+  ua_bot_name     TEXT NULL
+  ip_hash         TEXT NOT NULL
+  country         TEXT NULL
+  referer         TEXT NULL
+  status          INTEGER NOT NULL
+  blocked_reason  TEXT NULL
+
+INDEX idx_request_log_post_ts ON (post_id, ts DESC)
+INDEX idx_request_log_user_ts ON (username, ts DESC)
+INDEX idx_request_log_blocked ON (blocked_reason, ts DESC)
+```
+
+### Bot-Klassifizierung — eine Quelle
+
+- Datei `src/lib/bot-fingerprints.js` mit Liste `{ pattern, name, category }`.
+- Sowohl die **UA-Gate-Middleware** (B4) als auch die **Logging-Middleware**
+  lesen die gleiche Liste. Garantie: was wir blockieren UND was wir nur
+  zaehlen, stammt aus identischer Quelle — keine Drift zwischen "wir blocken"
+  und "wir zaehlen als Bot".
+- `lastReviewed`-Konstante in der Datei macht Wartungsdruck sichtbar.
+
+### Aggregat-Tabelle (Performance)
+
+`request_log` waechst schnell. Cron-Endpoint oder lazy-on-read verdichtet
+stuendlich/taeglich:
+
+```
+request_stats_daily (NEU)
+  date            TEXT NOT NULL
+  scope_kind      TEXT NOT NULL   -- 'global' | 'post' | 'user'
+  scope_id        TEXT NULL       -- post_id-String / username / NULL
+  ua_category     TEXT NOT NULL
+  ua_bot_name     TEXT NULL
+  status          INTEGER NOT NULL
+  count           INTEGER NOT NULL
+  PRIMARY KEY (date, scope_kind, scope_id, ua_category, ua_bot_name, status)
+```
+
+Roh-`request_log` wird nach N Tagen (z. B. 30) automatisch geputzt; die
+Aggregate bleiben unbegrenzt.
+
+### UI
+
+**Pro Post — in der Privacy-Toolbox:**
+- Unter dem Sammel-Status eine Mini-Zeile: `letzte 7 Tage: 23 Aufrufe / 12
+  blockiert / 11 menschlich`.
+- Klick → Modal mit Aufschluesselung:
+  - Tagestrend-Sparkline.
+  - Top-Bot-Familien (mit Zaehler + ob blockiert).
+  - Top-Laender, Top-Referer.
+  - Liste der letzten 50 verdaechtigen Requests (UA + Land + Block-Grund),
+    erlaubt visuelle Stichprobe.
+
+**Global in `/settings` — neuer Tab "Crawler & Traffic":**
+- 30-Tage-Timeline (Stacked: Mensch / AI-Bot / Suche-Bot / Social-Bot / Unbekannt).
+- Top-blockierte Bot-Familien (welche Bots klopfen, welche kommen rein).
+- Top-Privacy-Trigger ("token_required" 18x, "ua_gate" 134x, "rate_limit" 3x).
+- Pro Toggle Aufschluesselung: "wie oft hat dieser Toggle jemand geblockt".
+
+### Grenzen — ehrlich kommunizieren (im Tooltip & Dashboard)
+
+- **UA-Faelscher** (gezielter Scraper als Chrome getarnt) landet als
+  `human`/`unknown` — nicht erkennbar ohne weitere Heuristik.
+- **Heuristik-Indikatoren** als spaeteres Feature: Request-Cadence pro
+  IP-Hash (>N Posts/min = verdaechtig), fehlende JS-Heartbeat-Pings (siehe
+  unten), fehlendes Asset-Nachladen. Kein Default, optionaler Schaerfer.
+- **JS-Heartbeat (optional):** Post-Seite schickt nach 2 s einen `POST
+  /api/posts/<id>/seen`-Beacon. Wer rendert, aber keinen Beacon sendet, ist
+  vermutlich Bot. Im Log als Spalte `js_confirmed` ablegen.
+- **Vercel Analytics** koennten zusaetzlich aktiv sein — aber sind nicht die
+  Quelle der Wahrheit, weil sie unsere Bot-Liste nicht kennen.
+
+### Datenschutz
+
+- IP nur als `sha256(ip + secret_salt)` — nicht reversibel, aber wieder­
+  erkennbar fuer Rate-Limits.
+- Salt monatlich rotieren → langfristige Re-Identifizierung wird unmoeglich.
+- UA-String wird gespeichert (kein Personenbezug per se).
+- Roh-Log nur N Tage, Aggregat ohne `ip_hash`.
+
+### API
+
+- `GET /api/posts/<id>/stats?range=7d` — Aggregate fuer einen Post.
+- `GET /api/user/stats?range=30d` — Aggregate ueber alle eigenen Posts.
+- `GET /api/admin/stats` (Superuser) — global.
+
 ## 10. Rollout-Reihenfolge
 
 1. Datenmodell-Migration (idempotent in `ensureDbSchema`).
@@ -362,6 +481,9 @@ user_privacy_defaults (NEU)    -- C: pro-User-Standards + Webhook + Display-Name
 10. Watermark / Anti-Scrape-Soft / JS-only (B18 + B19 + B21).
 11. Webhook-Mirror (A7), Rate-Limit (B20), Revisions-UI in `/settings`,
     optionaler Reverse-DNS-Verschaerfer fuer das UA-Gate.
+12. Observability (9b): `request_log` + `bot-fingerprints.js` + Per-Post-Mini-
+    Stats + `/settings`-Dashboard. Sinnvollerweise frueh (gleich nach UA-Gate,
+    so Phase 5/6), damit man die Wirkung der Toggles ueberhaupt sieht.
 
 ## 11. Risiken / offene Punkte
 
@@ -391,3 +513,6 @@ user_privacy_defaults (NEU)    -- C: pro-User-Standards + Webhook + Display-Name
 - `/me` als bestehende Profilseite identifiziert + Memory-Update vorgemerkt.
 - Default "findbar/normal" bestaetigt.
 - UA-Faelschung erklaert + Gegenmittel benannt (Rate-Limit, Login, Token).
+- Traffic-/Crawler-Observability ergaenzt (Section 9b): eigener `request_log`,
+  geteilte Bot-Fingerprints, Per-Post-Stats + globales `/settings`-Dashboard,
+  JS-Heartbeat-Idee fuer UA-Faelscher-Heuristik.
