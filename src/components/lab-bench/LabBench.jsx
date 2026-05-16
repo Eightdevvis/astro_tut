@@ -217,9 +217,11 @@ export default function LabBench({
     // Source-Items (Flaschen): nicht auf den Tisch legen, sondern Pour-Event
     // ausloesen, wenn das Drop ueber einem platzierten Item landet.
     // Source-Items (Flaschen): wenn ueber einem Vessel gedroppt -> Pour-Event,
-    // Flasche wird NICHT platziert. Wenn woanders gedroppt -> faellt durch zur
-    // normalen Platzierung wie jedes andere Item.
-    if (meta.kind === 'source' && d.cloneFromInventory && onSourceDropped) {
+    // Flasche wird NICHT (nochmal) platziert. Wenn woanders gedroppt -> faellt
+    // durch zur normalen Platzierung/Bewegung. Greift fuer Drag aus dem Regal
+    // (cloneFromInventory) UND fuer Drag einer bereits-platzierten Flasche
+    // (originId) — letztere wird beim Pour konsumiert (Item geloescht).
+    if (meta.kind === 'source' && onSourceDropped) {
       const checks = placed.map((p) => {
         const pm = ITEM_META[p.type];
         const hit =
@@ -256,9 +258,15 @@ export default function LabBench({
           placed,
         };
         onSourceDropped(d.itemType, target, helpers);
+        // Wenn das eine bereits-platzierte Flasche war (originId), konsumieren:
+        // sie hat ihre Fluessigkeit in den Vessel gekippt und ist jetzt leer.
+        if (d.originId) {
+          removeItemById(d.originId);
+        }
         return;
       }
-      // Kein Vessel getroffen — Flasche wird normal abgestellt (faellt durch).
+      // Kein Vessel getroffen — Flasche wird normal abgestellt (clone) bzw.
+      // an die neue Position bewegt (origin) durch den Rest der Funktion.
     }
     let dropX = d.cur.x - d.offsetX;
     let dropY = d.cur.y - d.offsetY;
