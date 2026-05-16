@@ -53,9 +53,26 @@ Erweiterungen in `src/lib/db.js` (idempotent über `ensureDbSchema()`):
   - Tile-/Listing-Links bauen jetzt `/posts/db/${slug || id}`.
 - **`/api/posts/mine`** liefert zusaetzlich `visibility`, `privacy_flags`, `public_slug` mit — Voraussetzung fuer die kommende Privacy-Toolbox-UI in Phase 6.
 
+## Phase 4 — Meta/Header-Privacy (fertig)
+
+- Helper-Erweiterung in `src/lib/blog-privacy.js`:
+  - `parsePrivacyFlags(value)` — tolerantes JSON-Parse, fallback `{}`.
+  - `computeEffectivePrivacy({visibility, privacyFlags})` — fasst Visibility-Zwang und Flags zu einem Effekt-Objekt zusammen. Regel: nicht-`public` Visibility erzwingt `noindex`/`noai`/`no_archive` (User kann es **nicht** aushebeln); `no_referrer` und `no_embed` bleiben reine Opt-ins.
+  - `privacyMetaTags(effective)` — liefert `[{name, content}]` fuers `<head>`.
+  - `privacyHeaders(effective)` — liefert `{header: value}`-Map fuer `Astro.response.headers`.
+  - `rewriteOutboundLinks(html, {siteHost})` — fuegt externen `<a href>` `rel="nofollow noreferrer noopener"` hinzu (Regex-basiert; reicht fuer das Editor-Markup aus `document.execCommand`).
+- Direktiven (siehe `privacyMetaTags`/`privacyHeaders`):
+  - **noindex** → `meta robots noindex,nofollow,noarchive,nosnippet,noimageindex` + `X-Robots-Tag` Header.
+  - **noai** → ergaenzt `noai, noimageai` im `robots`-Meta + Header; plus `ai-content-declaration: opt-out`, `tdm-reservation: 1` (Meta + Header).
+  - **no_archive** → `meta archive: off`, `Cache-Control: no-store, no-archive, max-age=0`, `X-Archive-Disallow: 1`.
+  - **no_referrer** → `meta referrer: no-referrer`, `Referrer-Policy: no-referrer`, plus Outbound-Link-Rewrite.
+  - **no_embed** → `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`.
+- `src/pages/posts/db/[id].astro` wendet jetzt das alles an: holt `privacy_flags` aus der DB, berechnet `effective`, setzt Headers ueber `Astro.response.headers`, rendert Meta-Tags ueber den neuen `head`-Slot in `src/layouts/BaseLayout.astro`, transformiert HTML bei `no_referrer` mit `rewriteOutboundLinks`.
+- `src/layouts/BaseLayout.astro` hat jetzt einen `<slot name="head" />` direkt vor dem `</head>` — damit koennen Detail-Seiten Meta/Link-Tags injizieren, ohne das Layout zu duplizieren. Andere Konsumenten bleiben unbeeintraechtigt (Slot ist optional).
+
 ## Offene Phasen (siehe Plan-Datei)
 
-4. Meta/Header-Privacy (B2 + B3 + B9 + B10 + B11).
+5. UA-Gate + dynamische robots.txt.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).

@@ -23,6 +23,7 @@ const { pageTitle } = Astro.props;
     <meta name="theme-color" content="#f4f1ea" />
     <title>{pageTitle}</title>
     <SiteFontOverrides />
+    <slot name="head" />
   </head>
   <body>
     <Nav2 variant="subpage" />

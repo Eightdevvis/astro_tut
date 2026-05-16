@@ -30,3 +30,148 @@ export function normalizeVisibility(value) {
 export function isListableVisibility(value) {
   return normalizeVisibility(value) === 'public';
 }
+
+/**
+ * Parsed das gespeicherte JSON-Bag der Toggles. Tolerant gegen Muell —
+ * wer hier kaputten Input liefert, kriegt {} zurueck (keine Toggles).
+ */
+export function parsePrivacyFlags(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value || '{}'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {}
+  return {};
+}
+
+/**
+ * Visibility erzwingt bestimmte Privacy-Direktiven (auch ohne dass der User
+ * die Toggles einzeln setzt). Logik: alles, was nicht `public` ist, soll
+ * **nicht** indexiert/trainiert/archiviert werden — sonst landen unlisted
+ * Posts versehentlich im Google-Index.
+ *
+ * Die Felder im Ergebnis sind reine Effekt-Booleans, die meta-tags() und
+ * privacyHeaders() lesen.
+ */
+export function computeEffectivePrivacy({ visibility, privacyFlags } = {}) {
+  const v = normalizeVisibility(visibility);
+  const flags = parsePrivacyFlags(privacyFlags);
+  const enforced = v !== 'public';
+  return {
+    visibility: v,
+    noindex: enforced || flags.noindex === true,
+    noai: enforced || flags.noai_meta === true,
+    noArchive: enforced || flags.no_archive === true,
+    noReferrer: flags.no_referrer === true,
+    noEmbed: flags.no_embed === true,
+  };
+}
+
+/**
+ * Liefert die `<meta>`-Tag-Definitionen, die im `<head>` einer Post-Seite
+ * stehen sollen. Format: `{ name, content }` — der Caller rendert das
+ * 1:1 in JSX/Astro.
+ */
+export function privacyMetaTags(effective) {
+  const tags = [];
+  const robots = [];
+  const aiRobots = [];
+
+  if (effective.noindex) {
+    robots.push('noindex', 'nofollow', 'noarchive', 'nosnippet', 'noimageindex');
+  }
+  if (effective.noai) {
+    aiRobots.push('noai', 'noimageai');
+  }
+  if (robots.length || aiRobots.length) {
+    tags.push({ name: 'robots', content: [...robots, ...aiRobots].join(', ') });
+  }
+  if (effective.noai) {
+    tags.push({ name: 'ai-content-declaration', content: 'opt-out' });
+    tags.push({ name: 'tdm-reservation', content: '1' });
+  }
+  if (effective.noArchive) {
+    tags.push({ name: 'archive', content: 'off' });
+  }
+  if (effective.noReferrer) {
+    tags.push({ name: 'referrer', content: 'no-referrer' });
+  }
+  return tags;
+}
+
+/**
+ * Liefert die HTTP-Header-Werte, die die Post-Response zusaetzlich setzen
+ * soll. Aufrufer setzt sie ueber Astro.response.headers.set(name, value).
+ *
+ * Hart auf Server-Ebene durchgesetzte Direktiven:
+ * - X-Robots-Tag entspricht den Meta-Tags, gilt aber auch fuer Crawler,
+ *   die das HTML gar nicht parsen (z. B. Header-only Bots).
+ * - Cache-Control no-store/no-archive verhindert Wayback-Snapshots.
+ * - frame-ancestors / X-Frame-Options blockiert Iframe-Embeds.
+ * - Referrer-Policy ist das authoritative Pendant zum referrer-meta.
+ */
+export function privacyHeaders(effective) {
+  const headers = {};
+  const robots = [];
+  if (effective.noindex) {
+    robots.push('noindex', 'nofollow', 'noarchive', 'nosnippet');
+  }
+  if (effective.noai) {
+    robots.push('noai', 'noimageai');
+  }
+  if (robots.length) {
+    headers['X-Robots-Tag'] = robots.join(', ');
+  }
+  if (effective.noai) {
+    headers['tdm-reservation'] = '1';
+  }
+  if (effective.noArchive) {
+    headers['Cache-Control'] = 'no-store, no-archive, max-age=0';
+    headers['X-Archive-Disallow'] = '1';
+  }
+  if (effective.noReferrer) {
+    headers['Referrer-Policy'] = 'no-referrer';
+  }
+  if (effective.noEmbed) {
+    headers['Content-Security-Policy'] = "frame-ancestors 'none'";
+    headers['X-Frame-Options'] = 'DENY';
+  }
+  return headers;
+}
+
+/**
+ * Transformiert Post-HTML so, dass *externe* `<a href>`-Links ein
+ * konservatives `rel="nofollow noreferrer noopener"` bekommen. Interne
+ * Links (gleicher Host oder relativ) bleiben unangetastet.
+ *
+ * Sehr bewusst per Regex und nicht per echtem HTML-Parser: das gespeicherte
+ * Markup stammt aus `document.execCommand` (Editor), ist trivial flach und
+ * verdient kein eigenes Parser-Setup. Wenn das Markup spaeter komplexer
+ * wird, ist das hier die zentrale Stelle zum Aufruesten.
+ */
+export function rewriteOutboundLinks(html, { siteHost = '' } = {}) {
+  if (typeof html !== 'string' || !html) return String(html || '');
+  const wanted = 'nofollow noreferrer noopener';
+  return html.replace(/<a\b([^>]*?)\bhref\s*=\s*("([^"]*)"|'([^']*)')([^>]*)>/gi, (match, before, _q, hrefDouble, hrefSingle, after) => {
+    const href = String(hrefDouble || hrefSingle || '').trim();
+    if (!/^https?:\/\//i.test(href)) return match; // relativ → intern, lassen
+    if (siteHost) {
+      try {
+        const u = new URL(href);
+        if (u.host === siteHost) return match; // gleicher Host → intern, lassen
+      } catch {}
+    }
+    const attrs = `${before} ${after}`;
+    const existingRel = attrs.match(/\brel\s*=\s*("([^"]*)"|'([^']*)')/i);
+    let newRel = wanted;
+    if (existingRel) {
+      const oldVal = String(existingRel[2] || existingRel[3] || '').toLowerCase();
+      const have = new Set(oldVal.split(/\s+/).filter(Boolean));
+      for (const r of wanted.split(' ')) have.add(r);
+      newRel = Array.from(have).join(' ');
+      const withoutRel = attrs.replace(/\s*\brel\s*=\s*("[^"]*"|'[^']*')/i, '');
+      return `<a${withoutRel} href="${href.replace(/"/g, '&quot;')}" rel="${newRel}">`;
+    }
+    return `<a${attrs} href="${href.replace(/"/g, '&quot;')}" rel="${newRel}">`;
+  });
+}

@@ -1,7 +1,14 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { ensureDbSchema, getDb } from '../../../lib/db.js';
-import { isValidPublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
+import {
+  computeEffectivePrivacy,
+  isValidPublicSlug,
+  normalizeVisibility,
+  privacyHeaders,
+  privacyMetaTags,
+  rewriteOutboundLinks,
+} from '../../../lib/blog-privacy.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
@@ -16,6 +23,7 @@ type PostRow = {
   content_text: string;
   created_at: string;
   visibility: string;
+  privacy_flags: string;
   public_slug: string | null;
 };
 
@@ -27,12 +35,12 @@ if (isIntegerLookup || isSlugLookup) {
     const result = await getDb().execute({
       sql: isSlugLookup
         ? `SELECT id, username, content_html, content_text, created_at,
-                  visibility, public_slug
+                  visibility, privacy_flags, public_slug
              FROM blog_posts
             WHERE public_slug = ? AND deleted_at IS NULL
             LIMIT 1`
         : `SELECT id, username, content_html, content_text, created_at,
-                  visibility, public_slug
+                  visibility, privacy_flags, public_slug
              FROM blog_posts
             WHERE id = ? AND deleted_at IS NULL
             LIMIT 1`,
@@ -47,6 +55,7 @@ if (isIntegerLookup || isSlugLookup) {
         content_text: String(row.content_text || ''),
         created_at: String(row.created_at || ''),
         visibility: normalizeVisibility(row.visibility),
+        privacy_flags: String(row.privacy_flags || '{}'),
         public_slug: row.public_slug ? String(row.public_slug) : null,
       };
     }
@@ -94,12 +103,45 @@ const firstLine = post.content_text
 const title = firstLine?.slice(0, 90) || `Post #${post.id}`;
 const pubDate = post.created_at.slice(0, 10);
 const author = post.username || 'Unknown';
+
+// B2/B3/B9/B10/B11 — wirksame Privacy-Direktiven berechnen und sowohl im
+// HTML als Meta-Tag als auch ueber HTTP-Header ausspielen. Meta wirkt fuer
+// kompliante Crawler, die das HTML parsen; der Header faengt zusaetzlich
+// die ab, die nur Header schauen. B10 (no_referrer) ist Opt-in pro Post;
+// B11 (no_embed) ebenfalls. noindex/noai werden bei nicht-public Posts
+// automatisch erzwungen — siehe blog-privacy.js.
+const effective = computeEffectivePrivacy({
+  visibility: post.visibility,
+  privacyFlags: post.privacy_flags,
+});
+const metaTags = privacyMetaTags(effective);
+const headers = privacyHeaders(effective);
+for (const [name, value] of Object.entries(headers)) {
+  Astro.response.headers.set(name, String(value));
+}
+
+// B10 (Teil 2): wenn no_referrer aktiv ist, bekommen alle externen
+// `<a href>` Links zusaetzlich rel="nofollow noreferrer noopener". Das
+// schuetzt die User-Privatsphaere auch dann, wenn Browser den
+// Referrer-Policy-Header ignorieren sollten.
+let siteHost = '';
+try {
+  if (Astro.site) siteHost = new URL(Astro.site).host;
+} catch {}
+const renderedHtml = effective.noReferrer
+  ? rewriteOutboundLinks(post.content_html, { siteHost })
+  : post.content_html;
 ---
 
 <BaseLayout pageTitle={title}>
+  <Fragment slot="head">
+    {metaTags.map((tag) => (
+      <meta name={tag.name} content={tag.content} />
+    ))}
+  </Fragment>
   <p>{pubDate}</p>
   <p>Written by: {author}</p>
-  <article class="db-post-content" set:html={post.content_html}></article>
+  <article class="db-post-content" set:html={renderedHtml}></article>
 </BaseLayout>
 
 <style>
