@@ -61,7 +61,7 @@ function AutoFitText({ text, maxPx, minPx = 9, class: className }) {
     return () => { cancelled = true; if (ro) ro.disconnect(); };
   }, [text, maxPx, minPx]);
 
-  return <div ref={ref} class={className} style={{ fontSize: `${maxPx}px` }}>{text}</div>;
+  return <div ref={ref} class={className}>{text}</div>;
 }
 
 export default function VocabCardStack({ isOwner = false }) {
@@ -226,32 +226,40 @@ export default function VocabCardStack({ isOwner = false }) {
         }
         /* Alle drei Felder: feste Box-Groesse + overflow:hidden, damit
            AutoFitText scrollHeight > clientHeight zuverlaessig erkennen kann.
-           Die Schriftgroessen werden von JS gesetzt (max -> Schritt-fuer-Schritt
-           runter, bis es passt). KEIN display:flex hier — sonst wrappt der
-           Text nicht und ueberlauft horizontal schon bei mittellangen Woertern. */
+           Basis-Schriftgroessen sind hier in CSS, damit Re-Renders sie nicht
+           ueberschreiben — JS setzt die Inline-font-size nur dann, wenn der
+           Inhalt schrumpfen muss. Werte MUESSEN mit maxPx im JSX zusammen-
+           passen (word=34, pron=15, def=15). KEIN display:flex hier — sonst
+           wrappt der Text nicht und ueberlauft horizontal schon bei
+           mittellangen Woertern. */
         .vocab-card-word {
           font-family: 'Protest Demo', var(--font-hero, 'Protest Demo'), serif;
+          font-size: 34px;
           line-height: 1.05;
           margin-top: 0.15rem;
           overflow-wrap: anywhere;
           width: 100%;
-          max-height: 70px;
+          /* 2 Zeilen bei 34px*1.05 = 71.4px — Box gross genug damit zweizeilige
+             Woerter nicht zu Schrumpfen fuehren. */
+          max-height: 78px;
           overflow: hidden;
           text-align: center;
           align-self: center;
         }
         .vocab-card-pron {
           font-family: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+          font-size: 15px;
           opacity: 0.7;
           letter-spacing: 0.02em;
           line-height: 1.2;
           width: 100%;
-          max-height: 24px;
+          max-height: 22px;
           overflow: hidden;
           text-align: center;
           overflow-wrap: anywhere;
         }
         .vocab-card-def {
+          font-size: 15px;
           line-height: 1.35;
           opacity: 0.88;
           margin-top: 0.15rem;
