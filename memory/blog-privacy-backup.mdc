@@ -148,9 +148,19 @@ Verifiziert per curl: hub_excluded → Hub leer (sash hat alle Posts), full_hidd
 - `Cache-Control: no-store`. Hinweis im `meta.note`-Feld, dass Token-Klartext und Passwort-Klartext nicht im Export sind (DB hat sie auch nie gespeichert).
 - DSGVO Art. 20 (Datenuebertragbarkeit) erfuellt.
 
+## Phase 11 — Webhook-Mirror + Rate-Limit + Revisions-API (fertig)
+
+- **B20 Rate-Limit (`src/lib/rate-limit.js`)**: `checkRateLimit({ipHash, max, windowSeconds})` zaehlt `request_log` im Sliding-Window. Default 60/min. In `posts/db/[id].astro` als allererster Server-Check eingehaengt — schon vor UA-Gate/Token-Lookup. Blockade → 429 mit `Retry-After: 60` + Log `blocked_reason='rate_limit'`. Bei DB-Fehler: zulassen (Privacy > perfektes Zaehlen). Exakte Schwellen werden absichtlich nicht im Code dokumentiert — laut Plan-Bucket 3 in `memory/security-sensitive.md`.
+- **A7 Webhook-Mirror (`src/lib/backup-webhook.js`)**: `fireBackupWebhook(username, eventName, post)` fire-and-forget. Liest `user_privacy_defaults.backup_webhook_url`, POSTet JSON mit `{event, username, occurredAt, postId, publicSlug, visibility, contentText, contentHtml}` und `X-Astro-Tut-Event`-Header. 5 s AbortController-Timeout. Events: `post.add` (add.js), `post.update` (PATCH + restore-revision), `post.delete` (DELETE), `post.restore` (restore.js).
+- **Revisions-API**:
+  - `GET /api/posts/[id]/revisions` — liefert Liste (id, change_reason, created_at, preview 160 Zeichen, length).
+  - `POST /api/posts/[id]/restore-revision` mit `{revisionId}` — schreibt vorher Sicherheits-Snapshot des aktuellen Stands als neue Revision (`change_reason='restore-snapshot'`), dann UPDATE des Posts auf die alten Werte. Webhook `post.update`.
+- **Settings-UI (Revisions-Browser, Webhook-Eingabefeld)** ist bewusst auf Phase 13 verschoben — der Datenschutz-Tab wird der Ort, wo Webhook konfiguriert und Revisions/Trash verwaltet werden.
+- Verifiziert per curl: 65 schnelle Requests von gleichem UA → erste 60 = 200, restliche 5 = 429; `request_log` zeigt 60 + 10 sauber gruppiert.
+
 ## Offene Phasen (siehe Plan-Datei)
 
-11. Webhook-Mirror, Rate-Limit, Revisions-UI in `/settings`.
+13. Datenschutz-Details-Tab.
 4. Meta/Header-Privacy (B2, B3, B9, B10, B11).
 5. UA-Gate + dynamische robots.txt.
 6. Toolbox-UI (SVG-Werkzeugkiste + SVG-Tresor, Akkordeon, Info-`i`-Popovers).

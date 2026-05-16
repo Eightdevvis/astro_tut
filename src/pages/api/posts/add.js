@@ -5,6 +5,7 @@ import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.js';
 import { getUserPrivacyDefaults } from '../../../lib/user-privacy-defaults.js';
+import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -137,6 +138,13 @@ export async function POST({ request, cookies }) {
     } catch (cleanupErr) {
       console.warn('posts/add: draft cleanup', cleanupErr);
     }
+    fireBackupWebhook(username, 'post.add', {
+      id: id ? Number(id) : null,
+      public_slug: slug,
+      visibility,
+      content_text: contentText,
+      content_html: contentHtml,
+    });
     return new Response(JSON.stringify({ success: true, id, slug, visibility }), { status: 201 });
   } catch (err) {
     console.error('posts/add', err);

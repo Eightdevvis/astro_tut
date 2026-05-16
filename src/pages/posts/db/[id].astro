@@ -18,6 +18,8 @@ import {
 import { extractClientMeta, safeLogRequest } from '../../../lib/request-log.js';
 import { getSessionUserFromCookies } from '../../../lib/session.js';
 import { isAuthorBlockAllAi } from '../../../lib/user-privacy-defaults.js';
+import { checkRateLimit } from '../../../lib/rate-limit.js';
+import { hashIp } from '../../../lib/request-log.js';
 
 const rawId = String(Astro.params?.id ?? '').trim();
 const asInteger = Number(rawId);
@@ -141,6 +143,31 @@ if (post && !expiredResponse && !tokenUnlocked) {
 
 const requestPath = `/posts/db/${rawId}`;
 const client = extractClientMeta(Astro.request, Astro.clientAddress);
+
+// B20 Rate-Limit ganz vorne — bevor wir teure Operationen (UA-Gate-Lookup,
+// Token-Check) machen. Verbraucht eine DB-COUNT-Query gegen request_log,
+// daher kommt sie NACH dem cheap-Vorab-Check, ob ueberhaupt eine ID/Slug
+// passt.
+if (isIntegerLookup || isSlugLookup) {
+  const rl = await checkRateLimit({ ipHash: hashIp(client.ip) });
+  if (!rl.allowed) {
+    void safeLogRequest({
+      path: requestPath,
+      postId: null,
+      username: null,
+      ua: client.ua,
+      ip: client.ip,
+      country: client.country,
+      referer: client.referer,
+      status: 429,
+      blockedReason: 'rate_limit',
+    });
+    return new Response('Zu viele Anfragen', {
+      status: 429,
+      headers: { 'Retry-After': '60' },
+    });
+  }
+}
 
 if (expiredResponse) {
   void safeLogRequest({

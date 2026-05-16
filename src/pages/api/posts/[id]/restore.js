@@ -2,6 +2,7 @@ import { jwtVerify } from 'jose';
 import { hasPermission } from '../../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../../lib/jwt-secret.js';
+import { fireBackupWebhook } from '../../../../lib/backup-webhook.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -47,6 +48,7 @@ export async function POST({ params, cookies }) {
     });
     const changes = Number(result.rowsAffected ?? 0);
     if (changes === 0) return json({ error: 'Nicht im Papierkorb' }, 404);
+    fireBackupWebhook(auth.username, 'post.restore', { id });
     return json({ success: true, id });
   } catch (err) {
     console.error('posts/[id]/restore', err);

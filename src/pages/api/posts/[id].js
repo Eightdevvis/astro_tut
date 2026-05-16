@@ -4,6 +4,7 @@ import { hasPermission } from '../../../lib/permissions.js';
 import { getDb, ensureDbSchema } from '../../../lib/db.js';
 import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { normalizeVisibility } from '../../../lib/blog-privacy.js';
+import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -170,6 +171,13 @@ export async function PATCH({ params, request, cookies }) {
       console.warn('posts/[id] patch: draft cleanup', cleanupErr);
     }
 
+    fireBackupWebhook(auth.username, 'post.update', {
+      id,
+      content_text: contentText,
+      content_html: contentHtml,
+      visibility: visibility !== null ? visibility : String(row.visibility || 'public'),
+    });
+
     return json({ success: true, id });
   } catch (err) {
     console.error('posts/[id] patch', err);
@@ -196,6 +204,7 @@ export async function DELETE({ params, cookies }) {
     });
     const changes = Number(result.rowsAffected ?? 0);
     if (changes === 0) return json({ error: 'Post nicht gefunden' }, 404);
+    fireBackupWebhook(auth.username, 'post.delete', { id });
     return json({ success: true, id });
   } catch (err) {
     console.error('posts/[id] delete', err);
