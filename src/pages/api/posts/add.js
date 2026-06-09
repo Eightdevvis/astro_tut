@@ -94,7 +94,7 @@ export async function POST({ request, cookies }) {
   if (!contentText) {
     return new Response(JSON.stringify({ error: 'Inhalt darf nicht leer sein' }), { status: 400 });
   }
-  if (contentText.length > 10000 || contentHtml.length > 40000) {
+  if (contentText.length > 100000 || contentHtml.length > 400000) {
     return new Response(JSON.stringify({ error: 'Post ist zu lang' }), { status: 400 });
   }
   // M3: Editor exportiert ueber Canvas immer PNG. SVG-mit-Skript ist ein

@@ -7,6 +7,7 @@
 - Werkzeuge auf der Seite: Fett, Kursiv, Schrift wechseln, Liste, Kritzelmodus (Canvas), Farbwechsel fuer Text/Kritzel.
 - Persistenz: neue Tabelle `blog_posts` in `src/lib/db.js` inkl. Index auf `(username, created_at DESC, id DESC)`.
 - API Speichern: `POST /api/posts/add` in `src/pages/api/posts/add.js` (Auth + Permission + Validierung).
+- Laengen-Limit (`add.js` + `[id].js`, identisch): Text > 100.000 *oder* HTML > 400.000 Zeichen → 400 `"Post ist zu lang"`. Frueher 10.000/40.000, am 2026-06-09 verzehnfacht. Kein Frontend-Cap, nur die API gated.
 - API Laden: `GET /api/posts/mine` in `src/pages/api/posts/mine.js` (nur eigene Posts).
 - Unterhalb des Editors: Kachelgrid vergangener eigener Posts ist immer verfuegbar; vertikaler Abstand via CSS-Variable `--past-posts-offset` statt fester Hardcode-Position.
 - Vergangene Posts im Modal: Bearbeiten (laedt `content_html` in den Editor, Speichern via `PATCH /api/posts/:id`) und Loeschen (`DELETE /api/posts/:id`).

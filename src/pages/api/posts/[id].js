@@ -75,7 +75,7 @@ export async function PATCH({ params, request, cookies }) {
   const contentHtml = sanitizePostHtml(rawHtml);
   const contentText = String(body?.contentText || '').trim();
   if (!contentText) return json({ error: 'Inhalt darf nicht leer sein' }, 400);
-  if (contentText.length > 10000 || contentHtml.length > 40000) {
+  if (contentText.length > 100000 || contentHtml.length > 400000) {
     return json({ error: 'Post ist zu lang' }, 400);
   }
 
