@@ -657,7 +657,7 @@ try {
             </div>
             <div class="editor-actions">
               <button id="savePostBtn" class="save-btn" type="button">Post speichern</button>
-              <button id="splitPostBtn" class="split-btn" type="button" title="Post am Cursor in zwei Teile teilen" hidden>Hier teilen</button>
+              <button id="splitPostBtn" class="split-btn" type="button" title="Am Cursor teilen — der Rest wird ein zweiter Teil" hidden>zweiten Teil hinzufügen</button>
             </div>
             <div class="length-meter" id="lengthMeter" aria-live="polite"></div>
             <div class="msg" id="msg"></div>
@@ -910,7 +910,7 @@ try {
         lengthMeter.classList.toggle('warn', warn);
         lengthMeter.classList.toggle('over', over);
         if (over) {
-          lengthMeter.textContent = `Zu lang: ${nf} / ${cap} Zeichen — bitte „Hier teilen“ nutzen.`;
+          lengthMeter.textContent = `Zu lang: ${nf} / ${cap} Zeichen — bitte „zweiten Teil hinzufügen“ nutzen.`;
         } else if (warn) {
           lengthMeter.textContent = `${nf} / ${cap} Zeichen — wird lang, evtl. teilen.`;
         } else {
@@ -1144,7 +1144,11 @@ try {
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data.success) {
-            setMsg((data.error || 'Loeschen fehlgeschlagen').toUpperCase(), false);
+            const tag = data.code
+              ? `${data.code}${data.ref ? ' · ' + data.ref : ''}`
+              : `HTTP ${res.status}`;
+            setMsg(`${(data.error || 'Loeschen fehlgeschlagen').toUpperCase()} [${tag}]`, false);
+            console.error('Post loeschen fehlgeschlagen', { status: res.status, ...data });
             return;
           }
           if (currentEditingPostId === openPostId) {
@@ -1326,7 +1330,7 @@ try {
           // gibt's das "Post zu lang, kein Speichern moeglich" nie ungewarnt.
           if (contentText.length > TEXT_CAP || contentHtml.length > HTML_CAP) {
             updateLengthMeter();
-            setMsg('Post ist zu lang — Cursor an eine Stelle setzen und „Hier teilen“ nutzen.', false);
+            setMsg('Post ist zu lang — Cursor an eine Stelle setzen und „zweiten Teil hinzufügen“ nutzen.', false);
             if (splitPostBtn) { splitPostBtn.hidden = false; splitPostBtn.classList.add('urgent'); }
             return;
           }
@@ -1356,7 +1360,11 @@ try {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
-              setMsg((data.error || 'Speichern fehlgeschlagen').toUpperCase(), false);
+              const tag = data.code
+                ? `${data.code}${data.ref ? ' · ' + data.ref : ''}`
+                : `HTTP ${res.status}`;
+              setMsg(`${(data.error || 'Speichern fehlgeschlagen').toUpperCase()} [${tag}]`, false);
+              console.error('Post speichern fehlgeschlagen', { status: res.status, ...data });
               return;
             }
             if (isEditing) {

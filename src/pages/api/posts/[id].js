@@ -6,6 +6,7 @@ import { getJwtSecretBytes } from '../../../lib/jwt-secret.js';
 import { normalizeVisibility } from '../../../lib/blog-privacy.js';
 import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
 import { sanitizePostHtml } from '../../../lib/sanitize-html.js';
+import { apiError, serverError } from '../../../lib/api-error.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -45,15 +46,15 @@ function parsePostId(params) {
 
 async function requireUser(cookies) {
   const token = cookies.get('session')?.value;
-  if (!token) return { error: json({ error: 'Nicht eingeloggt' }, 401) };
+  if (!token) return { error: apiError('Nicht eingeloggt', 'auth:no_token', 401) };
   try {
     const { payload } = await jwtVerify(token, getJwtSecretBytes());
     const username = String(payload.username || '');
     const allowed = await hasPermission(username, 'blogpost_poster');
-    if (!allowed) return { error: json({ error: 'Keine Berechtigung' }, 403) };
+    if (!allowed) return { error: apiError('Keine Berechtigung', 'auth:no_permission', 403) };
     return { username };
   } catch {
-    return { error: json({ error: 'Session ungültig' }, 401) };
+    return { error: apiError('Session ungültig', 'auth:bad_session', 401) };
   }
 }
 
@@ -61,22 +62,27 @@ export async function PATCH({ params, request, cookies }) {
   const auth = await requireUser(cookies);
   if (auth.error) return auth.error;
   const id = parsePostId(params);
-  if (!id) return json({ error: 'Ungültige Post-ID' }, 400);
+  if (!id) return apiError('Ungültige Post-ID', 'patch:bad_id', 400);
 
   let body;
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Ungültiger JSON-Body' }, 400);
+    return apiError('Ungültiger JSON-Body', 'patch:bad_json', 400);
   }
 
   // K1: Sanitize beim Update genauso wie beim Insert.
   const rawHtml = String(body?.contentHtml || '').trim();
-  const contentHtml = sanitizePostHtml(rawHtml);
+  let contentHtml;
+  try {
+    contentHtml = sanitizePostHtml(rawHtml);
+  } catch (err) {
+    return serverError('Inhalt konnte nicht verarbeitet werden', 'patch:sanitize_failed', err);
+  }
   const contentText = String(body?.contentText || '').trim();
-  if (!contentText) return json({ error: 'Inhalt darf nicht leer sein' }, 400);
+  if (!contentText) return apiError('Inhalt darf nicht leer sein', 'patch:content_empty', 400);
   if (contentText.length > 100000 || contentHtml.length > 400000) {
-    return json({ error: 'Post ist zu lang' }, 400);
+    return apiError('Post ist zu lang', 'patch:content_too_long', 413);
   }
 
   // B1/Privacy: Visibility und Flags optional mitschicken; wenn nicht im
@@ -115,8 +121,8 @@ export async function PATCH({ params, request, cookies }) {
       args: [id, auth.username],
     });
     const row = cur.rows?.[0];
-    if (!row) return json({ error: 'Post nicht gefunden' }, 404);
-    if (row.deleted_at) return json({ error: 'Post ist im Papierkorb' }, 409);
+    if (!row) return apiError('Post nicht gefunden', 'patch:not_found', 404);
+    if (row.deleted_at) return apiError('Post ist im Papierkorb', 'patch:trashed', 409);
 
     await db.execute({
       sql: `INSERT INTO blog_post_revisions
@@ -162,7 +168,7 @@ export async function PATCH({ params, request, cookies }) {
       args: setArgs,
     });
     const changes = Number(result.rowsAffected ?? 0);
-    if (changes === 0) return json({ error: 'Post nicht gefunden' }, 404);
+    if (changes === 0) return apiError('Post nicht gefunden', 'patch:not_found_update', 404);
 
     // A2-Cleanup: erfolgreich gespeichert → Server-Draft fuer diesen Post weg.
     try {
@@ -183,8 +189,7 @@ export async function PATCH({ params, request, cookies }) {
 
     return json({ success: true, id });
   } catch (err) {
-    console.error('posts/[id] patch', err);
-    return json({ error: 'Aktualisierung fehlgeschlagen' }, 500);
+    return serverError('Aktualisierung fehlgeschlagen', 'patch:db_failed', err);
   }
 }
 
@@ -192,7 +197,7 @@ export async function DELETE({ params, cookies }) {
   const auth = await requireUser(cookies);
   if (auth.error) return auth.error;
   const id = parsePostId(params);
-  if (!id) return json({ error: 'Ungültige Post-ID' }, 400);
+  if (!id) return apiError('Ungültige Post-ID', 'delete:bad_id', 400);
 
   try {
     await ensureDbSchema();
@@ -206,11 +211,10 @@ export async function DELETE({ params, cookies }) {
       args: [id, auth.username],
     });
     const changes = Number(result.rowsAffected ?? 0);
-    if (changes === 0) return json({ error: 'Post nicht gefunden' }, 404);
+    if (changes === 0) return apiError('Post nicht gefunden', 'delete:not_found', 404);
     fireBackupWebhook(auth.username, 'post.delete', { id });
     return json({ success: true, id });
   } catch (err) {
-    console.error('posts/[id] delete', err);
-    return json({ error: 'Loeschen fehlgeschlagen' }, 500);
+    return serverError('Loeschen fehlgeschlagen', 'delete:db_failed', err);
   }
 }

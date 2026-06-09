@@ -7,6 +7,7 @@ import { makePublicSlug, normalizeVisibility } from '../../../lib/blog-privacy.j
 import { getUserPrivacyDefaults } from '../../../lib/user-privacy-defaults.js';
 import { fireBackupWebhook } from '../../../lib/backup-webhook.js';
 import { sanitizePostHtml } from '../../../lib/sanitize-html.js';
+import { apiError, serverError } from '../../../lib/api-error.js';
 
 function parseExpiresAt(v) {
   if (v == null || v === '') return null;
@@ -46,68 +47,73 @@ function normalizePrivacyFlags(v) {
 }
 
 export async function POST({ request, cookies }) {
-  const token = cookies.get('session')?.value;
-  if (!token) return new Response(JSON.stringify({ error: 'Nicht eingeloggt' }), { status: 401 });
-
-  let username = '';
   try {
-    const { payload } = await jwtVerify(token, getJwtSecretBytes());
-    username = String(payload.username || '');
-  } catch {
-    return new Response(JSON.stringify({ error: 'Session ungültig' }), { status: 401 });
-  }
+    const token = cookies.get('session')?.value;
+    if (!token) return apiError('Nicht eingeloggt', 'add:no_token', 401);
 
-  const allowed = await hasPermission(username, 'blogpost_poster');
-  if (!allowed) return new Response(JSON.stringify({ error: 'Keine Berechtigung' }), { status: 403 });
+    let username = '';
+    try {
+      const { payload } = await jwtVerify(token, getJwtSecretBytes());
+      username = String(payload.username || '');
+    } catch {
+      return apiError('Session ungültig', 'add:bad_session', 401);
+    }
 
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Ungültiger JSON-Body' }), { status: 400 });
-  }
+    const allowed = await hasPermission(username, 'blogpost_poster');
+    if (!allowed) return apiError('Keine Berechtigung', 'add:no_permission', 403);
 
-  // K1 Stored-XSS-Schutz: alles HTML vom Editor durch DOMPurify mit
-  // strikter Allow-List jagen, bevor wir es persistieren. document.exec-
-  // Command liefert ungefiltertes Markup; ohne Sanitize landeten
-  // <script>, <img onerror=…> und javascript:-Links 1:1 in der DB.
-  const rawHtml = String(body?.contentHtml || '').trim();
-  const contentHtml = sanitizePostHtml(rawHtml);
-  const contentText = String(body?.contentText || '').trim();
-  const accentColor = normalizeColor(body?.accentColor);
-  const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return apiError('Ungültiger JSON-Body', 'add:bad_json', 400);
+    }
 
-  // C1: wenn der Client keine Visibility/Flags mitschickt, fallen wir auf
-  // die Profil-Defaults dieses Users zurueck. Damit setzt jeder Post
-  // automatisch das, was der User in seinem Datenschutz-Tab vorgewaehlt
-  // hat. Bestehende Defaults (public/leere flags) bleiben unauffaellig.
-  const userDefaults = await getUserPrivacyDefaults(username).catch(() => null);
-  const visibility = body?.visibility !== undefined
-    ? normalizeVisibility(body.visibility)
-    : (userDefaults?.default_visibility || 'public');
-  const privacyFlags = body?.privacyFlags !== undefined
-    ? normalizePrivacyFlags(body.privacyFlags)
-    : (userDefaults?.default_flags || '{}');
-  const expiresAt = parseExpiresAt(body?.expiresAt);
-  const passwordHash = visibility === 'password' ? await hashPasswordIfGiven(body?.password) : null;
+    // K1 Stored-XSS-Schutz: alles HTML vom Editor durch DOMPurify mit
+    // strikter Allow-List jagen, bevor wir es persistieren. document.exec-
+    // Command liefert ungefiltertes Markup; ohne Sanitize landeten
+    // <script>, <img onerror=…> und javascript:-Links 1:1 in der DB.
+    const rawHtml = String(body?.contentHtml || '').trim();
+    let contentHtml;
+    try {
+      contentHtml = sanitizePostHtml(rawHtml);
+    } catch (err) {
+      return serverError('Inhalt konnte nicht verarbeitet werden', 'add:sanitize_failed', err);
+    }
+    const contentText = String(body?.contentText || '').trim();
+    const accentColor = normalizeColor(body?.accentColor);
+    const doodleDataUrl = String(body?.doodleDataUrl || '').trim();
 
-  if (!contentText) {
-    return new Response(JSON.stringify({ error: 'Inhalt darf nicht leer sein' }), { status: 400 });
-  }
-  if (contentText.length > 100000 || contentHtml.length > 400000) {
-    return new Response(JSON.stringify({ error: 'Post ist zu lang' }), { status: 400 });
-  }
-  // M3: Editor exportiert ueber Canvas immer PNG. SVG-mit-Skript ist ein
-  // gueltiges data:image/-Prefix; deshalb hier explizit nur PNG/JPEG
-  // zulassen.
-  if (doodleDataUrl && !/^data:image\/(png|jpe?g);base64,/i.test(doodleDataUrl)) {
-    return new Response(JSON.stringify({ error: 'Ungültige Kritzel-Daten' }), { status: 400 });
-  }
-  if (doodleDataUrl.length > 2_000_000) {
-    return new Response(JSON.stringify({ error: 'Kritzelbild ist zu groß' }), { status: 400 });
-  }
+    // C1: wenn der Client keine Visibility/Flags mitschickt, fallen wir auf
+    // die Profil-Defaults dieses Users zurueck. Damit setzt jeder Post
+    // automatisch das, was der User in seinem Datenschutz-Tab vorgewaehlt
+    // hat. Bestehende Defaults (public/leere flags) bleiben unauffaellig.
+    const userDefaults = await getUserPrivacyDefaults(username).catch(() => null);
+    const visibility = body?.visibility !== undefined
+      ? normalizeVisibility(body.visibility)
+      : (userDefaults?.default_visibility || 'public');
+    const privacyFlags = body?.privacyFlags !== undefined
+      ? normalizePrivacyFlags(body.privacyFlags)
+      : (userDefaults?.default_flags || '{}');
+    const expiresAt = parseExpiresAt(body?.expiresAt);
+    const passwordHash = visibility === 'password' ? await hashPasswordIfGiven(body?.password) : null;
 
-  try {
+    if (!contentText) {
+      return apiError('Inhalt darf nicht leer sein', 'add:content_empty', 400);
+    }
+    if (contentText.length > 100000 || contentHtml.length > 400000) {
+      return apiError('Post ist zu lang', 'add:content_too_long', 413);
+    }
+    // M3: Editor exportiert ueber Canvas immer PNG. SVG-mit-Skript ist ein
+    // gueltiges data:image/-Prefix; deshalb hier explizit nur PNG/JPEG
+    // zulassen.
+    if (doodleDataUrl && !/^data:image\/(png|jpe?g);base64,/i.test(doodleDataUrl)) {
+      return apiError('Ungültige Kritzel-Daten', 'add:doodle_invalid', 400);
+    }
+    if (doodleDataUrl.length > 2_000_000) {
+      return apiError('Kritzelbild ist zu groß', 'add:doodle_too_large', 413);
+    }
+
     await ensureDbSchema();
     const db = getDb();
     // B13: bei jedem neuen Post wird sofort ein unraidbarer Slug vergeben,
@@ -156,7 +162,6 @@ export async function POST({ request, cookies }) {
     });
     return new Response(JSON.stringify({ success: true, id, slug, visibility }), { status: 201 });
   } catch (err) {
-    console.error('posts/add', err);
-    return new Response(JSON.stringify({ error: 'Speichern fehlgeschlagen' }), { status: 500 });
+    return serverError('Speichern fehlgeschlagen', 'add:db_insert_failed', err);
   }
 }
