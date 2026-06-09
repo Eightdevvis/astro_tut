@@ -1,101 +1,74 @@
 /**
  * Server-seitiger HTML-Sanitizer fuer Blog-Post-Inhalte (K1).
  *
- * Quelle: `document.execCommand` im Editor liefert beliebiges HTML, das
- * der User durch Paste oder manuelle Manipulation steuern kann. Vor dem
- * Speichern + bei jeder Anzeige laufen wir das durch isomorphic-dompurify
- * mit einer engen Allow-List.
+ * Quelle: `document.execCommand` im Editor liefert beliebiges HTML, das der
+ * User durch Paste oder manuelle Manipulation steuern kann. Vor dem Speichern
+ * + bei jeder Anzeige laufen wir das durch eine enge Allow-List.
+ *
+ * Frueher via `isomorphic-dompurify` (zieht jsdom). jsdom@29 -> html-encoding-
+ * sniffer@6 macht `require()` auf das ESM-only `@exodus/bytes` — das wirft auf
+ * Vercels Function-Runtime (Node < 22.12) `ERR_REQUIRE_ESM` schon beim
+ * Modul-Load, womit JEDE Route, die diese Datei importiert, mit leerem 500
+ * crasht (Posten + Post-Anzeige). Deshalb jetzt das pure-JS-Paket
+ * `sanitize-html` (htmlparser2-basiert, kein DOM, keine ESM/Node-Stolperfalle).
  *
  * Erlaubt sind die Tags + Attribute, die der Editor + die Format-Werkzeuge
- * tatsaechlich produzieren — alles drueber hinaus wird stillschweigend
- * entfernt. Insbesondere `<script>`, `on*`-Handler, `javascript:`-URLs,
- * `<iframe>`/`<object>`/`<embed>` sind blockiert.
+ * tatsaechlich produzieren — alles drueber hinaus wird entfernt. Insbesondere
+ * `<script>`, `on*`-Handler, `javascript:`-URLs, `<iframe>`/`<object>`/
+ * `<embed>` sind blockiert.
  */
 
-import DOMPurify from 'isomorphic-dompurify';
+import sanitizeHtml from 'sanitize-html';
 
 // Tags, die der Editor je erzeugt + harmloses Strukturmarkup.
+// `<font face=…>` kommt von document.execCommand('fontName', …).
 const ALLOWED_TAGS = [
   'p', 'br', 'span', 'div',
   'b', 'strong', 'i', 'em', 'u', 's',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'ul', 'ol', 'li',
   'a', 'blockquote', 'pre', 'code',
-  'hr',
-  // `<font face=…>` wird von document.execCommand('fontName', …) erzeugt.
-  // Wir lassen es zu, beschraenken aber die Attribute.
-  'font',
+  'hr', 'font',
 ];
 
-// Erlaubte Attribute. Alles andere wird weggeworfen.
-const ALLOWED_ATTR = [
-  'href', 'title', 'class', 'lang', 'dir',
-  'face', 'color',
-  // Editor setzt style="color:…" ueber execCommand('foreColor').
-  'style',
+// Erlaubte Farb-Werte fuer inline `style="color: …"` (vom Editor via
+// execCommand('foreColor')). Nur Hex, rgb()/rgba() oder ein einfacher
+// CSS-Farbname — KEIN url(), expression(), var(), Quotes etc. (matchen die
+// Regexe nicht und werden damit verworfen).
+const SAFE_COLOR = [
+  /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/,
+  /^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/i,
+  /^rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*(?:0|1|0?\.\d+)\s*\)$/i,
+  /^[a-zA-Z]+$/,
 ];
 
-// Allowed URI-Schemes — strikte Allow-List. Alles, was nicht mit https/
-// http/mailto/tel/Anker/relativem Pfad beginnt, fliegt raus. Damit sind
-// auch URL-encoded-`javascript:`-Tricks (`%6a...`) und Null-Byte-Schemata
-// gestoppt — beide passen das Pattern nicht.
-const ALLOWED_URI_REGEXP = /^(?:https?:\/\/|mailto:|tel:|#|\/|\.{0,2}\/)/i;
-
-const PURIFY_CONFIG = {
-  ALLOWED_TAGS,
-  ALLOWED_ATTR,
-  ALLOWED_URI_REGEXP,
-  // Forbid auch wenn jemand sie ueber Sub-Konfig wieder reintricksen wollte.
-  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'style', 'svg', 'math'],
-  FORBID_ATTR: [
-    'srcdoc', 'sandbox', 'formaction',
-    // alle on*-Handler werden ueber das Allow-Set ohnehin gestrippt;
-    // wir nennen die haeufigsten zusaetzlich explizit, falls jemand das
-    // Default-Profil aushebelt.
-    'onload', 'onerror', 'onclick', 'onmouseover', 'onfocus', 'onmouseenter',
-  ],
-  // Saubere innerHTML — kein Wrap mit <html><body>.
-  WHOLE_DOCUMENT: false,
-  RETURN_TRUSTED_TYPE: false,
+const CONFIG = {
+  allowedTags: ALLOWED_TAGS,
+  allowedAttributes: {
+    a: ['href', 'title', 'class', 'lang', 'dir', 'style'],
+    font: ['face', 'color', 'title', 'class', 'lang', 'dir', 'style'],
+    '*': ['title', 'class', 'lang', 'dir', 'style'],
+  },
+  // Nur `color` als inline-Style zulassen, und nur mit sicheren Werten.
+  allowedStyles: {
+    '*': { color: SAFE_COLOR },
+  },
+  // URL-Schemes: http(s)/mailto/tel + schemenlose (relative/#) URLs erlaubt;
+  // javascript:, data: etc. fliegen raus. Keine protokoll-relativen //host.
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowProtocolRelative: false,
+  // Gefaehrliche Tags samt Inhalt verwerfen (nicht nur das Tag strippen und
+  // den Text stehen lassen).
+  nonTextTags: ['script', 'style', 'textarea', 'noscript', 'iframe', 'object', 'embed', 'svg', 'math', 'form'],
+  disallowedTagsMode: 'discard',
 };
 
-// Eng-gefuehrter Style-Whitelist-Hook (Audit-Round-2-Fund).
-// DOMPurify laesst `style` als Attribut standardmaessig durchgehen, ohne
-// CSS-Properties zu pruefen. Auch wenn moderne Browser `expression()` und
-// `url(javascript:…)` ignorieren, lassen wir Editor-Style-Inline strikt
-// nur fuer `color: <wert>` zu — alles andere wird gestrippt.
-const SAFE_COLOR_PROP = /^\s*color\s*:\s*([#a-zA-Z0-9(),. \-]+?)\s*;?\s*$/;
-
-DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
-  if (data.attrName !== 'style') return;
-  const value = String(data.attrValue || '');
-  if (!value) {
-    data.keepAttr = false;
-    return;
-  }
-  // Nur eine einzige color-Declaration. Mehrere Properties oder andere
-  // CSS-Werte werden verworfen.
-  const m = value.match(SAFE_COLOR_PROP);
-  if (!m) {
-    data.keepAttr = false;
-    return;
-  }
-  // Zusatzpruefung des color-Werts: nur Hex, rgb()/rgba(), oder
-  // einfacher CSS-Farbname. Keine url(), keine quotes, keine semicolons.
-  const colorVal = String(m[1] || '').trim();
-  if (/(url|expression|var|attr|calc|@)/i.test(colorVal) || /["'`]/.test(colorVal)) {
-    data.keepAttr = false;
-    return;
-  }
-  data.attrValue = `color: ${colorVal}`;
-});
-
 /**
- * Sanitisiert HTML fuer Blog-Post-Inhalt. Liefert immer einen String
- * zurueck — leerer String wenn Input leer/ungueltig.
+ * Sanitisiert HTML fuer Blog-Post-Inhalt. Liefert immer einen String zurueck
+ * — leerer String wenn Input leer/ungueltig.
  */
 export function sanitizePostHtml(html) {
   const input = typeof html === 'string' ? html : '';
   if (!input) return '';
-  return DOMPurify.sanitize(input, PURIFY_CONFIG);
+  return sanitizeHtml(input, CONFIG);
 }
