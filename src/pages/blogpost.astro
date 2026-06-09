@@ -192,13 +192,19 @@ try {
         display: none;
       }
       #editor {
-        min-height: calc(100% - 0.25rem);
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
         outline: none;
         white-space: pre-wrap;
         word-break: break-word;
         font-size: 1.08rem;
         line-height: 1.6;
         color: var(--editor-accent, #8dc5ff);
+        scrollbar-width: thin;
+        /* Caret wird per JS vertikal mittig gehalten; scroll-padding gibt
+           dem Browser-Autoscroll zusaetzlich Luft nach oben/unten. */
+        scroll-padding: 40% 0;
       }
       .editor-wrap:not(.active) #editor {
         visibility: hidden;
@@ -248,6 +254,8 @@ try {
         margin-top: 0.85rem;
         display: flex;
         justify-content: center;
+        gap: 0.6rem;
+        flex-wrap: wrap;
       }
       .save-btn {
         border: 1px solid var(--site-card-border);
@@ -259,6 +267,35 @@ try {
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
+      .split-btn {
+        border: 1px dashed var(--site-card-border);
+        border-radius: 0.7rem;
+        padding: 0.6rem 0.9rem;
+        background: transparent;
+        color: var(--site-body-text);
+        cursor: pointer;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.85;
+      }
+      .split-btn[hidden] { display: none; }
+      .split-btn.urgent {
+        border-style: solid;
+        border-color: #d98a2b;
+        color: #d98a2b;
+        opacity: 1;
+      }
+      /* Live-Laengenanzeige: dezent, faerbt sich nahe/ueber dem Limit. */
+      .length-meter {
+        margin-top: 0.5rem;
+        text-align: center;
+        font-size: 0.8rem;
+        letter-spacing: 0.04em;
+        opacity: 0.6;
+        min-height: 1rem;
+      }
+      .length-meter.warn { color: #d98a2b; opacity: 1; }
+      .length-meter.over { color: #d04d4d; opacity: 1; }
       .msg {
         min-height: 1.2rem;
         margin-top: 0.45rem;
@@ -620,7 +657,9 @@ try {
             </div>
             <div class="editor-actions">
               <button id="savePostBtn" class="save-btn" type="button">Post speichern</button>
+              <button id="splitPostBtn" class="split-btn" type="button" title="Post am Cursor in zwei Teile teilen" hidden>Hier teilen</button>
             </div>
+            <div class="length-meter" id="lengthMeter" aria-live="polite"></div>
             <div class="msg" id="msg"></div>
             <div class="autosave-note" id="autosaveNote" aria-live="polite"></div>
             <div class="recovery-banner" id="recoveryBanner" role="status" aria-live="polite">
@@ -801,6 +840,8 @@ try {
       const editor = document.getElementById('editor');
       const msg = document.getElementById('msg');
       const savePostBtn = document.getElementById('savePostBtn');
+      const splitPostBtn = document.getElementById('splitPostBtn');
+      const lengthMeter = document.getElementById('lengthMeter');
       const pastPostsSection = document.getElementById('pastPostsSection');
       const pastPostsGrid = document.getElementById('pastPostsGrid');
       const postModal = document.getElementById('postModal');
@@ -830,10 +871,150 @@ try {
       let openPostId = null;
       const postsById = new Map();
 
+      // Laengen-Limit gespiegelt aus der API (src/pages/api/posts/add.js +
+      // [id].js): Text > 100k ODER HTML > 400k -> Server lehnt mit
+      // "Post ist zu lang" ab. Wir warnen frueh und bieten Aufteilen an,
+      // damit niemand erst beim Speichern auf die Wand laeuft.
+      const TEXT_CAP = 100000;
+      const HTML_CAP = 400000;
+      const WARN_RATIO = 0.8; // ab 80% des bindenden Limits warnen
+      const SPLIT_SHOW_THRESHOLD = 2000; // Split-Button erst ab laengerem Text
+      // Wenn am Cursor geteilt wurde, wartet der Rest hier und wird nach dem
+      // Speichern von Teil 1 als neuer Entwurf in den Editor geladen.
+      let pendingNextPartHtml = null;
+
       function setMsg(text, good) {
         if (!msg) return;
         msg.textContent = text || '';
         msg.style.color = good ? 'lightgreen' : 'salmon';
+      }
+
+      // Live-Laengenanzeige: spiegelt die Server-Pruefung (Text + HTML) und
+      // zeigt das bindende Verhaeltnis. Steuert auch Sichtbarkeit/Dringlichkeit
+      // des "Hier teilen"-Buttons.
+      function updateLengthMeter() {
+        if (!editor || !lengthMeter) return;
+        const textLen = (editor.innerText || '').trim().length;
+        const htmlLen = (editor.innerHTML || '').trim().length;
+        if (textLen === 0) {
+          lengthMeter.textContent = '';
+          lengthMeter.classList.remove('warn', 'over');
+          if (splitPostBtn) { splitPostBtn.hidden = true; splitPostBtn.classList.remove('urgent'); }
+          return;
+        }
+        const ratio = Math.max(textLen / TEXT_CAP, htmlLen / HTML_CAP);
+        const nf = textLen.toLocaleString('de-DE');
+        const cap = TEXT_CAP.toLocaleString('de-DE');
+        const over = ratio >= 1;
+        const warn = ratio >= WARN_RATIO && !over;
+        lengthMeter.classList.toggle('warn', warn);
+        lengthMeter.classList.toggle('over', over);
+        if (over) {
+          lengthMeter.textContent = `Zu lang: ${nf} / ${cap} Zeichen — bitte „Hier teilen“ nutzen.`;
+        } else if (warn) {
+          lengthMeter.textContent = `${nf} / ${cap} Zeichen — wird lang, evtl. teilen.`;
+        } else {
+          lengthMeter.textContent = `${nf} / ${cap} Zeichen`;
+        }
+        if (splitPostBtn) {
+          splitPostBtn.hidden = textLen < SPLIT_SHOW_THRESHOLD;
+          splitPostBtn.classList.toggle('urgent', warn || over);
+        }
+      }
+
+      // Haelt den Text-Cursor beim Tippen/Navigieren vertikal mittig im
+      // Editor — ohne Effekt solange der Inhalt kuerzer als der sichtbare
+      // Bereich ist (scrollTop wird auf 0 geklemmt).
+      function centerCaretInEditor() {
+        if (!editor) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const range = sel.getRangeAt(0);
+        if (!editor.contains(range.startContainer)) return;
+        let caretTop = null;
+        const rects = range.getClientRects();
+        if (rects.length > 0) {
+          caretTop = rects[rects.length - 1].top;
+        } else {
+          const r = range.getBoundingClientRect();
+          if (r && (r.height || r.top)) caretTop = r.top;
+        }
+        if (caretTop == null) return; // kein messbarer Caret -> naechster Tastendruck zieht nach
+        const boxRect = editor.getBoundingClientRect();
+        const delta = caretTop - (boxRect.top + boxRect.height / 2);
+        if (Math.abs(delta) > 2) editor.scrollTop += delta;
+      }
+      function scheduleCenter() {
+        // nach dem DOM-Update messen
+        window.requestAnimationFrame(centerCaretInEditor);
+      }
+
+      // Teilt den Editor-Inhalt an der Cursor-Position: alles ab dem Cursor
+      // wandert in pendingNextPartHtml, Teil 1 bleibt stehen.
+      function splitAtCaret() {
+        if (!editor) return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0 || !editor.contains(sel.getRangeAt(0).startContainer)) {
+          setMsg('Cursor an die Teil-Stelle im Text setzen.', false);
+          return;
+        }
+        if (!editor.lastChild) return;
+        const caret = sel.getRangeAt(0);
+        const afterRange = document.createRange();
+        afterRange.setStart(caret.endContainer, caret.endOffset);
+        afterRange.setEndAfter(editor.lastChild);
+        const tmp = document.createElement('div');
+        tmp.appendChild(afterRange.cloneContents());
+        const afterHtml = tmp.innerHTML.trim();
+        if (!tmp.innerText.trim()) {
+          setMsg('Hinter dem Cursor steht kein Text mehr.', false);
+          return;
+        }
+        const beforeRange = document.createRange();
+        beforeRange.setStart(editor, 0);
+        beforeRange.setEnd(caret.endContainer, caret.endOffset);
+        const beforeTmp = document.createElement('div');
+        beforeTmp.appendChild(beforeRange.cloneContents());
+        if (!beforeTmp.innerText.trim()) {
+          setMsg('Vor dem Cursor steht kein Text — weiter unten teilen.', false);
+          return;
+        }
+        const delRange = document.createRange();
+        delRange.setStart(caret.endContainer, caret.endOffset);
+        delRange.setEndAfter(editor.lastChild);
+        delRange.deleteContents();
+        editor.normalize();
+        pendingNextPartHtml = afterHtml;
+        updateLengthMeter();
+        scheduleAutosave();
+        setMsg('Geteilt. Teil 1 bleibt — nach dem Speichern lädt der nächste Teil.', true);
+      }
+
+      // Laedt einen wartenden Rest-Teil als neuen Entwurf in den Editor.
+      function loadNextPart() {
+        if (!editor || !pendingNextPartHtml) return;
+        const next = pendingNextPartHtml;
+        pendingNextPartHtml = null;
+        editorWrap?.classList.add('active');
+        editor.innerHTML = next;
+        currentEditingPostId = null;
+        if (savePostBtn) savePostBtn.textContent = 'Post speichern';
+        editor.focus();
+        try {
+          const r = document.createRange();
+          r.setStart(editor, 0);
+          r.collapse(true);
+          sel_setRange(r);
+        } catch {}
+        editor.scrollTop = 0;
+        updateLengthMeter();
+        setMsg('Nächster Teil geladen — prüfen und speichern.', true);
+      }
+      function sel_setRange(r) {
+        const s = window.getSelection();
+        if (!s) return;
+        s.removeAllRanges();
+        s.addRange(r);
       }
 
       function applyColor() {
@@ -947,6 +1128,7 @@ try {
         }
         editor.focus();
         resizeCanvasToBox();
+        updateLengthMeter();
         setMsg('Bearbeitungsmodus aktiv.', true);
       });
 
@@ -1140,6 +1322,14 @@ try {
             setMsg('Der Post ist leer.', false);
             return;
           }
+          // Frueh abfangen statt erst auf die Server-Ablehnung warten — so
+          // gibt's das "Post zu lang, kein Speichern moeglich" nie ungewarnt.
+          if (contentText.length > TEXT_CAP || contentHtml.length > HTML_CAP) {
+            updateLengthMeter();
+            setMsg('Post ist zu lang — Cursor an eine Stelle setzen und „Hier teilen“ nutzen.', false);
+            if (splitPostBtn) { splitPostBtn.hidden = false; splitPostBtn.classList.add('urgent'); }
+            return;
+          }
           savePostBtn.disabled = true;
           setMsg('', true);
           try {
@@ -1183,6 +1373,8 @@ try {
             }
             lastAutosaveSig = null;
             await loadPosts();
+            if (pendingNextPartHtml) loadNextPart();
+            else updateLengthMeter();
           } catch {
             setMsg('Netzwerkfehler.', false);
           } finally {
@@ -1190,6 +1382,8 @@ try {
           }
         });
       }
+
+      splitPostBtn?.addEventListener('click', splitAtCaret);
 
       // --- A1/A2: Auto-Save (Browser-Draft + Server-Draft) ---------------
       // Idee: bei jedem Tippen oder Kritzeln packen wir den aktuellen Stand
@@ -1311,6 +1505,7 @@ try {
         if (opts.enterEditor) enterEditorMode();
         else editor.focus();
         resizeCanvasToBox();
+        updateLengthMeter();
       }
 
       function hideRecoveryBanner() {
@@ -1379,12 +1574,25 @@ try {
       }
 
       editor?.addEventListener('input', scheduleAutosave);
+      editor?.addEventListener('input', () => {
+        updateLengthMeter();
+        scheduleCenter();
+      });
+      // Bei Pfeil-/Enter-/Page-Navigation Caret ebenfalls mittig nachziehen,
+      // damit man beim Hochlesen nicht an den Rand klebt. Freies Scrollen per
+      // Wheel/Trackpad loest nichts aus und bleibt unangetastet.
+      editor?.addEventListener('keyup', (ev) => {
+        if (['ArrowUp', 'ArrowDown', 'Enter', 'PageUp', 'PageDown'].includes(ev.key)) {
+          centerCaretInEditor();
+        }
+      });
       doodleCanvas?.addEventListener('mouseup', scheduleAutosave);
       doodleCanvas?.addEventListener('touchend', scheduleAutosave, { passive: true });
 
       // -------------------------------------------------------------------
 
       applyColor();
+      updateLengthMeter();
       decorateHubTiles();
       void loadPosts();
       void checkRecovery();

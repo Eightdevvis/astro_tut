@@ -7,7 +7,11 @@
 - Werkzeuge auf der Seite: Fett, Kursiv, Schrift wechseln, Liste, Kritzelmodus (Canvas), Farbwechsel fuer Text/Kritzel.
 - Persistenz: neue Tabelle `blog_posts` in `src/lib/db.js` inkl. Index auf `(username, created_at DESC, id DESC)`.
 - API Speichern: `POST /api/posts/add` in `src/pages/api/posts/add.js` (Auth + Permission + Validierung).
-- Laengen-Limit (`add.js` + `[id].js`, identisch): Text > 100.000 *oder* HTML > 400.000 Zeichen → 400 `"Post ist zu lang"`. Frueher 10.000/40.000, am 2026-06-09 verzehnfacht. Kein Frontend-Cap, nur die API gated.
+- Laengen-Limit (`add.js` + `[id].js`, identisch): Text > 100.000 *oder* HTML > 400.000 Zeichen → 400 `"Post ist zu lang"`. Frueher 10.000/40.000, am 2026-06-09 verzehnfacht.
+- Editor-UX (`blogpost.astro`, inline `<script>`/`<style>`): `#editor` ist jetzt scrollbar (`overflow-y:auto`, `height:100%`) statt fix-quadratisch mit `overflow:hidden`. `.editor-box` bleibt der clippende Rahmen, das Doodle-Canvas liegt weiter als fixe Overlay drueber (scrollt nicht mit).
+- Caret bleibt beim Tippen/Pfeil-Navigieren vertikal mittig: `centerCaretInEditor()` auf `input` + `keyup` (Arrow/Enter/Page). Freies Wheel/Trackpad-Scrollen loest nichts aus. Kurzer Inhalt → kein Effekt (scrollTop klemmt auf 0).
+- Live-Laengen-Meter (`#lengthMeter`) spiegelt die Server-Caps (Konstanten `TEXT_CAP=100000`, `HTML_CAP=400000`, `WARN_RATIO=0.8`): ab 80% gelbe Warnung, ueber 100% rot. Save-Handler faengt Ueberlaenge frueh ab (kein blinder 400 mehr).
+- „Hier teilen“-Button (`#splitPostBtn`, ab `SPLIT_SHOW_THRESHOLD=2000` Zeichen sichtbar): `splitAtCaret()` teilt am Cursor — Teil 1 bleibt im Editor, Rest wartet in `pendingNextPartHtml` und wird via `loadNextPart()` nach erfolgreichem Speichern als neuer Entwurf geladen.
 - API Laden: `GET /api/posts/mine` in `src/pages/api/posts/mine.js` (nur eigene Posts).
 - Unterhalb des Editors: Kachelgrid vergangener eigener Posts ist immer verfuegbar; vertikaler Abstand via CSS-Variable `--past-posts-offset` statt fester Hardcode-Position.
 - Vergangene Posts im Modal: Bearbeiten (laedt `content_html` in den Editor, Speichern via `PATCH /api/posts/:id`) und Loeschen (`DELETE /api/posts/:id`).
