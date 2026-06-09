@@ -39,18 +39,19 @@ Empfehlung: `dependsOn` (oder gleichwertige Kanten zwischen Node-IDs innerhalb d
 - Solange ein Lock-Child eines Parents nicht fertig ist, sind alle nicht-Lock-Sibling-Leafs des Parents beim Toggeln gesperrt.
 - Lock-Node selbst wird normal ueber `children` + `dependsOn` abgeschlossen.
 
-## 4. Rewards — eine Pipeline, tiefenagnostisch (04/2026)
+## 4. Rewards — Pipeline, jeder Node nur seine eigenen (04/2026)
 
-`buildRewardDisplayList(node, nodeDone, opts?)` ist EIN Render-Pfad fuer ALLE Tiefen — Root-Quest, Sub-Node, Leaf — gleicher Code, gleiche Output-Form. Keine Subtypen, kein `source: 'node' | 'quest'`-Switch mehr.
+`buildRewardDisplayList(node, nodeDone, opts?)` ist EIN Render-Pfad fuer ALLE Tiefen — Root-Quest, Sub-Node, Leaf — gleicher Code, gleiche Output-Form.
 
-- Eigene Rewards des `node` → unlocked wenn der Node selbst komplett ist.
-- Sub-Node-Rewards (rekursiv via `walkNodesPreOrder`) → unlocked wenn der jeweilige Sub-Node komplett ist.
-- `opts.scopeQuestId` legt den Lookup-Key in `nodeDone` fest (Root-Quest-ID); Default = `node.id` (Root-Fall).
-- `opts.selfProgressPercent` (optional) erlaubt Override fuer den Self-Unlock — z.B. aggregierter Graph-Progress aus `questProgress(..., graph)`. Wird nur bei Root-View ausgewertet.
-- Output-Felder pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. `nodeId` zeigt die Position im Baum, ist aber NICHT verhaltensrelevant.
-- Tooltip vereinheitlicht: `'Quest erledigt'` / `'Nach Erledigung der Quest'` — fuer JEDEN Reward, egal ob Root- oder Sub-Node-Origin.
+**Vertrag (Stand 2026-04-30):** ein Reward erscheint NUR am Node, an dem er hinterlegt ist. Sub-Node-Rewards werden NICHT mehr aggregiert — wer den Reward eines Children sehen will, muss diesen Children selbst aufrufen/anzeigen. Frueher war die Pipeline rekursiv (`walkNodesPreOrder`); das verursachte Duplikate, sobald man einen Container ansah.
 
-`questLeafProgressRatio(quest, nodeDone, scopeQuestId?)` ist genauso tiefenagnostisch — der optionale `scopeQuestId` ueberschreibt den Lookup-Key.
+- Eigene Rewards des `node` → `unlocked = isNodeCompleteInQuest(node, node.id, nodeDone)` (Container: alle nicht-optionalen Kinder erledigt; Leaf: `nodeDone[id]` gesetzt).
+- `opts.selfProgressPercent` (optional) erlaubt Override fuer den Self-Unlock — z.B. aggregierter Graph-Progress aus `questProgress(..., graph)`. Wird vom Panel nur fuer den Root-View uebergeben.
+- `opts.scopeQuestId` ist Backward-Kompatibilitaet (wird ignoriert; `nodeDone` ist flach in Phase 2).
+- Output-Felder pro Row: `{ label, kind, unlocked, nodeId, [pointKind, amount, itemId, achievementId] }`. `nodeId == node.id` — jede Row gehoert genau diesem Node.
+- Tooltip vereinheitlicht: `'Quest erledigt'` / `'Nach Erledigung der Quest'`.
+
+`questLeafProgressRatio(quest, nodeDone, scopeQuestId?)` ist tiefenagnostisch — der optionale `scopeQuestId` ueberschreibt den Lookup-Key. **Achtung:** fuer Leaf-Nodes liefert die Funktion immer 100% (kein zaehlbares Kind); deswegen nutzt `buildRewardDisplayList` `isNodeCompleteInQuest` statt der Progress-Ratio.
 
 `deriveRpgTreeSelectionView` gibt jetzt `{ selectedQuest, selectedGraphNode, selectedNodeView, scopeQuestId }` zurueck. Der View-Node behaelt SEINE eigene ID — kein ID-Spoofing mehr. Aufrufer reichen `scopeQuestId` an die Reward-/Progress-Funktionen weiter.
 
@@ -74,9 +75,10 @@ Zusatz: `points` aus Quest-Rewards werden bei abgeschlossenem Quest ebenfalls ei
 
 ### 4a. Reward am Node
 
+- Reward erscheint nur am Origin-Node, nicht am Parent-Container.
 - Solange Node offen ist: Reward in Liste gedimmt.
 - Nach Erledigung: Reward normal sichtbar.
-- Keine UI-Zuordnung "welcher Reward gehoert zu welchem Node", nur gemeinsame Liste.
+- In der Baum-Ansicht selbst sind Reward-Pills NICHT inline am Row — sie tauchen erst im Detail-Panel des selektierten Nodes auf.
 
 ### 4b. Rewards an der Quest
 

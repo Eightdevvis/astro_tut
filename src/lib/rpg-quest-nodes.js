@@ -546,11 +546,11 @@ export function questHasUrgentTimeBoundLeaves(quest, nodeDone, nowMs = Date.now(
 // --- Reward-Display (kombiniert Node-Logik mit Reward-Modul) ---
 
 /**
- * Sammelt alle Rewards des Nodes UND seiner Sub-Nodes mit Unlock-Status.
+ * Sammelt die eigenen Rewards des Nodes mit Unlock-Status.
  *
- * Kein Subtypen-Switch (Root vs. Child): jeder Reward, egal ob auf
- * `node` selbst oder auf einem Descendant, wird identisch berechnet —
- * unlocked == "der Node, dem dieser Reward gehört, ist komplett".
+ * Vertrag: ein Reward erscheint NUR am Node, an dem er hinterlegt ist.
+ * Sub-Node-Rewards werden nicht aggregiert — wer ein Sub-Reward sehen will,
+ * muss den Sub-Node selbst aufrufen. (Siehe memory/rpg/nodes-rewards.mdc § 4.)
  *
  * Phase 2: nodeDone ist flach (Record<nodeId, boolean>). `opts.scopeQuestId`
  * existiert nur noch fuer Backward-Kompatibilitaet und wird ignoriert.
@@ -602,26 +602,22 @@ export function buildRewardDisplayList(node, nodeDone, opts) {
     });
   };
 
-  // Eigene Rewards des Nodes — unlocked wenn dieser Node selbst komplett ist.
-  const pct = typeof opts?.selfProgressPercent === 'number' && Number.isFinite(opts.selfProgressPercent)
-    ? opts.selfProgressPercent
-    : questLeafProgressRatio(node, nodeDone).percent;
-  const selfUnlocked = pct >= 100;
+  // Nur eigene Rewards des Nodes — unlocked wenn dieser Node selbst komplett ist.
+  // Sub-Node-Rewards werden NICHT nach oben gereicht: jeder Reward erscheint
+  // ausschliesslich am Origin-Node (siehe memory/rpg/nodes-rewards.mdc Abschnitt 4).
+  //
+  // Self-Unlock:
+  //  - Wenn `selfProgressPercent` uebergeben ist (Root-View mit Graph-Aggregat),
+  //    entscheidet der Schwellenwert >=100.
+  //  - Sonst kommt der Tree-basierte Completion-Check zum Einsatz: das funktioniert
+  //    sowohl fuer Container (alle Kinder erledigt) als auch fuer Leafs
+  //    (`nodeDone[id]` gesetzt).
+  const selfUnlocked = (typeof opts?.selfProgressPercent === 'number' && Number.isFinite(opts.selfProgressPercent))
+    ? opts.selfProgressPercent >= 100
+    : isNodeCompleteInQuest(node, node.id, nodeDone);
   for (const r of getNodeRewardRows(node)) {
     pushRow(r.entry, selfUnlocked, node.id);
   }
-
-  // Sub-Node-Rewards (rekursiv, alle Tiefen) — unlocked wenn der jeweilige
-  // Sub-Node komplett ist. Identische Logik wie oben.
-  walkNodesPreOrder(node.children || [], (s) => {
-    if (!s || !s.rewards || s.rewards.length === 0) return;
-    const unlocked = isNodeCompleteInQuest(node, s.id, nodeDone);
-    for (const rawEntry of s.rewards) {
-      const entry = normalizeRewardEntry(rawEntry);
-      if (!entry) continue;
-      pushRow(entry, unlocked, s.id);
-    }
-  });
 
   return rows;
 }

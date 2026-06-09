@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { graphEdges } from '../lib/rpg-quests-data.js';
 import RpgBootstrapLoading from './RpgBootstrapLoading.jsx';
 import {
@@ -113,6 +113,8 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const [editorEditEntry, setEditorEditEntry] = useState(undefined);
   const didCenterFocusRef = useRef(false);
   const didCenterDefaultRef = useRef(false);
+  /** @type {import('preact').RefObject<HTMLDivElement | null>} */
+  const layoutDebugRootRef = useRef(null);
 
   // Astrolab-Tool-State: welches Werkzeug ist aktiv?
   const [activeTool, setActiveTool] = useState('focus');
@@ -251,6 +253,81 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   const treePickIdList = useMemo(() => [...treePickNodeIds], [treePickNodeIds]);
   const mobileTreePickMode = compact && treePickActive;
   const panelRenderMode = mobileTreePickMode ? 'none' : editorOpen ? 'editor' : selectedId ? 'quest-panel' : 'none';
+
+  // #region agent log
+  useLayoutEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined' || !bootstrapped) return;
+    const root = layoutDebugRootRef.current;
+    if (!root || root.classList.contains('rpg-tree--bootstrap')) return;
+    const frame = requestAnimationFrame(() => {
+      /** @param {Element | null} el */
+      const rectJson = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          x: r.x,
+          y: r.y,
+          width: r.width,
+          height: r.height,
+          top: r.top,
+          left: r.left,
+          right: r.right,
+          bottom: r.bottom,
+        };
+      };
+      const btn = root.querySelector('.rpg-tree__mobile-tools-btn');
+      const topEl = root.querySelector('.rpg-tree__top');
+      const qpanel = root.querySelector('.qpanel');
+      const csTree = window.getComputedStyle(root);
+      const detailMobile = compact && !!selectedId && !treePickActive;
+      const payload = {
+        sessionId: '414c7b',
+        runId: 'layout-probe',
+        hypothesisId: 'H1-H5',
+        location: 'RpgQuestTree.jsx:useLayoutEffect',
+        message: 'rpg mobile hamburger layout',
+        timestamp: Date.now(),
+        data: {
+          H1_mismatch: window.matchMedia('(max-width: 560px)').matches !== compact,
+          mq560: window.matchMedia('(max-width: 560px)').matches,
+          innerWidth: window.innerWidth,
+          vvWidth: window.visualViewport?.width ?? null,
+          vvScale: window.visualViewport?.scale ?? null,
+          compact,
+          selectedId: selectedId ? String(selectedId).slice(0, 48) : null,
+          detailMobile,
+          hasDetailMobileClass: root.classList.contains('rpg-tree--detail-mobile'),
+          editorOpen,
+          treePickActive,
+          H2_btn: rectJson(btn),
+          H3_topZ: topEl ? window.getComputedStyle(topEl).zIndex : null,
+          H3_qpanelZ: qpanel ? window.getComputedStyle(qpanel).zIndex : null,
+          H3_top: rectJson(topEl),
+          H3_qpanel: rectJson(qpanel),
+          H4_overflow: csTree.overflow,
+          H4_overflowX: csTree.overflowX,
+          H4_overflowY: csTree.overflowY,
+          ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 200) : '',
+        },
+      };
+      fetch('/api/dev/rpg-layout-debug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    bootstrapped,
+    compact,
+    selectedId,
+    editorOpen,
+    treePickActive,
+    mobileToolsOpen,
+    graph.nodes?.length,
+    direction,
+  ]);
+  // #endregion agent log
 
   // Nodes die einen Zirkelschluss erzeugen würden: die editierte Node selbst + alle ihre Vorfahren.
   // Wenn der User eine davon im Pick-Modus anklickt → Warnung statt Auswahl.
@@ -678,7 +755,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   // ── Bootstrap: Ladebildschirm ──
   if (!bootstrapped) {
     return (
-      <div class="rpg-tree rpg-tree--bootstrap">
+      <div ref={layoutDebugRootRef} class="rpg-tree rpg-tree--bootstrap">
         <RpgBootstrapLoading />
       </div>
     );
@@ -687,7 +764,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   // ── Empty State: keine Quests ──
   if (!graph.nodes?.length) {
     return (
-      <div class={`rpg-tree dir-${direction}`}>
+      <div ref={layoutDebugRootRef} class={`rpg-tree dir-${direction}`}>
         <RpgAstrolab activeTool={activeTool} onTool={handleAstrolabTool} canUseNotes={canUseNotes} />
         <header class="rpg-tree__top">
           <p class="rpg-tree__top-title">
@@ -727,7 +804,7 @@ export default function RpgQuestTree({ isSuperuser = false, canUseNotes = false 
   }, [activeTool, graph, applyGraph]);
 
   return (
-    <div class={rootTreeClass}>
+    <div ref={layoutDebugRootRef} class={rootTreeClass}>
       {/* Astrolab: Armillarsphaere als Navigation (oben links) */}
       <RpgAstrolab
         activeTool={activeTool}

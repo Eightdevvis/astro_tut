@@ -486,65 +486,67 @@ test('getNodeRewardEntries extrahiert nur Entries ohne Unlock-Info', () => {
 // buildRewardDisplayList
 // =============================================================================
 
-test('buildRewardDisplayList aggregiert Self- und Sub-Node-Rewards', () => {
+test('buildRewardDisplayList zeigt nur eigene Rewards des Nodes (kein Bubble-Up)', () => {
   const q = quest('q1', [
     leaf('a', { rewards: [{ type: 'text', text: 'Child-Reward' }] }),
   ], {
     rewards: [{ type: 'text', text: 'Quest-Reward' }],
   });
+  // Root-View: nur Quest-Reward, NICHT Child-Reward.
   const rows = buildRewardDisplayList(q, { q1: {} });
-  // Beide Rewards sind enthalten — getrennt erkennbar via nodeId
-  const selfRows = rows.filter((r) => r.nodeId === 'q1');
-  const subRows = rows.filter((r) => r.nodeId === 'a');
-  assert.ok(selfRows.length >= 1, 'Self-Reward (Root) muss enthalten sein');
-  assert.ok(subRows.length >= 1, 'Sub-Node-Reward muss enthalten sein');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].nodeId, 'q1');
+  assert.equal(rows[0].label, 'Quest-Reward');
 });
 
-test('buildRewardDisplayList setzt unlocked korrekt fuer Sub-Node-Rewards', () => {
+test('buildRewardDisplayList: Reward erscheint nur am Origin-Node, nicht am Parent', () => {
   const q = quest('q1', [
     leaf('a', { rewards: [{ type: 'text', text: 'R' }] }),
   ]);
-  const unlocked = buildRewardDisplayList(q, { q1: { a: true } });
+  // Parent (q1) hat keinen eigenen Reward → leere Liste, auch wenn Child 'a' done ist.
+  const fromParent = buildRewardDisplayList(q, { q1: { a: true } });
+  assert.equal(fromParent.length, 0, 'Parent zeigt keine Sub-Rewards');
+
+  // Direkt am Origin-Node aufrufen → Reward sichtbar, unlocked-Status korrekt.
+  const childNode = q.children[0];
+  const unlocked = buildRewardDisplayList(childNode, { q1: { a: true } });
+  assert.equal(unlocked.length, 1);
   assert.equal(unlocked[0].unlocked, true);
   assert.equal(unlocked[0].nodeId, 'a');
 
-  const locked = buildRewardDisplayList(q, { q1: {} });
+  const locked = buildRewardDisplayList(childNode, { q1: {} });
   assert.equal(locked[0].unlocked, false);
 });
 
-test('buildRewardDisplayList ist tiefenagnostisch: Root und Sub-Node liefern strukturell konsistente Outputs', () => {
-  // Root mit zwei Sub-Nodes, jeder mit eigenen Rewards
+test('buildRewardDisplayList ist tiefenagnostisch in der Output-Form (jeder Node nur eigene Rewards)', () => {
+  // Root mit Sub-Node mit Sub-Sub-Leaf — jeder hat eigene Rewards.
+  const subLeaf = { id: 'sub-leaf', parentId: 'sub', title: 'Sub-Leaf', children: [], rewards: [{ type: 'text', text: 'Deep' }] };
   const sub = {
     id: 'sub',
     parentId: 'q1',
     title: 'Sub',
-    children: [
-      { id: 'sub-leaf', parentId: 'sub', title: 'Sub-Leaf', children: [], rewards: [{ type: 'text', text: 'Deep' }] },
-    ],
+    children: [subLeaf],
     rewards: [{ type: 'text', text: 'Sub-Self' }],
   };
   const q = quest('q1', [sub], { rewards: [{ type: 'text', text: 'Root-Self' }] });
 
-  // Root-View: Root-Self + Sub-Self + Deep
+  // Jede Tiefe liefert genau 1 Eintrag — den eigenen.
   const rootRows = buildRewardDisplayList(q, { q1: {} });
-  assert.equal(rootRows.length, 3, 'Root-View liefert alle drei Rewards');
-  // Reihenfolge: erst self (Root), dann via walkNodesPreOrder die Descendants (sub, sub-leaf)
+  const subRows = buildRewardDisplayList(sub, { q1: {} }, { scopeQuestId: 'q1' });
+  const leafRows = buildRewardDisplayList(subLeaf, { q1: {} }, { scopeQuestId: 'q1' });
+  assert.equal(rootRows.length, 1);
+  assert.equal(subRows.length, 1);
+  assert.equal(leafRows.length, 1);
   assert.equal(rootRows[0].nodeId, 'q1');
-  assert.equal(rootRows[0].unlocked, false); // Root nicht komplett
-
-  // Sub-View: Sub-Self + Deep, KEIN Root-Self
-  const subRows = buildRewardDisplayList(sub, { q1: {} }, {
-    scopeQuestId: 'q1',
-  });
-  assert.equal(subRows.length, 2, 'Sub-View liefert nur eigene + descendants');
   assert.equal(subRows[0].nodeId, 'sub');
-  // Strukturelle Konsistenz: jeder Eintrag hat label, kind, unlocked, nodeId
-  for (const row of [...rootRows, ...subRows]) {
+  assert.equal(leafRows[0].nodeId, 'sub-leaf');
+
+  // Strukturelle Konsistenz: jeder Eintrag hat label, kind, unlocked, nodeId — kein source-Feld.
+  for (const row of [...rootRows, ...subRows, ...leafRows]) {
     assert.equal(typeof row.label, 'string');
     assert.equal(typeof row.kind, 'string');
     assert.equal(typeof row.unlocked, 'boolean');
     assert.equal(typeof row.nodeId, 'string');
-    // KEIN source-Feld mehr — das war die Halluzination
     assert.equal(row.source, undefined);
   }
 });

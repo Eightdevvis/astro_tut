@@ -194,44 +194,50 @@ test('deriveRpgTreeSelectionView falls back to root view when no sub-node select
 // Konsolidierungs-Invariante: Render-Pipeline ist tiefenagnostisch
 // ============================================================
 
-test('Render-Invariante: identische Sub-Struktur liefert identisch geformte Reward-Outputs (Root vs. Sub)', () => {
-  // Zwei Quests mit STRUKTURELL identischem Subtree:
-  //  - "rootView": Root-Quest, Subtree direkt als children
-  //  - "subView":  Anderer Root, dessen Sub-Node "wrapper" denselben Subtree als children hat
-  // Wenn buildRewardDisplayList tiefenagnostisch ist, muessen die Output-Forms (kind, label,
-  // unlocked, struktur) identisch sein — nur die nodeId zeigt die Position im Baum.
-  const subtree = {
+test('Render-Invariante: identischer Origin-Node liefert identisch geformte Reward-Outputs (egal wo im Baum)', () => {
+  // Derselbe Reward-Node, einmal als direktes Child von Root, einmal verschachtelt
+  // unter einem Wrapper. Der Display-Output muss strukturell identisch sein —
+  // jeder Node zeigt seine eigenen Rewards, unabhaengig von der Position im Baum.
+  const makeOriginNode = (parentId) => ({
     id: 'leafReward',
-    parentId: null,
+    parentId,
     title: 'Leaf',
     children: [],
     rewards: [{ type: 'text', text: 'XP' }],
-  };
-  const rootView = makeQuest('rootView', [{ ...subtree, parentId: 'rootView' }]);
+  });
+  const rootView = makeQuest('rootView', [makeOriginNode('rootView')]);
   const subWrapper = {
     id: 'wrapper',
     parentId: 'subRoot',
     title: 'Wrapper',
-    children: [{ ...subtree, parentId: 'wrapper' }],
+    children: [makeOriginNode('wrapper')],
   };
-  const subRoot = makeQuest('subRoot', [subWrapper]);
+  // makeQuest wird hier nur fuer das nodeDone-Schema referenziert (subRoot).
+  makeQuest('subRoot', [subWrapper]);
 
-  const rootOutput = buildRewardDisplayList(rootView, { rootView: { leafReward: true } });
-  const subOutput = buildRewardDisplayList(subWrapper, { subRoot: { leafReward: true } }, {
+  // Output an der Origin-Node selbst — egal ob direkt unter Root oder unter Wrapper.
+  const directOriginOutput = buildRewardDisplayList(rootView.children[0], { rootView: { leafReward: true } });
+  const nestedOriginOutput = buildRewardDisplayList(subWrapper.children[0], { subRoot: { leafReward: true } }, {
     scopeQuestId: 'subRoot',
   });
 
   // Beide haben genau einen Reward-Eintrag mit identischen Display-Feldern
-  assert.equal(rootOutput.length, 1);
-  assert.equal(subOutput.length, 1);
-  assert.equal(rootOutput[0].label, subOutput[0].label);
-  assert.equal(rootOutput[0].kind, subOutput[0].kind);
-  assert.equal(rootOutput[0].unlocked, subOutput[0].unlocked);
+  assert.equal(directOriginOutput.length, 1);
+  assert.equal(nestedOriginOutput.length, 1);
+  assert.equal(directOriginOutput[0].label, nestedOriginOutput[0].label);
+  assert.equal(directOriginOutput[0].kind, nestedOriginOutput[0].kind);
+  assert.equal(directOriginOutput[0].unlocked, nestedOriginOutput[0].unlocked);
   // Beide Outputs haben dieselben Feld-Namen (keine `source`-Halluzination)
-  assert.deepStrictEqual(Object.keys(rootOutput[0]).sort(), Object.keys(subOutput[0]).sort());
+  assert.deepStrictEqual(Object.keys(directOriginOutput[0]).sort(), Object.keys(nestedOriginOutput[0]).sort());
   // Kein `source`-Feld auf irgend einem Output
-  assert.equal(rootOutput[0].source, undefined);
-  assert.equal(subOutput[0].source, undefined);
+  assert.equal(directOriginOutput[0].source, undefined);
+  assert.equal(nestedOriginOutput[0].source, undefined);
+
+  // Vertrag: Reward erscheint NICHT am Parent — nur am Origin.
+  const wrapperOutput = buildRewardDisplayList(subWrapper, { subRoot: { leafReward: true } }, {
+    scopeQuestId: 'subRoot',
+  });
+  assert.equal(wrapperOutput.length, 0, 'Parent zeigt keinen Sub-Reward');
 });
 
 test('Progress-Invariante: questLeafProgressRatio funktioniert fuer Root und Sub-Node identisch (mit scopeQuestId)', () => {
@@ -728,21 +734,16 @@ test('Roundtrip Tiefe-3: alle Reward-Typen ueberleben JSON->Normalize->Display f
   assert.equal(finalSub.parentId, 'q1');
   assert.equal(finalSubSub.parentId, finalSub.id);
 
-  // Schritt 4: buildRewardDisplayList tiefenagnostisch auf JEDER Tiefe.
-  // Wichtig: buildRewardDisplayList aggregiert rekursiv, d.h. der Root-View
-  // zeigt eigene + alle Sub-Rewards. Konsistenz-Eigenschaft (Pass 1):
-  // dieselbe Funktion, gleiche Output-Form, kein Subtypen-Verzweigen.
+  // Schritt 4: buildRewardDisplayList — jeder Node zeigt nur seine eigenen Rewards.
+  // Konsistenz-Eigenschaft: dieselbe Funktion, gleiche Output-Form auf jeder Tiefe.
   const finalRoot = { ...root, children: finalChildren };
   const rootDisplay = buildRewardDisplayList(finalRoot, {});
   const subDisplay = buildRewardDisplayList(finalSub, {}, { scopeQuestId: finalRoot.id });
   const subSubDisplay = buildRewardDisplayList(finalSubSub, {}, { scopeQuestId: finalRoot.id });
 
-  // Aggregations-Verhalten:
-  // - rootDisplay: 4 (eigene) + 4 (sub) + 4 (subSub) = 12
-  // - subDisplay:  4 (eigene) + 4 (subSub) = 8
-  // - subSubDisplay: 4 (eigene) = 4
-  assert.equal(rootDisplay.length, 12);
-  assert.equal(subDisplay.length, 8);
+  // Vertrag „Reward nur am Origin-Node": jede Tiefe zeigt genau die 4 eigenen Rewards.
+  assert.equal(rootDisplay.length, 4);
+  assert.equal(subDisplay.length, 4);
   assert.equal(subSubDisplay.length, 4);
 
   // Strukturelle Konsistenz: dieselben Object-Keys auf jeder Tiefe (kein source-Spoof).
