@@ -409,7 +409,11 @@ const tokenQs = tokenParam ? `?key=${encodeURIComponent(tokenParam)}` : '';
 
 <style>
   .db-post-content {
-    white-space: normal;
+    /* Editor speichert Zeilenumbrueche als literale \n (er nutzt selbst
+       white-space: pre-wrap). Die Anzeige muss das spiegeln, sonst kollabieren
+       Umbrueche/Spacing zu einem Block. Alte <div>/<br>-Posts bleiben korrekt,
+       da sie keine stray \n enthalten. */
+    white-space: pre-wrap;
     line-height: 1.6;
     position: relative;
   }
